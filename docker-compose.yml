@@ -1,0 +1,49 @@
+# ── Phase 1: Single container (default) ───────────────────────────────────────
+# docker compose up
+
+# ── Phase 2: Split containers — uncomment the multi-service block below ────────
+
+version: "3.9"
+
+services:
+  app:
+    build: .
+    ports:
+      - "80:80"
+    volumes:
+      - deseq2_data:/data
+    env_file:
+      - .env
+    restart: unless-stopped
+
+volumes:
+  deseq2_data:
+
+# ── PHASE 2 (split containers) — replace above with: ──────────────────────────
+#
+# services:
+#   backend:
+#     build:
+#       context: .
+#       dockerfile: Dockerfile.backend   # rocker + plumber only
+#     expose:
+#       - "8000"
+#     volumes:
+#       - deseq2_data:/data
+#     env_file: .env
+#     restart: unless-stopped
+#
+#   frontend:
+#     build:
+#       context: .
+#       dockerfile: Dockerfile.frontend  # nginx + React build only
+#     ports:
+#       - "80:80"
+#     environment:
+#       - API_HOST=backend               # nginx proxies to http://backend:8000
+#     depends_on:
+#       - backend
+#     restart: unless-stopped
+#
+# volumes:
+#   deseq2_data:

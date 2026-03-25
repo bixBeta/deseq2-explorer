@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "deseq2-backend",
+      "runtimeExecutable": "/usr/local/bin/Rscript",
+      "runtimeArgs": ["backend/run.R"],
+      "port": 8000
+    },
+    {
+      "name": "deseq2-frontend",
+      "runtimeExecutable": "/opt/homebrew/bin/npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "5174"],
+      "port": 5174
+    }
+  ]
+}
