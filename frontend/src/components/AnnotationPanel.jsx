@@ -396,6 +396,14 @@ export default function AnnotationPanel({ geneIds, annMap, onAnnotate }) {
       {method === 'biomart' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
+          {/* Experimental notice */}
+          <div style={{ padding: '8px 12px', borderRadius: 7, fontSize: '0.74rem',
+                        background: 'rgba(251,191,36,0.07)', border: '1px solid rgba(251,191,36,0.25)',
+                        color: '#d97706', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: '0.9rem' }}>⚠</span>
+            <span><strong>Experimental</strong> — BioMart queries depend on Ensembl API availability and may be slow or incomplete for some organisms.</span>
+          </div>
+
           {/* Auto-detected ID type banner */}
           {idType === 'ncbi' ? (
             <div style={{ padding: '9px 14px', borderRadius: 8, fontSize: '0.76rem',
