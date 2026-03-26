@@ -101,12 +101,12 @@ function SectionOverview() {
         without writing a single line of R.
       </P>
       <Card>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem 1.5rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           {[
             ['Upload', 'Count matrix + sample sheet'],
             ['Metadata', 'Review samples, add covariates'],
             ['Design', 'Define contrasts, run DESeq2'],
-            ['Results', 'PCA, DE tables, volcano plots'],
+            ['Results', 'PCA, DE tables, MA plot'],
             ['Compare', 'Multi-contrast heatmaps & tables'],
             ['Annotation', 'Add gene symbols & descriptions'],
           ].map(([label, desc]) => (
@@ -121,8 +121,8 @@ function SectionOverview() {
       <StepRow n={1}>Upload your count matrix and optional metadata CSV.</StepRow>
       <StepRow n={2}>Review and configure sample metadata in the Metadata Editor.</StepRow>
       <StepRow n={3}>Build contrasts in the Design Panel and run DESeq2.</StepRow>
-      <StepRow n={4}>Explore results — PCA, DE table, volcano plot, and more.</StepRow>
-      <StepRow n={5}>Optionally annotate genes using a GTF file or TSV symbol map.</StepRow>
+      <StepRow n={4}>Explore results — PCA, DE table, MA plot, and more.</StepRow>
+      <StepRow n={5}>Optionally annotate genes via g:Profiler, BioMart, or a GTF/GFF file.</StepRow>
       <StepRow n={6}>Use the Compare Panel to visualise results across all contrasts.</StepRow>
       <H3>Sessions</H3>
       <P>
@@ -266,25 +266,22 @@ function SectionResults() {
       <H3>DE Results table</H3>
       <P>
         The table lists all genes with their DESeq2 statistics: base mean, log₂FC, lfcSE,
-        p-value, and adjusted p-value (Benjamini–Hochberg). Columns are sortable.
-        Use the <Badge>FDR ≤</Badge> slider and <Badge>|log₂FC| ≥</Badge> input to filter
-        rows. Click <Badge>↓ CSV</Badge> to export the filtered table.
-      </P>
-      <H3>Volcano plot</H3>
-      <P>
-        Interactive Plotly scatter showing –log₁₀(padj) vs log₂FC. Significant genes
-        (padj &lt; threshold) are highlighted. Hover over a point to see gene ID and statistics.
-        Use the Plotly toolbar to zoom, pan, or download as PNG.
+        p-value, and adjusted p-value (Benjamini–Hochberg). Columns are sortable by clicking
+        the column header. Use the search box to filter by gene ID or symbol.
+        Click <Badge>↓ CSV</Badge> to export the full results table.
       </P>
       <H3>MA plot</H3>
       <P>
-        Log₂FC vs mean expression (log₁₀ scale). Useful for identifying systematic
-        fold-change biases related to expression level.
+        Interactive Plotly scatter showing log₂FC vs mean expression (log₁₀ baseMean scale).
+        Significant genes (padj &lt; 0.05) are highlighted in colour. Hover over a point to
+        see the gene ID and statistics. Use the Plotly toolbar to zoom, pan, or download as PNG.
+        MA plots are useful for identifying systematic fold-change biases related to expression level.
       </P>
       <H3>Counts plot</H3>
       <P>
-        Click any gene in the DE table to see its normalised count distribution across
-        samples, grouped by condition.
+        Click any gene row in the DE table to open a violin/box plot showing its normalised
+        count distribution across samples, split by condition. Useful for visually validating
+        individual DE calls.
       </P>
     </>
   )
@@ -366,27 +363,42 @@ function SectionAnnotation() {
     <>
       <H2>⊕ Annotation</H2>
       <P>
-        Annotation enriches your results with human-readable gene symbols and descriptions.
-        It is optional but recommended — once loaded, symbols appear throughout all result
-        views.
+        Annotation enriches your results with human-readable gene symbols, descriptions, and
+        biotype information. It is optional but recommended — once applied, symbols appear
+        throughout all result views, tables, and exports.
       </P>
-      <H3>GTF file</H3>
+      <H3>⊹ g:Profiler</H3>
       <P>
-        Upload a genome annotation file in GTF format (e.g. from Ensembl). The app extracts:
+        Fetches gene symbols in bulk from the g:Profiler convert API. Supports Ensembl gene
+        IDs for most model organisms. Fast and requires no file upload — just select your
+        organism from the dropdown and click fetch. Provides gene symbols only.
+      </P>
+      <H3>⬡ BioMart</H3>
+      <P>
+        Queries the Ensembl REST API (with BioMart XML as fallback) to retrieve gene symbols,
+        descriptions, and biotype for Ensembl IDs. Also supports numeric NCBI gene IDs via
+        the NCBI E-summary API, making it suitable for bacterial and non-model organism
+        datasets. Select your organism, optionally request human orthologs for non-human
+        datasets, and click fetch.
+      </P>
+      <H3>≋ GTF / GFF</H3>
+      <P>
+        Upload a genome annotation file in GTF or GFF3 format (e.g. from Ensembl or NCBI).
+        The app parses it locally in-browser and extracts:
       </P>
       <Ul items={[
-        'gene_name → gene symbol column in all tables.',
-        'gene_biotype → description / biotype column.',
+        'gene_name / Name → gene symbol column in all tables.',
+        'gene_biotype / biotype → biotype / description column.',
         'seqname, start, end → Chr locus column in the Table Explorer (e.g. 1:12,746,200–12,763,699).',
       ]} />
-      <H3>TSV symbol map</H3>
       <P>
-        A two-column TSV with gene IDs in column 1 and gene symbols in column 2. Faster to
-        load than a full GTF but provides symbols only (no genomic coordinates or descriptions).
+        GTF/GFF is the most complete source — it provides symbols, descriptions, and
+        chromosomal coordinates all in one file.
       </P>
       <H3>Preview &amp; apply</H3>
       <P>
-        After selecting a file a preview shows the first mapped entries. Click{' '}
+        After fetching or uploading, a preview table shows the first mapped entries along with
+        counts of genes with symbols and descriptions found. Click{' '}
         <Badge>Apply Annotation</Badge> to propagate the mapping across all views.
         Annotations are stored in the session and persist on reload.
       </P>
@@ -426,7 +438,7 @@ function SectionTips() {
         'Sample names in the count matrix must exactly match those in the metadata file (case-sensitive).',
         'DESeq2 requires at least 2 samples per group in a contrast.',
         'Genes with zero counts across all samples are automatically filtered out before fitting.',
-        'If the volcano plot appears empty, check that your padj threshold is not too strict.',
+        'If the MA plot appears sparse, most genes may have been filtered out — check your count matrix for low-coverage samples.',
       ]} />
     </>
   )

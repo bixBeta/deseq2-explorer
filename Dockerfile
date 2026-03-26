@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # R packages (BiocManager handles Bioconductor)
-RUN R -e "install.packages(c('BiocManager','plumber','jsonlite','DBI','RSQLite','uuid','digest','blastula','matrixStats'), repos='https://cloud.r-project.org')"
+RUN R -e "install.packages(c('BiocManager','plumber','jsonlite','DBI','RSQLite','uuid','digest','blastula','matrixStats','httr'), repos='https://cloud.r-project.org')"
 RUN R -e "BiocManager::install(c('DESeq2'), ask=FALSE, update=FALSE)"
 
 # Copy React build → nginx html dir

@@ -64,7 +64,7 @@ export default function ResultsTable({ results, label, session, contrast, column
       : 'gene,baseMean,log2FC,lfcSE,stat,pvalue,padj'
     const rows = (results || []).map(r => {
       if (annMap) {
-        const sym  = annMap[r.gene] || 'N/A'
+        const sym  = (typeof annMap[r.gene] === 'string' && annMap[r.gene]) ? annMap[r.gene] : 'N/A'
         const desc = hasDet ? `"${(annDetails[r.gene]?.description ?? '').replace(/"/g,'""')}"` : null
         const base = [sym, r.gene, r.baseMean, r.log2FC, r.lfcSE, r.stat, r.pvalue, r.padj]
         if (hasDet) base.splice(2, 0, desc)
@@ -161,10 +161,15 @@ export default function ResultsTable({ results, label, session, contrast, column
                   <td style={{ padding: '6px 12px', borderRight: '1px solid var(--border)' }}>
                     {annMap ? (
                       <span>
-                        <span style={{ color: annMap[r.gene] ? (sig ? 'var(--accent-text)' : 'var(--text-1)') : 'var(--text-3)',
-                                       fontWeight: sig ? 600 : 500, fontStyle: annMap[r.gene] ? 'normal' : 'italic' }}>
-                          {annMap[r.gene] || 'N/A'}
-                        </span>
+                        {(() => {
+                          const sym = typeof annMap[r.gene] === 'string' && annMap[r.gene] ? annMap[r.gene] : null
+                          return (
+                            <span style={{ color: sym ? (sig ? 'var(--accent-text)' : 'var(--text-1)') : 'var(--text-3)',
+                                           fontWeight: sig ? 600 : 500, fontStyle: sym ? 'normal' : 'italic' }}>
+                              {sym ?? 'N/A'}
+                            </span>
+                          )
+                        })()}
                         <span style={{ display: 'block', fontSize: '0.68rem', color: 'var(--text-3)', fontFamily: 'monospace', lineHeight: 1.3 }}>
                           {r.gene}
                         </span>

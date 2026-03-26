@@ -1147,3 +1147,322 @@ function(req, res) {
   img_bytes <- readBin(tmp, "raw", file.info(tmp)$size)
   list(image = jsonlite::base64_enc(img_bytes))
 }
+
+# ── BioMart annotation ─────────────────────────────────────────────────────────
+
+.build_biomart_xml <- function(dataset, filter_values, attrs) {
+  attr_lines <- paste(paste0('        <Attribute name="', attrs, '"/>'), collapse = "\n")
+  paste0(
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<!DOCTYPE Query>',
+    '<Query virtualSchemaName="default" formatter="TSV" header="1" uniqueRows="1" count="" datasetConfigVersion="0.6">',
+    '  <Dataset name="', dataset, '" interface="default">',
+    '    <Filter name="ensembl_gene_id" value="', filter_values, '"/>',
+    "\n", attr_lines, "\n",
+    '  </Dataset>',
+    '</Query>'
+  )
+}
+
+.query_biomart <- function(xml_query) {
+  resp <- tryCatch(
+    httr::POST(
+      "https://www.ensembl.org/biomart/martservice",
+      body   = list(query = xml_query),
+      encode = "form",
+      httr::timeout(120)
+    ),
+    error = function(e) { message("[BioMart] request error: ", e$message); NULL }
+  )
+  if (is.null(resp)) return(NULL)
+  if (httr::status_code(resp) != 200) {
+    message("[BioMart] HTTP ", httr::status_code(resp))
+    return(NULL)
+  }
+  txt <- httr::content(resp, "text", encoding = "UTF-8")
+  if (grepl("^ERROR", trimws(txt))) { message("[BioMart] error: ", substr(txt, 1, 200)); return(NULL) }
+  txt
+}
+
+.parse_biomart_tsv <- function(txt) {
+  if (is.null(txt) || nchar(trimws(txt)) == 0) return(NULL)
+  tryCatch({
+    con <- textConnection(txt)
+    on.exit(close(con))
+    read.table(con, header = TRUE, sep = "\t", quote = "", fill = TRUE,
+               na.strings = c("", "NA"), check.names = FALSE, stringsAsFactors = FALSE)
+  }, error = function(e) { message("[BioMart] parse error: ", e$message); NULL })
+}
+
+#* Annotate Ensembl gene IDs.
+#* Phase 1 — Ensembl REST API POST /lookup/id  (primary; structured JSON, no TSV parsing)
+#* Phase 2 — BioMart fallback if REST returns < 5% of genes
+#* Phase 3 — optional 1:1 human orthologs via BioMart (bulk-friendly)
+#*
+#* @post /api/annotate/biomart
+#* @parser json
+function(req, res) {
+  body           <- req$body
+  gene_ids       <- body$gene_ids
+  organism       <- if (!is.null(body$organism) && nchar(body$organism) > 0) body$organism else "hsapiens"
+  want_orthologs <- isTRUE(body$want_orthologs) && organism != "hsapiens"
+
+  if (!is.character(gene_ids) || length(gene_ids) == 0) {
+    res$status <- 400
+    return(list(error = "gene_ids is required and must be a non-empty array"))
+  }
+
+  # Safe string extractor: returns a plain unnamed character or NULL.
+  # Using [[1]] drops R row-names so jsonlite does NOT serialise the value as
+  # a JSON object {"rowname":"value"} (which would appear as "[object Object]").
+  .safe_str <- function(x) {
+    if (is.null(x) || length(x) == 0) return(NULL)
+    s <- trimws(as.character(x[[1]]))
+    if (length(s) == 0 || is.na(s) || s %in% c("", "NA", "N/A", "None")) return(NULL)
+    s
+  }
+
+  # ── Phase 1: Ensembl REST API POST /lookup/id ────────────────────────────
+  # Returns structured JSON — no TSV parsing, no column-order ambiguity.
+  # Batch max = 1000 per call.
+  REST_URL <- "https://rest.ensembl.org/lookup/id"
+  BATCH_R  <- 1000L
+  base_map <- list()
+
+  rest_batches <- split(gene_ids, ceiling(seq_along(gene_ids) / BATCH_R))
+  for (batch in rest_batches) {
+    # Build body as a plain string — avoids jsonlite auto_unbox pitfalls
+    # (length-1 char vector unboxed to scalar → {"ids":"ENSG..."} instead of array).
+    body_json <- paste0('{"ids":[', paste0('"', batch, '"', collapse = ","), ']}')
+
+    resp <- tryCatch(
+      httr::POST(REST_URL,
+        httr::add_headers(`Content-Type` = "application/json", `Accept` = "application/json"),
+        body = body_json, encode = "raw", httr::timeout(90)),
+      error = function(e) { message("[REST] error: ", e$message); NULL }
+    )
+
+    if (is.null(resp)) { Sys.sleep(1); next }
+    code <- httr::status_code(resp)
+    if (code != 200) {
+      txt <- tryCatch(httr::content(resp, "text", encoding = "UTF-8"), error = function(e) "")
+      message("[REST] HTTP ", code, ": ", substr(txt, 1, 300))
+      Sys.sleep(1); next
+    }
+
+    data <- tryCatch(
+      jsonlite::fromJSON(httr::content(resp, "text", encoding = "UTF-8"),
+                         simplifyVector = FALSE),
+      error = function(e) { message("[REST] parse error: ", e$message); NULL }
+    )
+    if (is.null(data)) { Sys.sleep(1); next }
+
+    for (gid in names(data)) {
+      gene <- data[[gid]]
+      if (is.null(gene) || !is.list(gene)) next
+      sym <- .safe_str(gene$display_name)
+      dsc <- .safe_str(gene$description)
+      if (!is.null(dsc)) dsc <- trimws(sub("\\s*\\[Source:[^\\]]*\\]", "", dsc))
+      bio <- .safe_str(gene$biotype)
+      base_map[[gid]] <- list(
+        symbol      = sym,
+        description = if (!is.null(dsc) && nchar(dsc) > 0) dsc else NULL,
+        biotype     = bio
+      )
+    }
+    Sys.sleep(0.1)  # gentle rate-limit pause
+  }
+  message("[REST] mapped ", length(base_map), " / ", length(gene_ids), " genes")
+  if (length(base_map) > 0) {
+    g1 <- base_map[[1]]
+    message("[REST] first entry — class(symbol):", class(g1$symbol),
+            " is.null:", is.null(g1$symbol),
+            " value:", if (is.null(g1$symbol)) "NULL" else paste0('"', g1$symbol, '"'))
+  }
+
+  # ── Phase 2: BioMart fallback (if REST returned almost nothing) ───────────
+  rest_mapped_pct <- length(base_map) / max(length(gene_ids), 1)
+  if (rest_mapped_pct < 0.05) {
+    message("[BioMart] REST only returned ", round(rest_mapped_pct*100, 1),
+            "% — falling back to BioMart XML")
+
+    dataset    <- paste0(organism, "_gene_ensembl")
+    base_attrs <- c("ensembl_gene_id", "external_gene_name", "description", "gene_biotype")
+    BATCH_BM   <- 500L
+    bm_batches <- split(gene_ids, ceiling(seq_along(gene_ids) / BATCH_BM))
+    base_dfs   <- list()
+
+    for (batch in bm_batches) {
+      txt <- .query_biomart(.build_biomart_xml(dataset, paste(batch, collapse = ","), base_attrs))
+      if (!is.null(txt)) {
+        # Log first response for diagnosis
+        if (length(base_dfs) == 0)
+          message("[BioMart] first batch (500 chars): ", substr(txt, 1, 500))
+        df <- .parse_biomart_tsv(txt)
+        if (!is.null(df) && nrow(df) > 0) base_dfs <- c(base_dfs, list(df))
+      }
+    }
+
+    if (length(base_dfs) > 0) {
+      bm_df <- do.call(rbind, base_dfs)
+      # Access columns by name to avoid column-order ambiguity
+      id_col  <- if ("Gene stable ID" %in% names(bm_df)) "Gene stable ID" else names(bm_df)[1]
+      sym_col <- if ("Gene name"       %in% names(bm_df)) "Gene name"       else names(bm_df)[2]
+      dsc_col <- if ("Gene description"%in% names(bm_df)) "Gene description" else names(bm_df)[3]
+      bio_col <- if ("Gene type"       %in% names(bm_df)) "Gene type"       else names(bm_df)[4]
+      message("[BioMart] columns: ", paste(names(bm_df), collapse = " | "))
+
+      for (i in seq_len(nrow(bm_df))) {
+        gid <- .safe_str(bm_df[i, id_col])
+        if (is.null(gid)) next
+        sym <- .safe_str(bm_df[i, sym_col])
+        dsc <- .safe_str(bm_df[i, dsc_col])
+        if (!is.null(dsc)) dsc <- trimws(sub("\\s*\\[Source:[^\\]]*\\]", "", dsc))
+        bio <- .safe_str(bm_df[i, bio_col])
+        if (!gid %in% names(base_map)) {   # first occurrence wins
+          base_map[[gid]] <- list(
+            symbol      = sym,
+            description = if (!is.null(dsc) && nchar(dsc) > 0) dsc else NULL,
+            biotype     = bio
+          )
+        }
+      }
+      message("[BioMart] now mapped ", length(base_map), " / ", length(gene_ids), " genes")
+    }
+  }
+
+  if (length(base_map) == 0) {
+    res$status <- 502
+    return(list(error = paste0(
+      "Both Ensembl REST and BioMart returned no data for ", length(gene_ids),
+      " gene IDs (organism: ", organism, "). ",
+      "Sample IDs: ", paste(head(gene_ids, 3), collapse = ", "), ". ",
+      "Check the R backend logs (docker logs / Rscript output) for HTTP errors."
+    )))
+  }
+
+  # ── Phase 3 (optional): BioMart 1:1 human orthologs ─────────────────────
+  ortho_attrs <- c("ensembl_gene_id", "hsapiens_homolog_ensembl_gene",
+                   "hsapiens_homolog_associated_gene_name", "hsapiens_homolog_orthology_type")
+  dataset     <- paste0(organism, "_gene_ensembl")
+  ortho_index <- list()
+
+  if (want_orthologs) {
+    BATCH_BM   <- 500L
+    bm_batches <- split(gene_ids, ceiling(seq_along(gene_ids) / BATCH_BM))
+    ortho_dfs  <- list()
+    for (batch in bm_batches) {
+      txt <- .query_biomart(.build_biomart_xml(dataset, paste(batch, collapse = ","), ortho_attrs))
+      df  <- .parse_biomart_tsv(txt)
+      if (!is.null(df) && nrow(df) > 0) ortho_dfs <- c(ortho_dfs, list(df))
+    }
+    if (length(ortho_dfs) > 0) {
+      oc <- do.call(rbind, ortho_dfs)
+      for (i in seq_len(nrow(oc))) {
+        gid    <- .safe_str(oc[i, 1])
+        h_type <- .safe_str(oc[i, 4])
+        if (is.null(gid) || is.null(h_type) || h_type != "ortholog_one2one") next
+        h_id  <- .safe_str(oc[i, 2])
+        h_sym <- .safe_str(oc[i, 3])
+        if (!is.null(h_id) || !is.null(h_sym))
+          ortho_index[[gid]] <- list(id = h_id, sym = h_sym)
+      }
+    }
+  }
+
+  # ── Build final response ──────────────────────────────────────────────────
+  annotations <- list()
+  for (gid in names(base_map)) {
+    entry <- base_map[[gid]]
+    if (!is.null(ortho_index[[gid]])) {
+      entry$humanOrtholog   <- ortho_index[[gid]]$sym
+      entry$humanOrthologId <- ortho_index[[gid]]$id
+    }
+    annotations[[gid]] <- entry
+  }
+
+  list(annotations = annotations, total = length(annotations),
+       hasCoords = FALSE, hasOrthologs = want_orthologs)
+}
+
+#* Annotate NCBI gene IDs (numeric) using NCBI E-summary.
+#* Works organism-agnostically — covers bacteria, archaea, fungi, plants,
+#* and all animals. No organism parameter needed; each NCBI gene ID is unique
+#* across all species.
+#* @post /api/annotate/ncbi
+#* @parser json
+function(req, res) {
+  body     <- req$body
+  gene_ids <- body$gene_ids
+
+  # Accept integer arrays too (JSON numbers)
+  if (is.numeric(gene_ids)) gene_ids <- as.character(as.integer(gene_ids))
+  if (!is.character(gene_ids) || length(gene_ids) == 0) {
+    res$status <- 400
+    return(list(error = "gene_ids must be a non-empty array of numeric NCBI gene IDs"))
+  }
+
+  .ncbi_str <- function(x) {
+    if (is.null(x)) return(NULL)
+    s <- trimws(as.character(x))
+    if (length(s) == 0 || is.na(s) || s %in% c("", "NA", "N/A", "None", "0")) return(NULL)
+    s
+  }
+
+  BATCH   <- 300L   # conservative batch; NCBI allows up to 500
+  batches <- split(gene_ids, ceiling(seq_along(gene_ids) / BATCH))
+  annotations <- list()
+
+  for (batch in batches) {
+    ids_str <- paste(batch, collapse = ",")
+
+    resp <- tryCatch(
+      httr::POST(
+        "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi",
+        body   = list(db = "gene", id = ids_str, retmode = "json"),
+        encode = "form",
+        httr::timeout(60)
+      ),
+      error = function(e) { message("[NCBI] request error: ", e$message); NULL }
+    )
+
+    if (is.null(resp) || httr::status_code(resp) != 200) { Sys.sleep(0.5); next }
+
+    data <- tryCatch(
+      jsonlite::fromJSON(
+        httr::content(resp, "text", encoding = "UTF-8"),
+        simplifyVector = FALSE
+      ),
+      error = function(e) { message("[NCBI] parse error: ", e$message); NULL }
+    )
+
+    if (is.null(data) || is.null(data$result)) { Sys.sleep(0.5); next }
+
+    for (uid in setdiff(names(data$result), "uids")) {
+      gene <- data$result[[uid]]
+
+      # Skip discontinued / merged entries
+      status <- trimws(as.character(if (!is.null(gene$status)) gene$status else ""))
+      if (status == "secondary") next
+
+      sym  <- .ncbi_str(gene$name)
+      desc <- .ncbi_str(gene$description)
+      bio  <- .ncbi_str(gene$type)   # e.g. "protein-coding", "ncRNA", "pseudo"
+
+      annotations[[uid]] <- list(
+        symbol      = sym,
+        description = desc,
+        biotype     = bio
+      )
+    }
+
+    Sys.sleep(0.4)   # NCBI rate limit: ≤ 3 req/sec without API key
+  }
+
+  if (length(annotations) == 0) {
+    res$status <- 502
+    return(list(error = "NCBI returned no data. Ensure gene_ids are valid numeric NCBI gene IDs."))
+  }
+
+  list(annotations = annotations, total = length(annotations), hasCoords = FALSE)
+}
