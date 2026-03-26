@@ -155,7 +155,8 @@ export default function App() {
     if (info.hasResults && info.results) {
       setResults(info.results)
       setDesign(info.design)
-      if (info.annMap && Object.keys(info.annMap).length > 0) setAnnMap(info.annMap)
+      if (info.annMap    && Object.keys(info.annMap).length    > 0) setAnnMap(info.annMap)
+      if (info.annDetails && Object.keys(info.annDetails).length > 0) setAnnDetails(info.annDetails)
       // Restore metaState so "Add Contrast" can route back to the design panel
       if (info.metadataRows?.length > 0) {
         setParseInfo({ columns: info.columns, levels: info.levels, metadataRows: info.metadataRows })
@@ -204,7 +205,8 @@ export default function App() {
       body.keepSamples = [...ms.selected]
       body.editedMeta  = ms.rows.filter(r => ms.selected.has(r.sample))
     }
-    if (annMap && Object.keys(annMap).length > 0) body.annMap = annMap
+    if (annMap     && Object.keys(annMap).length     > 0) body.annMap     = annMap
+    if (annDetails && Object.keys(annDetails).length > 0) body.annDetails = annDetails
     return body
   }
 
@@ -227,14 +229,16 @@ export default function App() {
   }
 
   /* ── Tab-close beacon save ── */
-  const annMapRef   = useRef(annMap)
-  const metaRef     = useRef(metaState)
-  const sessionRef  = useRef(session)
-  const authRef     = useRef(auth)
-  useEffect(() => { annMapRef.current  = annMap   }, [annMap])
-  useEffect(() => { metaRef.current    = metaState }, [metaState])
-  useEffect(() => { sessionRef.current = session   }, [session])
-  useEffect(() => { authRef.current    = auth      }, [auth])
+  const annMapRef     = useRef(annMap)
+  const annDetailsRef = useRef(annDetails)
+  const metaRef       = useRef(metaState)
+  const sessionRef    = useRef(session)
+  const authRef       = useRef(auth)
+  useEffect(() => { annMapRef.current     = annMap      }, [annMap])
+  useEffect(() => { annDetailsRef.current = annDetails  }, [annDetails])
+  useEffect(() => { metaRef.current       = metaState   }, [metaState])
+  useEffect(() => { sessionRef.current    = session     }, [session])
+  useEffect(() => { authRef.current       = auth        }, [auth])
 
   useEffect(() => {
     function onUnload() {
@@ -242,12 +246,14 @@ export default function App() {
       if (!s || !a || s.isExample) return
       const ms = metaRef.current
       const am = annMapRef.current
+      const ad = annDetailsRef.current
       const body = { sessionId: s.sessionId, email: a.email, pin: a.pin }
       if (ms) {
         body.keepSamples = [...ms.selected]
         body.editedMeta  = ms.rows.filter(r => ms.selected.has(r.sample))
       }
       if (am && Object.keys(am).length > 0) body.annMap = am
+      if (ad && Object.keys(ad).length > 0) body.annDetails = ad
       navigator.sendBeacon('/api/session/save', new Blob([JSON.stringify(body)], { type: 'application/json' }))
     }
     window.addEventListener('beforeunload', onUnload)

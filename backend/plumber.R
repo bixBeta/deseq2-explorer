@@ -190,6 +190,12 @@ function(req, res) {
     error = function(e) NULL
   )
 
+  ann_details_out <- tryCatch(
+    if (!is.na(row$ann_details_json[1]) && nchar(row$ann_details_json[1]) > 0)
+      fromJSON(row$ann_details_json[1]) else NULL,
+    error = function(e) NULL
+  )
+
   list(
     sessionId    = row$id[1],
     name         = if (!is.na(row$name[1])) row$name[1] else "Session",
@@ -200,7 +206,8 @@ function(req, res) {
     levels       = levels_out,
     metadataRows = metadata_rows,
     results      = results_out,
-    annMap       = ann_map_out
+    annMap       = ann_map_out,
+    annDetails   = ann_details_out
   )
 }
 
@@ -397,7 +404,8 @@ function(req, res) {
   email       <- body$email; pin <- body$pin; session_id <- body$sessionId
   keep_samps  <- body$keepSamples
   edited_meta <- body$editedMeta
-  ann_map     <- body$annMap   # named list gene_id -> symbol, or NULL
+  ann_map     <- body$annMap      # named list gene_id -> symbol, or NULL
+  ann_details <- body$annDetails  # named list gene_id -> { description, biotype, ... }
 
   if (is.null(email) || is.null(pin)) stop("email and pin are required")
   if (is.null(session_id) || session_id == "") stop("sessionId is required")
@@ -440,10 +448,10 @@ function(req, res) {
 
   saveRDS(list(counts = counts, metadata = meta), rds_path)
 
-  # Persist annotation map if provided
-  ann_map_json <- if (!is.null(ann_map) && length(ann_map) > 0)
-    toJSON(ann_map, auto_unbox = TRUE) else NULL
-  session_update(session_id, ann_map_json = ann_map_json)
+  # Persist annotation map and details if provided
+  ann_map_json     <- if (!is.null(ann_map)     && length(ann_map)     > 0) toJSON(ann_map,     auto_unbox = TRUE) else NULL
+  ann_details_json <- if (!is.null(ann_details) && length(ann_details) > 0) toJSON(ann_details, auto_unbox = TRUE) else NULL
+  session_update(session_id, ann_map_json = ann_map_json, ann_details_json = ann_details_json)
 
   list(ok = TRUE)
 }
@@ -1026,20 +1034,27 @@ function(req, res) {
       }
     }
 
+    # ── Annotation bar colour palette ─────────────────────────────────────────
+    ann_palette <- c("#800020", "#228B22", "#C9A227", "#555555",
+                     "#4E6E8E", "#A0522D", "#BF5700", "#4B0082")
+    col_side_palette_fn <- grDevices::colorRampPalette(ann_palette)
+
     fig <- heatmaply::heatmaply(
       mat_scaled,
-      col_side_colors   = col_annotation,
-      Rowv              = rowv_arg,
-      Colv              = colv_arg,
-      distfun           = make_distfun(dist_method),
-      scale             = "none",
-      colors            = grDevices::colorRampPalette(c("#1565C0", "white", "#B71C1C"))(256),
-      xlab              = "Sample",
-      ylab              = "Gene",
-      main              = paste0("Normalized counts Z-score (FDR < ", fdr, ", top ", nrow(mat_scaled), " genes)"),
-      showticklabels    = c(TRUE, nrow(mat_scaled) <= 60),
-      plot_method       = "plotly",
-      key.title         = "Z-score"
+      col_side_colors       = col_annotation,
+      col_side_palette      = col_side_palette_fn,
+      col_side_colors_size  = 0.3,
+      Rowv                  = rowv_arg,
+      Colv                  = colv_arg,
+      distfun               = make_distfun(dist_method),
+      scale                 = "none",
+      colors                = grDevices::colorRampPalette(c("#1565C0", "white", "#B71C1C"))(256),
+      xlab                  = "Sample",
+      ylab                  = "Gene",
+      main                  = paste0("Normalized counts Z-score (FDR < ", fdr, ", top ", nrow(mat_scaled), " genes)"),
+      showticklabels        = c(TRUE, nrow(mat_scaled) <= 60),
+      plot_method           = "plotly",
+      key.title             = "Z-score"
     )
   }
 
