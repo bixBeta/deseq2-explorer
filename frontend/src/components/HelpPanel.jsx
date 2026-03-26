@@ -103,7 +103,7 @@ function SectionOverview() {
       <Card>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           {[
-            ['Upload', 'Count matrix + sample sheet'],
+            ['Upload', 'RDS file with counts + metadata'],
             ['Metadata', 'Review samples, add covariates'],
             ['Design', 'Define contrasts, run DESeq2'],
             ['Results', 'PCA, DE tables, MA plot'],
@@ -118,7 +118,7 @@ function SectionOverview() {
         </div>
       </Card>
       <H3>Workflow</H3>
-      <StepRow n={1}>Upload your count matrix and optional metadata CSV.</StepRow>
+      <StepRow n={1}>Upload an RDS file containing your count matrix and metadata.</StepRow>
       <StepRow n={2}>Review and configure sample metadata in the Metadata Editor.</StepRow>
       <StepRow n={3}>Build contrasts in the Design Panel and run DESeq2.</StepRow>
       <StepRow n={4}>Explore results — PCA, DE table, MA plot, and more.</StepRow>
@@ -139,37 +139,38 @@ function SectionUpload() {
     <>
       <H2>↑ Upload</H2>
       <P>
-        The upload step accepts a <Badge>counts.csv</Badge> file (raw integer counts, genes × samples)
-        and an optional <Badge>metadata.csv</Badge> file (samples × variables).
+        The upload step accepts a single <Badge>.rds</Badge> file prepared in R. It must be
+        a named list containing both a count matrix and a metadata data frame.
       </P>
-      <H3>Count matrix format</H3>
-      <Ul items={[
-        'First column: gene IDs (e.g. Ensembl IDs or gene symbols).',
-        'Remaining columns: one per sample — column name = sample name.',
-        'Values must be raw (un-normalised) integer counts.',
-        'No row-sum filtering required — DESeq2 handles low-count genes internally.',
-      ]} />
-      <H3>Metadata CSV (optional)</H3>
-      <Ul items={[
-        'First column: sample names matching the count matrix column names exactly.',
-        'Additional columns: any categorical or numerical covariates (e.g. condition, batch, sex).',
-        'If not provided, you can add metadata manually in the Metadata Editor.',
-      ]} />
+      <H3>Required R structure</H3>
       <Card>
-        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-3)', display: 'block', marginBottom: 6 }}>
-          Example count matrix header
-        </span>
-        <code style={{ fontSize: '0.72rem', color: 'var(--accent-text)', fontFamily: 'monospace', display: 'block', lineHeight: 1.7 }}>
-          gene_id, Sample_A1, Sample_A2, Sample_B1, Sample_B2<br />
-          ENSG00000001, 120, 134, 890, 920<br />
-          ENSG00000002, 0, 2, 5, 3
+        <code style={{ fontSize: '0.72rem', color: 'var(--accent-text)', fontFamily: 'monospace', display: 'block', lineHeight: 1.8 }}>
+          saveRDS(<br />
+          {'  '}list(<br />
+          {'    '}counts{'   '}= count_matrix,{'   '}<span style={{ color: 'var(--text-3)' }}># genes × samples</span><br />
+          {'    '}metadata = coldata_df{'      '}<span style={{ color: 'var(--text-3)' }}># samples × conditions</span><br />
+          {'  '}),<br />
+          {'  '}"data.rds"<br />
+          )
         </code>
       </Card>
+      <H3>Count matrix</H3>
+      <Ul items={[
+        'Rows = genes (rownames = gene IDs, e.g. Ensembl IDs or gene symbols).',
+        'Columns = samples (colnames = sample names).',
+        'Values must be raw, un-normalised integer counts.',
+        'No pre-filtering required — DESeq2 handles low-count genes internally.',
+      ]} />
+      <H3>Metadata data frame</H3>
+      <Ul items={[
+        'Rownames must match the column names of the count matrix exactly (case-sensitive).',
+        'Columns represent covariates: condition, batch, sex, time point, etc.',
+        'At least one column with two or more distinct levels is required to define a contrast.',
+      ]} />
       <H3>File size</H3>
       <P>
-        Files up to ~50 MB are handled comfortably in-browser. Larger matrices (tens of
-        thousands of genes × hundreds of samples) are supported — parsing may take a few
-        seconds.
+        RDS files up to ~100 MB are handled comfortably. Larger matrices (tens of thousands
+        of genes × hundreds of samples) are supported — parsing may take a few seconds.
       </P>
     </>
   )
