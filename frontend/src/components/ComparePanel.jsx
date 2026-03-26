@@ -39,7 +39,7 @@ function applySymbolsToFig(fig, annMap) {
 }
 
 // ── UpSet Plot ─────────────────────────────────────────────────────────────────
-function UpSetTab({ session }) {
+function UpSetTab({ session, contrasts }) {
   const [fdr, setFdr]         = useState(0.05)
   const [minLfc, setMinLfc]   = useState(0)
   const [imgSrc, setImgSrc]   = useState(null)
@@ -49,7 +49,8 @@ function UpSetTab({ session }) {
   async function generate() {
     setLoading(true); setError(null); setImgSrc(null)
     try {
-      const data = await apiFetch('/api/upset', { sessionId: session.sessionId, fdr, minLfc })
+      const activeLabels = (contrasts || []).map(c => c.label ?? `${c.treatment}|${c.reference}`)
+      const data = await apiFetch('/api/upset', { sessionId: session.sessionId, fdr, minLfc, activeLabels })
       setImgSrc(`data:image/png;base64,${data.image}`)
     } catch (e) { setError(e.message) }
     finally { setLoading(false) }
@@ -128,15 +129,27 @@ function HeatmapTab({ session, annMap, pca, contrasts }) {
     return () => ro.disconnect()
   }, [])
 
+  // Active contrast labels sent to backend
+  const activeLabels = useMemo(
+    () => (contrasts || []).map(c => c.label ?? `${c.treatment}|${c.reference}`),
+    [contrasts]
+  )
+
+  // If current geneSet is a contrast label no longer active, reset to union
+  useEffect(() => {
+    if (geneSet !== 'union' && geneSet !== 'intersection' && !activeLabels.includes(geneSet))
+      setGeneSet('union')
+  }, [activeLabels])
+
   // Auto-regenerate on any option change when a plot already exists
   const prevOpts = useRef(null)
   useEffect(() => {
-    const opts = JSON.stringify({ clusterRows, clusterCols, distMethod, colorBy, geneSet })
+    const opts = JSON.stringify({ clusterRows, clusterCols, distMethod, colorBy, geneSet, activeLabels })
     if (prevOpts.current === null) { prevOpts.current = opts; return }
     if (prevOpts.current === opts) return
     prevOpts.current = opts
     if (hasPlot) generate()
-  }, [clusterRows, clusterCols, distMethod, colorBy, geneSet])
+  }, [clusterRows, clusterCols, distMethod, colorBy, geneSet, activeLabels])
 
   async function generate() {
     setLoading(true); setError(null); setHasPlot(false)
@@ -148,6 +161,7 @@ function HeatmapTab({ session, annMap, pca, contrasts }) {
         distMethod,
         colorBy: colorBy || '',
         geneSet,
+        activeLabels,
       })
 
       const fig = JSON.parse(data.plotlyJson)
@@ -763,19 +777,48 @@ const SUB_TABS = [
   { key: 'table',   label: 'Table Explorer', icon: '▤' },
 ]
 
-export default function ComparePanel({ session, contrasts, annMap, annDetails, pca }) {
-  const [subTab, setSubTab] = useState('upset')
+// Tabs available for single-contrast view (UpSet needs ≥2)
+const SINGLE_TABS = SUB_TABS.filter(t => t.key !== 'upset')
 
-  if (!contrasts || contrasts.length < 2) {
-    return <Placeholder text="Run at least 2 contrasts to enable comparative analysis." />
+const contrastKey = c => c.label ?? `${c.treatment}|${c.reference}`
+
+export default function ComparePanel({ session, contrasts, annMap, annDetails, pca }) {
+  const [subTab,      setSubTab]     = useState('upset')
+  // Set of contrast keys currently included in the view
+  const [activeKeys, setActiveKeys] = useState(() => new Set((contrasts || []).map(contrastKey)))
+
+  // When new contrasts arrive (new run), add them to activeKeys automatically
+  const prevContrastKeys = useRef(new Set())
+  useEffect(() => {
+    const incoming = new Set((contrasts || []).map(contrastKey))
+    const newOnes  = [...incoming].filter(k => !prevContrastKeys.current.has(k))
+    if (newOnes.length > 0) setActiveKeys(prev => new Set([...prev, ...newOnes]))
+    prevContrastKeys.current = incoming
+  }, [contrasts])
+
+  if (!contrasts || contrasts.length === 0) {
+    return <Placeholder text="Run at least one contrast to enable analysis." />
   }
+
+  const activeContrasts = contrasts.filter(c => activeKeys.has(contrastKey(c)))
+  const singleActive    = activeContrasts.length === 1
+  const activeTabs      = singleActive ? SINGLE_TABS : SUB_TABS
+  const effectiveTab    = singleActive && subTab === 'upset' ? 'heatmap' : subTab
+
+  const toggleKey = key =>
+    setActiveKeys(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) { if (next.size > 1) next.delete(key) } // keep at least 1
+      else next.add(key)
+      return next
+    })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Sub-tab bar */}
       <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid var(--border)' }}>
-        {SUB_TABS.map(t => {
-          const active = subTab === t.key
+        {activeTabs.map(t => {
+          const active = effectiveTab === t.key
           return (
             <button key={t.key} onClick={() => setSubTab(t.key)}
                     style={{
@@ -796,27 +839,53 @@ export default function ComparePanel({ session, contrasts, annMap, annDetails, p
         })}
         <span style={{ marginLeft: 'auto', alignSelf: 'center', paddingRight: 4,
                        fontSize: '0.72rem', color: 'var(--text-3)' }}>
-          {contrasts.length} contrasts
+          {activeContrasts.length}/{contrasts.length} {contrasts.length === 1 ? 'contrast' : 'contrasts'}
         </span>
       </div>
 
-      {/* Contrast chips */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        {contrasts.map((c, i) => (
-          <span key={i} style={{
-            padding: '2px 10px', borderRadius: 99, fontSize: '0.72rem',
-            background: 'rgba(255,255,255,0.06)', color: 'var(--text-2)',
-            border: '1px solid var(--border)',
-          }}>
-            {c.label ?? c.treatment ?? `Contrast ${i + 1}`}
-          </span>
-        ))}
+      {/* Contrast toggle chips — click to include/exclude */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ fontSize: '0.7rem', color: 'var(--text-3)', whiteSpace: 'nowrap' }}>
+          Contrasts:
+        </span>
+        {contrasts.map((c, i) => {
+          const key    = contrastKey(c)
+          const on     = activeKeys.has(key)
+          const isLast = on && activeContrasts.length === 1
+          return (
+            <button key={i} onClick={() => toggleKey(key)}
+                    title={on ? (isLast ? 'At least one contrast required' : 'Click to remove') : 'Click to add'}
+                    style={{
+                      padding: '2px 10px', borderRadius: 99, fontSize: '0.72rem',
+                      cursor: isLast ? 'not-allowed' : 'pointer',
+                      background: on ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.03)',
+                      color:      on ? 'var(--accent-text)'    : 'var(--text-3)',
+                      border:     on ? '1px solid rgba(99,102,241,0.4)' : '1px dashed var(--border)',
+                      opacity:    isLast ? 0.5 : 1,
+                      transition: 'all 0.15s',
+                    }}>
+              {c.label ?? c.treatment ?? `Contrast ${i + 1}`}
+              <span style={{ marginLeft: 5, fontSize: '0.65rem', opacity: 0.7 }}>
+                {on ? '✕' : '+'}
+              </span>
+            </button>
+          )
+        })}
       </div>
 
-      <div style={{ display: subTab === 'upset'   ? 'block' : 'none' }}><UpSetTab   session={session} /></div>
-      <div style={{ display: subTab === 'heatmap' ? 'block' : 'none' }}><HeatmapTab session={session} annMap={annMap} pca={pca} contrasts={contrasts} /></div>
-      <div style={{ display: subTab === 'genes'   ? 'block' : 'none' }}><GeneExplorer session={session} contrasts={contrasts} annMap={annMap} /></div>
-      <div style={{ display: subTab === 'table'   ? 'block' : 'none' }}><TableExplorer contrasts={contrasts} annMap={annMap} annDetails={annDetails} /></div>
+      {/* Single-contrast notice */}
+      {singleActive && (
+        <div style={{ padding: '7px 12px', borderRadius: 8, fontSize: '0.74rem',
+                      background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)',
+                      color: 'var(--text-3)' }}>
+          UpSet Plot requires ≥ 2 active contrasts. Heatmap, Gene Explorer, and Table Explorer are available.
+        </div>
+      )}
+
+      <div style={{ display: effectiveTab === 'upset'   ? 'block' : 'none' }}><UpSetTab   session={session} contrasts={activeContrasts} /></div>
+      <div style={{ display: effectiveTab === 'heatmap' ? 'block' : 'none' }}><HeatmapTab session={session} annMap={annMap} pca={pca} contrasts={activeContrasts} /></div>
+      <div style={{ display: effectiveTab === 'genes'   ? 'block' : 'none' }}><GeneExplorer session={session} contrasts={activeContrasts} annMap={annMap} /></div>
+      <div style={{ display: effectiveTab === 'table'   ? 'block' : 'none' }}><TableExplorer contrasts={activeContrasts} annMap={annMap} annDetails={annDetails} /></div>
     </div>
   )
 }

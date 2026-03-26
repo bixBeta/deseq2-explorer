@@ -62,18 +62,27 @@ const CHUNK = 8 * 1024 * 1024   // 8 MB per chunk
 const API = import.meta.env.VITE_API_URL ?? ''
 
 // Parse a single GTF attribute string → { id, name, description } or null
+// Handles both standard Ensembl GTFs (gene_name) and NCBI/bacterial GTFs
+// (gene, locus_tag) and GFF3 (Name=, gene=)
 function parseGTFAttrs(attrs) {
   const get = (key) => {
-    const m = attrs.match(new RegExp(`${key}[=\\s]+"?([^";]+)"?`))
+    // Handles both GTF key "value"; and GFF3 key=value formats
+    const m = attrs.match(new RegExp(`(?:^|;|\\s)${key}[=\\s]+"?([^";\\n]+)"?`))
     return m ? m[1].trim() : null
   }
-  const id   = get('gene_id')
-  const name = get('gene_name')
-  if (!id || !name) return null
+  const id = get('gene_id') || get('ID') || get('locus_tag')
+  if (!id) return null
+
+  // Symbol: try gene_name (Ensembl), then gene (NCBI/bacterial), then Name (GFF3),
+  // then locus_tag as last resort, then skip if nothing found
+  const name = get('gene_name') || get('gene') || get('Name') || get('locus_tag') || null
+  if (!name) return null
+
   return {
-    id:          id.split('.')[0].trim(),
+    id:          id.replace(/\.[0-9]+$/, '').trim(),   // strip version suffix
     name:        name,
-    description: get('gene_description') || get('gene_biotype') || null,
+    description: get('product') || get('gene_description') ||
+                 get('description') || get('gene_biotype') || get('gene_type') || null,
   }
 }
 
@@ -109,9 +118,15 @@ export default function AnnotationPanel({ geneIds, annMap, onAnnotate }) {
   const { idType, detectedOrg } = useMemo(() => {
     if (!geneIds?.length) return { idType: 'unknown', detectedOrg: null }
     const sample = geneIds.slice(0, Math.min(20, geneIds.length))
+    // Numeric NCBI gene IDs
     if (sample.every(id => /^\d+$/.test(String(id).trim()))) {
       return { idType: 'ncbi', detectedOrg: null }
     }
+    // RefSeq accessions: NM_ NR_ XM_ XR_ NP_ XP_ etc.
+    if (sample.some(id => /^[NXY][MRCGPW]_\d+/i.test(String(id).trim()))) {
+      return { idType: 'refseq', detectedOrg: null }
+    }
+    // Ensembl IDs
     for (const id of sample) {
       for (const [re, orgVal] of ENSEMBL_PREFIXES) {
         if (re.test(id)) return { idType: 'ensembl', detectedOrg: orgVal }
@@ -162,9 +177,13 @@ export default function AnnotationPanel({ geneIds, annMap, onAnnotate }) {
     if (!geneIds?.length) return
     setLoading(true); setError(null); setPreview(null)
 
-    const useNcbi = idType === 'ncbi'
+    const useNcbi = idType === 'ncbi' || idType === 'refseq'
     setProgress(5)
-    setStage(useNcbi ? 'Connecting to NCBI E-summary…' : 'Connecting to Ensembl BioMart…')
+    setStage(
+      idType === 'refseq' ? 'Resolving RefSeq accessions via NCBI…' :
+      idType === 'ncbi'   ? 'Connecting to NCBI E-summary…' :
+                            'Connecting to Ensembl BioMart…'
+    )
 
     // Animate progress slowly up to 85% while waiting
     clearInterval(progressTimer.current)
@@ -409,25 +428,32 @@ export default function AnnotationPanel({ geneIds, annMap, onAnnotate }) {
             <div style={{ padding: '9px 14px', borderRadius: 8, fontSize: '0.76rem',
                           background: 'rgba(52,211,153,0.07)', border: '1px solid rgba(52,211,153,0.2)',
                           color: '#059669' }}>
-              🔬 Detected <strong>NCBI gene IDs</strong> — will query NCBI E-summary.
+              ◎ Detected <strong>NCBI gene IDs</strong> — will query NCBI E-summary.
               Works for any organism including bacteria, archaea, and fungi.
+            </div>
+          ) : idType === 'refseq' ? (
+            <div style={{ padding: '9px 14px', borderRadius: 8, fontSize: '0.76rem',
+                          background: 'rgba(52,211,153,0.07)', border: '1px solid rgba(52,211,153,0.2)',
+                          color: '#059669' }}>
+              ◎ Detected <strong>RefSeq accessions</strong> (NM_ / NR_ / XM_…) — will resolve via NCBI
+              nuccore → gene pipeline. No organism selection needed.
             </div>
           ) : idType === 'ensembl' ? (
             <div style={{ padding: '9px 14px', borderRadius: 8, fontSize: '0.76rem',
                           background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.2)',
                           color: 'var(--accent-text)' }}>
-              🧬 Detected <strong>Ensembl gene IDs</strong> — will query Ensembl BioMart.
+              ◎ Detected <strong>Ensembl gene IDs</strong> — will query Ensembl BioMart.
             </div>
           ) : (
             <div style={{ padding: '9px 14px', borderRadius: 8, fontSize: '0.76rem',
                           background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)',
                           color: 'var(--text-3)' }}>
-              ℹ️ ID format unrecognised — select organism below to query BioMart.
+              ℹ ID format unrecognised — select organism below to query BioMart.
             </div>
           )}
 
           {/* Organism selector + ortholog toggle — only relevant for Ensembl/BioMart */}
-          {idType !== 'ncbi' && (<>
+          {idType !== 'ncbi' && idType !== 'refseq' && (<>
             <BiomartOrgSelector value={org} customDataset={customDataset}
               onChange={v => { setOrg(v); setWantOrthologs(false) }}
               onCustomChange={setCustomDataset} />
@@ -453,7 +479,9 @@ export default function AnnotationPanel({ geneIds, annMap, onAnnotate }) {
 
           <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-3)' }}>
             {idType === 'ncbi'
-              ? `Queries NCBI E-summary for ${(geneIds?.length ?? 0).toLocaleString()} gene IDs. Returns symbol, full gene name, and gene type. No organism selection needed.`
+              ? `Queries NCBI E-summary for ${(geneIds?.length ?? 0).toLocaleString()} gene IDs. Returns symbol, full gene name, and gene type.`
+              : idType === 'refseq'
+              ? `Resolves ${(geneIds?.length ?? 0).toLocaleString()} RefSeq accessions via NCBI nuccore → gene pipeline. Returns symbol, description, and gene type. Version suffixes (e.g. .6) are stripped automatically.`
               : `Queries Ensembl BioMart for ${(geneIds?.length ?? 0).toLocaleString()} gene IDs. Returns symbol, description, and biotype.${!isHuman ? ' Ortholog lookup adds several seconds.' : ''} Chromosomal coordinates require a GTF file.`
             }
           </p>
@@ -478,7 +506,7 @@ export default function AnnotationPanel({ geneIds, annMap, onAnnotate }) {
           )}
 
           <FetchButton loading={loading} onClick={fetchAnnotation}
-            label={idType === 'ncbi' ? 'Fetch from NCBI' : 'Fetch from BioMart'} />
+            label={idType === 'ncbi' || idType === 'refseq' ? 'Fetch from NCBI' : 'Fetch from BioMart'} />
         </div>
       )}
 

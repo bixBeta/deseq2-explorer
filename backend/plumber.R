@@ -868,26 +868,34 @@ function(req, res) {
 #* @post /api/upset
 #* @serializer unboxedJSON
 function(req, res) {
-  body       <- fromJSON(rawToChar(req$bodyRaw))
-  session_id <- body$sessionId
-  fdr        <- if (!is.null(body$fdr))   as.numeric(body$fdr)   else 0.05
-  min_lfc    <- if (!is.null(body$minLfc)) as.numeric(body$minLfc) else 0
+  body          <- fromJSON(rawToChar(req$bodyRaw))
+  session_id    <- body$sessionId
+  fdr           <- if (!is.null(body$fdr))          as.numeric(body$fdr)    else 0.05
+  min_lfc       <- if (!is.null(body$minLfc))        as.numeric(body$minLfc) else 0
+  active_labels <- if (!is.null(body$activeLabels) && length(body$activeLabels) > 0)
+                     as.character(body$activeLabels) else NULL
 
   if (is.null(session_id) || session_id == "") stop("sessionId is required")
 
   results_path <- file.path(RESULTS_DIR, paste0(session_id, "_results.rds"))
   if (!file.exists(results_path)) stop("No results found for this session")
   saved <- readRDS(results_path)
-  if (length(saved$contrasts) < 2) stop("Need at least 2 contrasts for UpSet plot")
+
+  # Filter to active contrasts only (frontend toggle)
+  contrasts_use <- if (!is.null(active_labels))
+    saved$contrasts[sapply(saved$contrasts, function(ct) ct$label %in% active_labels)]
+  else saved$contrasts
+
+  if (length(contrasts_use) < 2) stop("Need at least 2 active contrasts for UpSet plot")
 
   if (!requireNamespace("UpSetR", quietly = TRUE)) stop("R package 'UpSetR' is not installed")
 
-  deg_lists <- lapply(saved$contrasts, function(ct) {
+  deg_lists <- lapply(contrasts_use, function(ct) {
     df  <- ct$results
     sig <- df[!is.na(df$padj) & df$padj < fdr & !is.na(df$log2FC) & abs(df$log2FC) >= min_lfc, ]
     sig$gene
   })
-  names(deg_lists) <- sapply(saved$contrasts, function(ct) ct$label)
+  names(deg_lists) <- sapply(contrasts_use, function(ct) ct$label)
 
   # Remove empty sets
   deg_lists <- deg_lists[sapply(deg_lists, length) > 0]
@@ -919,24 +927,32 @@ function(req, res) {
 #* @post /api/heatmap
 #* @serializer unboxedJSON
 function(req, res) {
-  body        <- fromJSON(rawToChar(req$bodyRaw))
-  session_id  <- body$sessionId
-  fdr         <- if (!is.null(body$fdr))        as.numeric(body$fdr)        else 0.05
-  top_n       <- if (!is.null(body$topN))       as.integer(body$topN)       else 50L
-  mode        <- if (!is.null(body$mode))       body$mode                   else "vst"
-  cluster_rows <- if (!is.null(body$clusterRows)) isTRUE(body$clusterRows)  else TRUE
-  cluster_cols <- if (!is.null(body$clusterCols)) isTRUE(body$clusterCols)  else TRUE
-  dist_method  <- if (!is.null(body$distMethod)) body$distMethod            else "pearson"
-  color_by     <- if (!is.null(body$colorBy) && nchar(body$colorBy) > 0) body$colorBy else NULL
+  body          <- fromJSON(rawToChar(req$bodyRaw))
+  session_id    <- body$sessionId
+  fdr           <- if (!is.null(body$fdr))          as.numeric(body$fdr)        else 0.05
+  top_n         <- if (!is.null(body$topN))          as.integer(body$topN)       else 50L
+  mode          <- if (!is.null(body$mode))          body$mode                   else "vst"
+  cluster_rows  <- if (!is.null(body$clusterRows))   isTRUE(body$clusterRows)    else TRUE
+  cluster_cols  <- if (!is.null(body$clusterCols))   isTRUE(body$clusterCols)    else TRUE
+  dist_method   <- if (!is.null(body$distMethod))    body$distMethod             else "pearson"
+  color_by      <- if (!is.null(body$colorBy) && nchar(body$colorBy) > 0) body$colorBy else NULL
   # geneSet: "union" | "intersection" | a contrast label string
-  gene_set     <- if (!is.null(body$geneSet) && nchar(body$geneSet) > 0) body$geneSet else "union"
+  gene_set      <- if (!is.null(body$geneSet) && nchar(body$geneSet) > 0) body$geneSet else "union"
+  active_labels <- if (!is.null(body$activeLabels) && length(body$activeLabels) > 0)
+                     as.character(body$activeLabels) else NULL
 
   if (is.null(session_id) || session_id == "") stop("sessionId is required")
 
   results_path <- file.path(RESULTS_DIR, paste0(session_id, "_results.rds"))
   if (!file.exists(results_path)) stop("No results found for this session")
   saved <- readRDS(results_path)
-  if (length(saved$contrasts) < 1) stop("No contrasts found")
+
+  # Filter to active contrasts only (frontend toggle)
+  contrasts_use <- if (!is.null(active_labels))
+    saved$contrasts[sapply(saved$contrasts, function(ct) ct$label %in% active_labels)]
+  else saved$contrasts
+
+  if (length(contrasts_use) < 1) stop("No active contrasts found")
 
   if (!requireNamespace("heatmaply", quietly = TRUE)) stop("R package 'heatmaply' is not installed")
   if (!requireNamespace("ggplot2",   quietly = TRUE)) stop("R package 'ggplot2' is not installed")
@@ -954,11 +970,11 @@ function(req, res) {
   colv_arg <- if (cluster_cols) TRUE else NA
 
   # ── Gene selection helper (shared by both modes) ────────────────────────────
-  sig_per_contrast <- lapply(saved$contrasts, function(ct) {
+  sig_per_contrast <- lapply(contrasts_use, function(ct) {
     df <- ct$results
     df$gene[!is.na(df$padj) & df$padj < fdr]
   })
-  names(sig_per_contrast) <- sapply(saved$contrasts, function(ct) ct$label)
+  names(sig_per_contrast) <- sapply(contrasts_use, function(ct) ct$label)
 
   all_sig <- if (gene_set == "union") {
     unique(unlist(sig_per_contrast))
@@ -976,11 +992,11 @@ function(req, res) {
   if (mode == "lfc") {
     # ── Mode: log2FC across contrasts ──────────────────────────────────────────
 
-    lfc_mat <- do.call(cbind, lapply(saved$contrasts, function(ct) {
+    lfc_mat <- do.call(cbind, lapply(contrasts_use, function(ct) {
       df <- ct$results; rownames(df) <- df$gene
       v  <- df[all_sig, "log2FC"]; v[is.na(v)] <- 0; v
     }))
-    colnames(lfc_mat) <- sapply(saved$contrasts, function(ct) ct$label)
+    colnames(lfc_mat) <- sapply(contrasts_use, function(ct) ct$label)
     rownames(lfc_mat) <- all_sig
     if (nrow(lfc_mat) > top_n) {
       row_abs <- rowMeans(abs(lfc_mat))
@@ -1423,69 +1439,171 @@ function(req, res) {
   if (is.numeric(gene_ids)) gene_ids <- as.character(as.integer(gene_ids))
   if (!is.character(gene_ids) || length(gene_ids) == 0) {
     res$status <- 400
-    return(list(error = "gene_ids must be a non-empty array of numeric NCBI gene IDs"))
+    return(list(error = "gene_ids must be a non-empty array of NCBI gene IDs or RefSeq accessions"))
   }
+
+  gene_ids <- trimws(unique(gene_ids))
+  EUTILS   <- "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 
   .ncbi_str <- function(x) {
     if (is.null(x)) return(NULL)
-    s <- trimws(as.character(x))
+    s <- trimws(as.character(x[[1]]))
     if (length(s) == 0 || is.na(s) || s %in% c("", "NA", "N/A", "None", "0")) return(NULL)
     s
   }
 
-  BATCH   <- 300L   # conservative batch; NCBI allows up to 500
-  batches <- split(gene_ids, ceiling(seq_along(gene_ids) / BATCH))
-  annotations <- list()
-
-  for (batch in batches) {
-    ids_str <- paste(batch, collapse = ",")
-
-    resp <- tryCatch(
-      httr::POST(
-        "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi",
-        body   = list(db = "gene", id = ids_str, retmode = "json"),
-        encode = "form",
-        httr::timeout(60)
-      ),
-      error = function(e) { message("[NCBI] request error: ", e$message); NULL }
+  .ncbi_post <- function(path, body_list) {
+    tryCatch(
+      httr::POST(paste0(EUTILS, path), body = body_list,
+                 encode = "form", httr::timeout(90)),
+      error = function(e) { message("[NCBI] ", path, " error: ", e$message); NULL }
     )
+  }
 
-    if (is.null(resp) || httr::status_code(resp) != 200) { Sys.sleep(0.5); next }
-
-    data <- tryCatch(
-      jsonlite::fromJSON(
-        httr::content(resp, "text", encoding = "UTF-8"),
-        simplifyVector = FALSE
-      ),
+  .ncbi_json <- function(resp) {
+    if (is.null(resp) || httr::status_code(resp) != 200) return(NULL)
+    tryCatch(
+      jsonlite::fromJSON(httr::content(resp, "text", encoding = "UTF-8"),
+                         simplifyVector = FALSE),
       error = function(e) { message("[NCBI] parse error: ", e$message); NULL }
     )
+  }
 
-    if (is.null(data) || is.null(data$result)) { Sys.sleep(0.5); next }
+  annotations <- list()
+  sample_id   <- gene_ids[1]
 
-    for (uid in setdiff(names(data$result), "uids")) {
-      gene <- data$result[[uid]]
+  # ── Route A: RefSeq accessions (NM_ NR_ XM_ XR_ NP_ XP_) ──────────────────
+  if (grepl("^[NXY][MRCGPW]_[0-9]", sample_id)) {
+    message("[NCBI] RefSeq pipeline for ", length(gene_ids), " IDs")
 
-      # Skip discontinued / merged entries
-      status <- trimws(as.character(if (!is.null(gene$status)) gene$status else ""))
-      if (status == "secondary") next
+    # Strip version suffix: NM_000546.6 → NM_000546
+    clean_ids  <- sub("\\.[0-9]+$", "", gene_ids)
+    BATCH_SRCH <- 200L
+    BATCH_LINK <- 100L
+    BATCH_SUM  <- 500L
 
-      sym  <- .ncbi_str(gene$name)
-      desc <- .ncbi_str(gene$description)
-      bio  <- .ncbi_str(gene$type)   # e.g. "protein-coding", "ncRNA", "pseudo"
+    # Phase 1 — esearch nuccore → get nuccore UIDs for all accessions
+    all_nc_uids <- character(0)
+    for (batch in split(clean_ids, ceiling(seq_along(clean_ids) / BATCH_SRCH))) {
+      term <- paste0(batch, "[accn]", collapse = " OR ")
+      resp <- .ncbi_post("/esearch.fcgi",
+                         list(db="nuccore", term=term,
+                              retmax=as.character(length(batch)*3), retmode="json"))
+      d <- .ncbi_json(resp)
+      if (!is.null(d$esearchresult$idlist))
+        all_nc_uids <- c(all_nc_uids, unlist(d$esearchresult$idlist))
+      Sys.sleep(0.4)
+    }
+    all_nc_uids <- unique(all_nc_uids)
+    message("[NCBI] Phase 1: ", length(all_nc_uids), " nuccore UIDs found")
 
-      annotations[[uid]] <- list(
-        symbol      = sym,
-        description = desc,
-        biotype     = bio
-      )
+    if (length(all_nc_uids) == 0) {
+      res$status <- 502
+      return(list(error = "No nuccore entries found for the provided RefSeq accessions."))
     }
 
-    Sys.sleep(0.4)   # NCBI rate limit: ≤ 3 req/sec without API key
+    # Phase 2a — esummary nuccore → caption (accession without version)
+    uid_to_acc <- list()
+    for (batch in split(all_nc_uids, ceiling(seq_along(all_nc_uids) / BATCH_SUM))) {
+      resp <- .ncbi_post("/esummary.fcgi",
+                         list(db="nuccore", id=paste(batch, collapse=","), retmode="json"))
+      d <- .ncbi_json(resp)
+      if (!is.null(d$result)) {
+        for (uid in batch) {
+          cap <- d$result[[uid]]$caption
+          if (!is.null(cap)) uid_to_acc[[uid]] <- sub("\\.[0-9]+$", "", cap)
+        }
+      }
+      Sys.sleep(0.4)
+    }
+    # Reverse: clean accession → first nuccore UID
+    acc_to_uid <- list()
+    for (uid in names(uid_to_acc)) {
+      acc <- uid_to_acc[[uid]]
+      if (!is.null(acc) && is.null(acc_to_uid[[acc]])) acc_to_uid[[acc]] <- uid
+    }
+    message("[NCBI] Phase 2a: ", length(acc_to_uid), " accession→UID mappings")
+
+    # Phase 2b — elink nuccore→gene, cmd=neighbor (per-UID linksets)
+    uid_to_gene <- list()
+    for (batch in split(all_nc_uids, ceiling(seq_along(all_nc_uids) / BATCH_LINK))) {
+      resp <- .ncbi_post("/elink.fcgi",
+                         list(dbfrom="nuccore", db="gene", cmd="neighbor",
+                              retmode="json", id=paste(batch, collapse=",")))
+      d <- .ncbi_json(resp)
+      if (!is.null(d$linksets)) {
+        for (ls in d$linksets) {
+          from_uids <- as.character(unlist(ls$ids))
+          for (lsdb in if (!is.null(ls$linksetdbs)) ls$linksetdbs else list()) {
+            if (identical(lsdb$dbto, "gene") && length(lsdb$links) > 0) {
+              gid <- as.character(lsdb$links[[1]])
+              for (u in from_uids) if (is.null(uid_to_gene[[u]])) uid_to_gene[[u]] <- gid
+              break
+            }
+          }
+        }
+      }
+      Sys.sleep(0.4)
+    }
+    message("[NCBI] Phase 2b: ", length(uid_to_gene), " nuccore→gene links")
+
+    # Phase 3 — esummary gene → symbol + description
+    all_gene_ids   <- unique(unlist(uid_to_gene))
+    gene_summaries <- list()
+    for (batch in split(all_gene_ids, ceiling(seq_along(all_gene_ids) / BATCH_SUM))) {
+      resp <- .ncbi_post("/esummary.fcgi",
+                         list(db="gene", id=paste(batch, collapse=","), retmode="json"))
+      d <- .ncbi_json(resp)
+      if (!is.null(d$result)) {
+        for (gid in setdiff(names(d$result), "uids")) gene_summaries[[gid]] <- d$result[[gid]]
+      }
+      Sys.sleep(0.4)
+    }
+    message("[NCBI] Phase 3: ", length(gene_summaries), " gene summaries")
+
+    # Build final annotations keyed by original RefSeq ID
+    for (orig_id in gene_ids) {
+      clean_acc <- sub("\\.[0-9]+$", "", orig_id)
+      nc_uid    <- acc_to_uid[[clean_acc]]
+      if (is.null(nc_uid)) next
+      gene_id   <- uid_to_gene[[nc_uid]]
+      if (is.null(gene_id)) next
+      gs        <- gene_summaries[[gene_id]]
+      if (is.null(gs)) next
+      sym  <- .ncbi_str(gs$name)
+      desc <- .ncbi_str(gs$description)
+      bio  <- .ncbi_str(gs$genetype)
+      annotations[[orig_id]] <- list(symbol=sym, description=desc, biotype=bio)
+    }
+
+  # ── Route B: numeric NCBI gene IDs ─────────────────────────────────────────
+  } else {
+    message("[NCBI] Gene ID pipeline for ", length(gene_ids), " numeric IDs")
+    BATCH   <- 300L
+    batches <- split(gene_ids, ceiling(seq_along(gene_ids) / BATCH))
+
+    for (batch in batches) {
+      resp <- .ncbi_post("/esummary.fcgi",
+                         list(db="gene", id=paste(batch, collapse=","), retmode="json"))
+      d <- .ncbi_json(resp)
+      if (is.null(d) || is.null(d$result)) { Sys.sleep(0.5); next }
+
+      for (uid in setdiff(names(d$result), "uids")) {
+        gene   <- d$result[[uid]]
+        status <- trimws(as.character(if (!is.null(gene$status)) gene$status else ""))
+        if (status == "secondary") next
+        sym  <- .ncbi_str(gene$name)
+        desc <- .ncbi_str(gene$description)
+        bio  <- .ncbi_str(gene$type)
+        annotations[[uid]] <- list(symbol=sym, description=desc, biotype=bio)
+      }
+      Sys.sleep(0.4)
+    }
   }
 
   if (length(annotations) == 0) {
     res$status <- 502
-    return(list(error = "NCBI returned no data. Ensure gene_ids are valid numeric NCBI gene IDs."))
+    return(list(error = "NCBI returned no annotations. Check that gene IDs or RefSeq accessions are valid."))
   }
 
   list(annotations = annotations, total = length(annotations), hasCoords = FALSE)
