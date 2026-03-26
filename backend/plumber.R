@@ -137,13 +137,12 @@ function(req, res) {
     obj    <- readRDS(row$rds_path[1])
     counts <- as.matrix(obj$counts)
     meta   <- as.data.frame(obj$metadata)
+    meta[] <- lapply(meta, as.character)
     columns    <- colnames(meta)
-    levels_out <- lapply(setNames(columns, columns), function(col) {
-      sort(unique(as.character(meta[[col]])))
-    })
+    levels_out <- lapply(setNames(columns, columns), function(col) sort(unique(meta[[col]])))
     samples       <- colnames(counts)
     metadata_rows <- lapply(samples, function(samp) {
-      r        <- as.list(as.character(meta[samp, ])); names(r) <- colnames(meta); r$sample <- samp; r
+      r <- as.list(meta[samp, , drop = FALSE]); names(r) <- colnames(meta); r$sample <- samp; r
     })
   }, error = function(e) NULL)
 
@@ -233,12 +232,13 @@ function(req, res) {
 
   counts <- as.matrix(obj$counts)
   meta   <- as.data.frame(obj$metadata)
+  meta[] <- lapply(meta, as.character)
 
   columns    <- colnames(meta)
-  levels_out <- lapply(setNames(columns, columns), function(col) sort(unique(as.character(meta[[col]]))))
+  levels_out <- lapply(setNames(columns, columns), function(col) sort(unique(meta[[col]])))
   samples    <- colnames(counts)
   meta_rows  <- lapply(samples, function(samp) {
-    r <- as.list(as.character(meta[samp, ])); names(r) <- colnames(meta); r$sample <- samp; r
+    r <- as.list(meta[samp, , drop = FALSE]); names(r) <- colnames(meta); r$sample <- samp; r
   })
 
   # Always sync example files to data dirs (ensures consistency after server restart)
@@ -478,15 +478,19 @@ function(req, res) {
   if (!is.numeric(counts))            stop("counts must be numeric")
   if (nrow(meta) != ncol(counts))     stop("metadata rows must match counts columns")
 
+  # Convert all factor/numeric metadata columns to character so factor levels
+  # (e.g. DMSO/APA) are not coerced to their integer codes (1/2)
+  meta[] <- lapply(meta, as.character)
+
   dest <- file.path(UPLOAD_DIR, paste0(session_id, ".rds"))
   file.copy(tmp, dest, overwrite = TRUE)
   session_update(session_id, rds_path = dest)
 
   columns    <- colnames(meta)
-  levels_out <- lapply(setNames(columns, columns), function(col) sort(unique(as.character(meta[[col]]))))
+  levels_out <- lapply(setNames(columns, columns), function(col) sort(unique(meta[[col]])))
   samples    <- colnames(counts)
   meta_rows  <- lapply(samples, function(samp) {
-    r <- as.list(as.character(meta[samp, ])); names(r) <- colnames(meta); r$sample <- samp; r
+    r <- as.list(meta[samp, , drop = FALSE]); names(r) <- colnames(meta); r$sample <- samp; r
   })
 
   list(geneCount = nrow(counts), sampleCount = ncol(counts),
