@@ -1224,6 +1224,11 @@ function(req, res) {
   body           <- req$body
   gene_ids       <- body$gene_ids
   organism       <- if (!is.null(body$organism) && nchar(body$organism) > 0) body$organism else "hsapiens"
+  # If caller already supplied a full dataset name (contains "_gene_"), use it as-is;
+  # otherwise append "_gene_ensembl" to the organism code
+  .make_dataset  <- function(org) {
+    if (grepl("_gene_", org, fixed = TRUE)) org else paste0(org, "_gene_ensembl")
+  }
   want_orthologs <- isTRUE(body$want_orthologs) && organism != "hsapiens"
 
   if (!is.character(gene_ids) || length(gene_ids) == 0) {
@@ -1305,7 +1310,7 @@ function(req, res) {
     message("[BioMart] REST only returned ", round(rest_mapped_pct*100, 1),
             "% — falling back to BioMart XML")
 
-    dataset    <- paste0(organism, "_gene_ensembl")
+    dataset    <- .make_dataset(organism)
     base_attrs <- c("ensembl_gene_id", "external_gene_name", "description", "gene_biotype")
     BATCH_BM   <- 500L
     bm_batches <- split(gene_ids, ceiling(seq_along(gene_ids) / BATCH_BM))
@@ -1363,7 +1368,7 @@ function(req, res) {
   # ── Phase 3 (optional): BioMart 1:1 human orthologs ─────────────────────
   ortho_attrs <- c("ensembl_gene_id", "hsapiens_homolog_ensembl_gene",
                    "hsapiens_homolog_associated_gene_name", "hsapiens_homolog_orthology_type")
-  dataset     <- paste0(organism, "_gene_ensembl")
+  dataset     <- .make_dataset(organism)
   ortho_index <- list()
 
   if (want_orthologs) {

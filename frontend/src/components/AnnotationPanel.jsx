@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react'
 
+// g:Profiler organism codes (used only for the g:Profiler method)
 const ORGANISMS = [
   { value: 'hsapiens',      label: 'Human (H. sapiens)',         human: true  },
   { value: 'mmusculus',     label: 'Mouse (M. musculus)',         human: false },
@@ -9,6 +10,38 @@ const ORGANISMS = [
   { value: 'celegans',      label: 'C. elegans',                  human: false },
   { value: 'scerevisiae',   label: 'Yeast (S. cerevisiae)',       human: false },
   { value: 'athaliana',     label: 'Arabidopsis (A. thaliana)',   human: false },
+]
+
+// BioMart organism codes → Ensembl dataset names ({value}_gene_ensembl)
+// Only Ensembl vertebrate/metazoan mart (ensembl.org). Plants/fungi use
+// separate Ensembl marts and require a custom dataset name.
+const BIOMART_ORGANISMS = [
+  // ── Mammals ──────────────────────────────────────────────────────────
+  { value: 'hsapiens',       label: 'Human (H. sapiens)',             human: true  },
+  { value: 'mmusculus',      label: 'Mouse (M. musculus)',             human: false },
+  { value: 'rnorvegicus',    label: 'Rat (R. norvegicus)',             human: false },
+  { value: 'sscrofa',        label: 'Pig (S. scrofa)',                 human: false },
+  { value: 'btaurus',        label: 'Cow (B. taurus)',                 human: false },
+  { value: 'ggallus',        label: 'Chicken (G. gallus)',             human: false },
+  { value: 'cfamiliaris',    label: 'Dog (C. familiaris)',             human: false },
+  { value: 'ecaballus',      label: 'Horse (E. caballus)',             human: false },
+  { value: 'oaries',         label: 'Sheep (O. aries)',                human: false },
+  { value: 'mmulatta',       label: 'Macaque (M. mulatta)',            human: false },
+  { value: 'ptroglodytes',   label: 'Chimpanzee (P. troglodytes)',     human: false },
+  { value: 'fcatus',         label: 'Cat (F. catus)',                  human: false },
+  // ── Other vertebrates ────────────────────────────────────────────────
+  { value: 'drerio',         label: 'Zebrafish (D. rerio)',            human: false },
+  { value: 'xtropicalis',    label: 'Xenopus (X. tropicalis)',         human: false },
+  { value: 'ggallus',        label: 'Chicken (G. gallus)',             human: false },
+  // ── Invertebrates ────────────────────────────────────────────────────
+  { value: 'dmelanogaster',  label: 'Fruit fly (D. melanogaster)',     human: false },
+  { value: 'celegans',       label: 'C. elegans',                      human: false },
+  // ── Fungi / Plants ───────────────────────────────────────────────────
+  // These require Ensembl Fungi/Plants marts — use "Custom dataset" below
+  { value: 'scerevisiae',    label: 'Yeast (S. cerevisiae) ¹',        human: false },
+  { value: 'athaliana',      label: 'Arabidopsis (A. thaliana) ¹',    human: false },
+  // ── Custom ───────────────────────────────────────────────────────────
+  { value: '__custom__',     label: 'Custom dataset…',                 human: false },
 ]
 
 // Map Ensembl ID prefix → organism value for auto-detection
@@ -47,6 +80,7 @@ function parseGTFAttrs(attrs) {
 export default function AnnotationPanel({ geneIds, annMap, onAnnotate }) {
   const [method,         setMethod]         = useState('gprofiler')
   const [org,            setOrg]            = useState('hsapiens')
+  const [customDataset,  setCustomDataset]  = useState('')   // full BioMart dataset name when org === '__custom__'
   const [wantOrthologs,  setWantOrthologs]  = useState(false)
   const [loading,        setLoading]        = useState(false)
   const [progress,       setProgress]       = useState(0)
@@ -59,7 +93,14 @@ export default function AnnotationPanel({ geneIds, annMap, onAnnotate }) {
   const abortRef     = useRef(false)
   const progressTimer = useRef(null)
 
-  const isHuman = ORGANISMS.find(o => o.value === org)?.human ?? true
+  // Resolve effective organism value sent to backend
+  // For BioMart: if custom dataset, send the full dataset name; otherwise send the code
+  const effectiveBiomartOrg = org === '__custom__' ? (customDataset.trim() || '') : org
+
+  const isHuman = (method === 'biomart'
+    ? BIOMART_ORGANISMS.find(o => o.value === org)
+    : ORGANISMS.find(o => o.value === org)
+  )?.human ?? false
 
   // ── Auto-detect ID type from the submitted gene IDs ───────────────────────
   // 'ncbi'    → purely numeric IDs (any organism, incl. bacteria)
@@ -137,7 +178,7 @@ export default function AnnotationPanel({ geneIds, annMap, onAnnotate }) {
     const endpoint = useNcbi ? `${API}/api/annotate/ncbi` : `${API}/api/annotate/biomart`
     const payload  = useNcbi
       ? { gene_ids: geneIds }
-      : { gene_ids: geneIds, organism: org, want_orthologs: wantOrthologs && !isHuman }
+      : { gene_ids: geneIds, organism: effectiveBiomartOrg, want_orthologs: wantOrthologs && !isHuman }
 
     try {
       const resp = await fetch(endpoint, {
@@ -379,7 +420,9 @@ export default function AnnotationPanel({ geneIds, annMap, onAnnotate }) {
 
           {/* Organism selector + ortholog toggle — only relevant for Ensembl/BioMart */}
           {idType !== 'ncbi' && (<>
-            <OrgSelector value={org} onChange={v => { setOrg(v); setWantOrthologs(false) }} />
+            <BiomartOrgSelector value={org} customDataset={customDataset}
+              onChange={v => { setOrg(v); setWantOrthologs(false) }}
+              onCustomChange={setCustomDataset} />
             {!isHuman && (
               <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
                               padding: '10px 14px', borderRadius: 8,
@@ -630,6 +673,8 @@ export default function AnnotationPanel({ geneIds, annMap, onAnnotate }) {
 }
 
 // ── Small shared sub-components ───────────────────────────────────────────────
+
+// g:Profiler organism selector
 function OrgSelector({ value, onChange }) {
   return (
     <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
@@ -637,6 +682,56 @@ function OrgSelector({ value, onChange }) {
       <select value={value} onChange={e => onChange(e.target.value)} style={{ flex: 1, fontSize: '0.8rem' }}>
         {ORGANISMS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
+    </div>
+  )
+}
+
+// BioMart-specific organism selector — broader species list + custom dataset input
+function BiomartOrgSelector({ value, customDataset, onChange, onCustomChange }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <label style={{ fontSize: '0.78rem', color: 'var(--text-3)', whiteSpace: 'nowrap' }}>Organism</label>
+        <select value={value} onChange={e => onChange(e.target.value)} style={{ flex: 1, fontSize: '0.8rem' }}>
+          {BIOMART_ORGANISMS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      </div>
+      {value === '__custom__' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <input
+            type="text"
+            placeholder="e.g. sscrofa_gene_ensembl"
+            value={customDataset}
+            onChange={e => onCustomChange(e.target.value)}
+            style={{
+              fontSize: '0.8rem', padding: '6px 10px', borderRadius: 6,
+              background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)',
+              color: 'var(--text-1)', outline: 'none', width: '100%',
+            }}
+          />
+          <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-3)' }}>
+            Enter the full Ensembl BioMart dataset name. Vertebrates use{' '}
+            <code style={{ background: 'rgba(255,255,255,0.06)', padding: '1px 4px', borderRadius: 3 }}>
+              {'<species>_gene_ensembl'}
+            </code>.
+            Plants / fungi require{' '}
+            <code style={{ background: 'rgba(255,255,255,0.06)', padding: '1px 4px', borderRadius: 3 }}>
+              plants.ensembl.org
+            </code>{' '}
+            or{' '}
+            <code style={{ background: 'rgba(255,255,255,0.06)', padding: '1px 4px', borderRadius: 3 }}>
+              fungi.ensembl.org
+            </code>{' '}
+            marts — for those, use the GTF method instead.
+          </p>
+        </div>
+      )}
+      {(value === 'scerevisiae' || value === 'athaliana') && (
+        <p style={{ margin: 0, fontSize: '0.72rem', color: '#d97706' }}>
+          ¹ Yeast and Arabidopsis use separate Ensembl marts and may return limited results.
+          The GTF method is recommended for these organisms.
+        </p>
+      )}
     </div>
   )
 }
