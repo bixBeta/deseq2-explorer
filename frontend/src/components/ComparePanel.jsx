@@ -99,6 +99,81 @@ function UpSetTab({ session, contrasts }) {
   )
 }
 
+const HEATMAP_PRESETS = [
+  { label: 'Blue–White–Red',   colors: ['#1565C0', '#ffffff', '#B71C1C'] },
+  { label: 'Purple–White–Org', colors: ['#6A1B9A', '#ffffff', '#E65100'] },
+  { label: 'Green–White–Red',  colors: ['#1B5E20', '#ffffff', '#B71C1C'] },
+  { label: 'Navy–White–Gold',  colors: ['#0D1B4B', '#ffffff', '#F9A825'] },
+  { label: 'Teal–Black–Pink',  colors: ['#00695C', '#000000', '#AD1457'] },
+  { label: 'RdYlBu',           colors: ['#2166AC', '#FFFFBF', '#D73027'] },
+]
+
+function PaletteRow({ palette, setPalette }) {
+  const updateColor = (i, val) => {
+    const next = [...palette]
+    next[i] = val
+    setPalette(next)
+  }
+
+  const labels = ['Low', 'Mid', 'High']
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-3)',
+                     textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        Palette
+      </span>
+
+      {/* Preset chips */}
+      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+        {HEATMAP_PRESETS.map(p => {
+          const active = JSON.stringify(p.colors) === JSON.stringify(palette)
+          return (
+            <button key={p.label} onClick={() => setPalette(p.colors)}
+                    title={p.label}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 0,
+                      padding: 0, border: active ? '2px solid var(--accent)' : '2px solid transparent',
+                      borderRadius: 5, cursor: 'pointer', overflow: 'hidden', height: 18,
+                    }}>
+              {p.colors.map((c, i) => (
+                <span key={i} style={{ width: 14, height: 18, background: c, display: 'block' }} />
+              ))}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Custom pickers */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {palette.map((col, i) => (
+          <label key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer' }}>
+            <span style={{ fontSize: '0.62rem', color: 'var(--text-3)', textTransform: 'uppercase' }}>{labels[i]}</span>
+            <div style={{ position: 'relative', width: 28, height: 28 }}>
+              <span style={{
+                display: 'block', width: 28, height: 28, borderRadius: 5,
+                background: col, border: '2px solid var(--border)', cursor: 'pointer',
+              }} />
+              <input type="color" value={col} onChange={e => updateColor(i, e.target.value)}
+                     style={{
+                       position: 'absolute', inset: 0, opacity: 0,
+                       width: '100%', height: '100%', cursor: 'pointer',
+                     }} />
+            </div>
+            <input type="text" value={col} maxLength={7}
+                   onChange={e => { if (/^#[0-9a-fA-F]{0,6}$/.test(e.target.value)) updateColor(i, e.target.value) }}
+                   style={{
+                     width: 60, fontSize: '0.65rem', padding: '1px 4px', textAlign: 'center',
+                     fontFamily: 'monospace', background: 'var(--bg-card2)',
+                     border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-1)',
+                   }} />
+          </label>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 const DIST_METHODS = ['euclidean', 'pearson', 'spearman', 'kendall', 'manhattan', 'maximum']
 
 // ── Heatmap (interactive via heatmaply → Plotly JSON) ─────────────────────────
@@ -116,6 +191,7 @@ function HeatmapTab({ session, annMap, pca, contrasts }) {
   const [loading, setLoading]         = useState(false)
   const [error, setError]             = useState(null)
   const [hasPlot, setHasPlot]         = useState(false)
+  const [palette, setPalette]         = useState(['#1565C0', '#ffffff', '#B71C1C'])
 
   // Derive metadata columns from PCA scores (same source as CountsPlot)
   const metaCols = useMemo(() => {
@@ -172,6 +248,7 @@ function HeatmapTab({ session, annMap, pca, contrasts }) {
         colorBy: colorBy || '',
         geneSet,
         activeLabels,
+        palette,
       })
 
       const fig = JSON.parse(data.plotlyJson)
@@ -270,6 +347,9 @@ function HeatmapTab({ session, annMap, pca, contrasts }) {
           </>
         )}
       </div>
+
+      {/* Row 3: color palette */}
+      <PaletteRow palette={palette} setPalette={setPalette} />
 
       {error && <ErrorBox msg={error} />}
 

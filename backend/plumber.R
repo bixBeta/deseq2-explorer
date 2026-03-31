@@ -982,6 +982,7 @@ function(req, res) {
   cluster_cols  <- if (!is.null(body$clusterCols))   isTRUE(body$clusterCols)    else TRUE
   dist_method   <- if (!is.null(body$distMethod))    body$distMethod             else "pearson"
   color_by      <- if (!is.null(body$colorBy) && nchar(body$colorBy) > 0) body$colorBy else NULL
+  palette_colors <- if (!is.null(body$palette) && length(body$palette) >= 2) as.character(body$palette) else c("#1565C0", "white", "#B71C1C")
   # geneSet: "union" | "intersection" | a contrast label string
   gene_set      <- if (!is.null(body$geneSet) && nchar(body$geneSet) > 0) body$geneSet else "union"
   active_labels <- if (!is.null(body$activeLabels) && length(body$activeLabels) > 0)
@@ -1056,7 +1057,7 @@ function(req, res) {
       Colv              = colv_arg,
       distfun           = make_distfun(dist_method),
       scale             = "none",
-      colors            = grDevices::colorRampPalette(c("#1565C0", "white", "#B71C1C"))(256),
+      colors            = grDevices::colorRampPalette(palette_colors)(256),
       xlab              = "Contrast",
       ylab              = "Gene",
       main              = paste0("log2FC heatmap (FDR < ", fdr, ", top ", nrow(mat_plot), " genes)"),
