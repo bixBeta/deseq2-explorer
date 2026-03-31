@@ -275,11 +275,13 @@ function HeatmapTab({ session, annMap, pca, contrasts }) {
 
 // ── Gene Explorer (multi-group violin) ────────────────────────────────────────
 function GeneExplorer({ session, contrasts, annMap }) {
-  const [query, setQuery]       = useState('')
-  const [selected, setSelected] = useState(null)
-  const [imgSrc, setImgSrc]     = useState(null)
-  const [loading, setLoading]   = useState(false)
-  const [error, setError]       = useState(null)
+  const [query, setQuery]             = useState('')
+  const [selected, setSelected]       = useState(null)
+  const [imgSrc, setImgSrc]           = useState(null)
+  const [loading, setLoading]         = useState(false)
+  const [error, setError]             = useState(null)
+  const [groupSummary, setGroupSummary]   = useState(null)
+  const [contrastStats, setContrastStats] = useState(null)
 
   // Build sorted gene list with optional symbol lookup
   const genes = useMemo(() => {
@@ -302,9 +304,12 @@ function GeneExplorer({ session, contrasts, annMap }) {
     const _s = annMap?.[gene]
     const symbol = (typeof _s === 'string' && _s !== 'N/A' && _s !== 'None') ? _s : null
     setSelected(gene); setLoading(true); setError(null); setImgSrc(null)
+    setGroupSummary(null); setContrastStats(null)
     try {
       const data = await apiFetch('/api/geneplot/compare', { sessionId: session.sessionId, gene, symbol })
       setImgSrc(`data:image/png;base64,${data.image}`)
+      if (data.groupSummary)  setGroupSummary(data.groupSummary)
+      if (data.contrastStats) setContrastStats(data.contrastStats)
     } catch (e) { setError(e.message) }
     finally { setLoading(false) }
   }
@@ -351,7 +356,7 @@ function GeneExplorer({ session, contrasts, annMap }) {
       </div>
 
       {/* Plot area */}
-      <div style={{ flex: 1 }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
         {loading && <Placeholder text="Generating violin plot…" />}
         {error && <ErrorBox msg={error} />}
         {imgSrc && !loading && (
@@ -363,6 +368,90 @@ function GeneExplorer({ session, contrasts, annMap }) {
         {!selected && !loading && (
           <Placeholder text="Select a gene to plot its normalized expression across all groups." />
         )}
+
+        {/* Per-group normalized count summary */}
+        {groupSummary && groupSummary.length > 0 && (
+          <div style={{ maxWidth: 620 }}>
+            <p style={{ margin: '0 0 5px', fontSize: '0.72rem', fontWeight: 600,
+                        color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Normalized Counts Summary
+            </p>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem',
+                            border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+              <thead>
+                <tr style={{ background: 'rgba(var(--accent-rgb),0.06)', color: 'var(--text-3)' }}>
+                  {['Group', 'n', 'Mean', 'Median', 'SD'].map(h => (
+                    <th key={h} style={{ padding: '5px 10px', textAlign: h === 'Group' ? 'left' : 'right',
+                                         fontWeight: 600, fontSize: '0.7rem', borderBottom: '1px solid var(--border)' }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {groupSummary.map((row, i) => (
+                  <tr key={i} style={{ borderTop: i > 0 ? '1px solid var(--border)' : undefined }}>
+                    <td style={{ padding: '5px 10px', fontWeight: 600, color: 'var(--accent-text)' }}>{row.group}</td>
+                    {[row.n, row.mean, row.median, row.sd].map((v, j) => (
+                      <td key={j} style={{ padding: '5px 10px', textAlign: 'right',
+                                           color: 'var(--text-1)', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                        {v != null ? v : '—'}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Per-contrast DESeq2 stats */}
+        {contrastStats && contrastStats.length > 0 && (
+          <div style={{ maxWidth: 620 }}>
+            <p style={{ margin: '0 0 5px', fontSize: '0.72rem', fontWeight: 600,
+                        color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              DESeq2 Results
+            </p>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem',
+                            border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+              <thead>
+                <tr style={{ background: 'rgba(var(--accent-rgb),0.06)', color: 'var(--text-3)' }}>
+                  {['Contrast', 'baseMean', 'log₂FC', 'lfcSE', 'p-value', 'padj'].map(h => (
+                    <th key={h} style={{ padding: '5px 10px', textAlign: h === 'Contrast' ? 'left' : 'right',
+                                         fontWeight: 600, fontSize: '0.7rem', borderBottom: '1px solid var(--border)' }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {contrastStats.map((ct, i) => (
+                  <tr key={i} style={{ borderTop: i > 0 ? '1px solid var(--border)' : undefined }}>
+                    <td style={{ padding: '5px 10px', fontWeight: 600, color: 'var(--accent-text)',
+                                 fontSize: '0.72rem' }}>{ct.contrast}</td>
+                    {[
+                      ct.baseMean != null ? Number(ct.baseMean).toLocaleString() : '—',
+                      ct.log2FC   != null ? ct.log2FC   : '—',
+                      ct.lfcSE    != null ? ct.lfcSE    : '—',
+                      ct.pvalue   != null ? ct.pvalue   : '—',
+                      ct.padj     != null ? ct.padj     : '—',
+                    ].map((val, j) => (
+                      <td key={j} style={{
+                        padding: '5px 10px', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.75rem',
+                        color: j === 4 && ct.padj != null
+                          ? (ct.padj < 0.05 ? '#4ade80' : '#f87171')
+                          : 'var(--text-1)',
+                        fontWeight: j === 4 ? 600 : 400,
+                      }}>
+                        {String(val)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -370,10 +459,12 @@ function GeneExplorer({ session, contrasts, annMap }) {
 
 // ── Table Explorer (pivot: gene rows × contrast-grouped stat columns) ─────────
 const STAT_COLS = [
-  { key: 'baseMean', label: 'baseMean' },
-  { key: 'log2FC',   label: 'log₂FC'  },
-  { key: 'pvalue',   label: 'pvalue'  },
-  { key: 'padj',     label: 'padj'    },
+  { key: 'baseMean',      label: 'baseMean'    },
+  { key: 'meanTreatment', label: 'Avg: trt'    },
+  { key: 'meanReference', label: 'Avg: ref'    },
+  { key: 'log2FC',        label: 'log₂FC'      },
+  { key: 'pvalue',        label: 'pvalue'      },
+  { key: 'padj',          label: 'padj'        },
 ]
 
 function TableExplorer({ contrasts, annMap, annDetails }) {
@@ -426,6 +517,8 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
         map[r.gene].contrasts[lbl] = {
           baseMean: r.baseMean, log2FC: r.log2FC,
           lfcSE: r.lfcSE, pvalue: r.pvalue, padj: r.padj,
+          meanTreatment: r.meanTreatment ?? null,
+          meanReference: r.meanReference ?? null,
         }
       })
     })
@@ -474,7 +567,15 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
       ...(hasBiotype   ? ['biotype']                                           : []),
       ...(hasOrthologs ? ['human_ortholog']                                   : []),
     ]
-    const statHdrs = contrastLabels.flatMap(l => STAT_COLS.map(s => `${l}__${s.key}`))
+    const statHdrs = contrasts.flatMap(ct => {
+      const l = ct.label ?? ct.treatment ?? 'Contrast'
+      return STAT_COLS.map(s => {
+        const colName = s.key === 'meanTreatment' ? `${l}__mean_${ct.treatment ?? 'trt'}`
+                      : s.key === 'meanReference' ? `${l}__mean_${ct.reference ?? 'ref'}`
+                      : `${l}__${s.key}`
+        return colName
+      })
+    })
     const hdr      = [...geneHdr, ...statHdrs].join(',')
     const body     = sorted.map(r => {
       const gene = [
@@ -484,7 +585,10 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
         ...(hasBiotype   ? [r.biotype ?? '']                                  : []),
         ...(hasOrthologs ? [r.humanOrtholog ?? '']                            : []),
       ]
-      const stats = contrastLabels.flatMap(l => STAT_COLS.map(s => r.contrasts[l]?.[s.key] ?? ''))
+      const stats = contrasts.flatMap(ct => {
+        const l = ct.label ?? ct.treatment ?? 'Contrast'
+        return STAT_COLS.map(s => r.contrasts[l]?.[s.key] ?? '')
+      })
       return [...gene, ...stats].join(',')
     }).join('\n')
     const blob = new Blob([hdr + '\n' + body], { type: 'text/csv' })
@@ -587,7 +691,7 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
             {hasDesc      && <col style={{ width: COL.desc?.w    ?? 160 }} />}
             {hasBiotype   && <col style={{ width: COL.biotype?.w ?? 110 }} />}
             {hasOrthologs && <col style={{ width: COL.ortho?.w   ??  90 }} />}
-            {contrastLabels.flatMap(lbl => STAT_COLS.map(s => <col key={`${lbl}_${s.key}`} style={{ width: 80 }} />))}
+            {contrastLabels.flatMap(lbl => STAT_COLS.map(s => <col key={`${lbl}_${s.key}`} style={{ width: s.key === 'meanTreatment' || s.key === 'meanReference' ? 90 : 80 }} />))}
           </colgroup>
           <thead style={{ position: 'sticky', top: 0, zIndex: 22, background: 'var(--bg-panel)' }}>
             {/* Row 1: frozen Gene banner + contrast group headers.
@@ -603,16 +707,19 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
                            ...freezeShadow }}>
                 Gene
               </th>
-              {contrastLabels.map((lbl, ci) => (
-                <th key={lbl} colSpan={4}
-                    style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700,
-                             fontSize: '0.72rem', whiteSpace: 'nowrap', color: ACCENT,
-                             background: 'rgba(var(--accent-rgb),0.06)',
-                             borderBottom: GRID,
-                             borderRight: ci < contrastLabels.length - 1 ? '2px solid var(--border)' : GRID }}>
-                  {lbl}
-                </th>
-              ))}
+              {contrasts.map((ct, ci) => {
+                const lbl = ct.label ?? ct.treatment ?? 'Contrast'
+                return (
+                  <th key={lbl} colSpan={STAT_COLS.length}
+                      style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700,
+                               fontSize: '0.72rem', whiteSpace: 'nowrap', color: ACCENT,
+                               background: 'rgba(var(--accent-rgb),0.06)',
+                               borderBottom: GRID,
+                               borderRight: ci < contrasts.length - 1 ? '2px solid var(--border)' : GRID }}>
+                    {lbl}
+                  </th>
+                )
+              })}
             </tr>
             {/* Row 2: frozen gene sub-headers + sortable stat sub-headers */}
             <tr>
@@ -636,10 +743,15 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
                                             color: '#7c3aed' }}>
                 Human Ortholog
               </TH>}
-              {contrastLabels.map((lbl, ci) => (
-                STAT_COLS.map((s, si) => {
-                  const active = sortContrast === lbl && sortStat === s.key
-                  const isLast = si === STAT_COLS.length - 1
+              {contrasts.map((ct, ci) => {
+                const lbl = ct.label ?? ct.treatment ?? 'Contrast'
+                return STAT_COLS.map((s, si) => {
+                  const active  = sortContrast === lbl && sortStat === s.key
+                  const isLast  = si === STAT_COLS.length - 1
+                  // Show actual group names for mean columns
+                  const display = s.key === 'meanTreatment' ? `Avg: ${ct.treatment ?? 'trt'}`
+                                : s.key === 'meanReference' ? `Avg: ${ct.reference ?? 'ref'}`
+                                : s.label
                   return (
                     <th key={`${lbl}_${s.key}`}
                         onClick={() => toggleSort(lbl, s.key)}
@@ -648,13 +760,13 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
                                  color: active ? ACCENT_TEXT : 'var(--text-3)',
                                  background: active ? 'rgba(var(--accent-rgb),0.04)' : 'var(--bg-panel)',
                                  borderBottom: GRID,
-                                 borderRight: isLast && ci < contrastLabels.length - 1 ? '2px solid var(--border)' : GRID,
+                                 borderRight: isLast && ci < contrasts.length - 1 ? '2px solid var(--border)' : GRID,
                                  userSelect: 'none' }}>
-                      {s.label}{active ? (sortDir === 1 ? ' ↑' : ' ↓') : ''}
+                      {display}{active ? (sortDir === 1 ? ' ↑' : ' ↓') : ''}
                     </th>
                   )
                 })
-              ))}
+              })}
             </tr>
           </thead>
           <tbody>
@@ -725,6 +837,8 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
                   const lfcColor = s?.log2FC > 0 ? '#16a34a' : s?.log2FC < 0 ? '#dc2626' : 'var(--text-2)'
                   return [
                     <td key={`${lbl}_bm`}  style={{ ...base }}>{fmtN(s?.baseMean, 4)}</td>,
+                    <td key={`${lbl}_mt`}  style={{ ...base, color: 'var(--text-2)' }}>{fmtN(s?.meanTreatment, 4)}</td>,
+                    <td key={`${lbl}_mr`}  style={{ ...base, color: 'var(--text-2)' }}>{fmtN(s?.meanReference,  4)}</td>,
                     <td key={`${lbl}_lfc`} style={{ ...base, fontWeight: 500, color: lfcColor }}>{s ? fmtLFC(s.log2FC) : '—'}</td>,
                     <td key={`${lbl}_pv`}  style={{ ...base, color: 'var(--text-3)' }}>{fmtN(s?.pvalue, 3)}</td>,
                     <td key={`${lbl}_pa`}  style={{ ...base, ...groupRight, color: padjColor(s?.padj) }}>{fmtN(s?.padj, 3)}</td>,

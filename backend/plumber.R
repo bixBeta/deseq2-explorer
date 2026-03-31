@@ -33,12 +33,14 @@ HAS_MIRAI <- tryCatch({
     r <- df[i, ]
     list(
       gene     = r$gene,
-      baseMean = round(r$baseMean, 3),
-      log2FC   = if (is.na(r$log2FC))  NULL else round(r$log2FC,  4),
-      lfcSE    = if (is.na(r$lfcSE))   NULL else round(r$lfcSE,   4),
-      stat     = if (is.na(r$stat))    NULL else round(r$stat,    4),
-      pvalue   = if (is.na(r$pvalue))  NULL else signif(r$pvalue, 4),
-      padj     = if (is.na(r$padj))    NULL else signif(r$padj,   4)
+      baseMean       = round(r$baseMean, 3),
+      log2FC         = if (is.na(r$log2FC))        NULL else round(r$log2FC,        4),
+      lfcSE          = if (is.na(r$lfcSE))         NULL else round(r$lfcSE,         4),
+      stat           = if (is.na(r$stat))          NULL else round(r$stat,          4),
+      pvalue         = if (is.na(r$pvalue))        NULL else signif(r$pvalue,       4),
+      padj           = if (is.na(r$padj))          NULL else signif(r$padj,         4),
+      meanTreatment  = if (is.null(r$meanTreatment) || is.na(r$meanTreatment)) NULL else round(r$meanTreatment, 2),
+      meanReference  = if (is.null(r$meanReference) || is.na(r$meanReference)) NULL else round(r$meanReference, 2)
     )
   })
 }
@@ -314,86 +316,51 @@ function(req, res) {
   list(ok = TRUE)
 }
 
-# ── MA Plot: server-side ggmaplot() rendering ────────────────────────────────
+# ── MA Plot: return data points as JSON for interactive Plotly rendering ───────
 #* @post /api/maplot
 #* @serializer unboxedJSON
 function(req, res) {
   body       <- fromJSON(rawToChar(req$bodyRaw))
   session_id <- body$sessionId
-  label      <- body$label          # e.g. "Treatment_B vs ctrl"
-  fdr        <- if (!is.null(body$fdr))    as.numeric(body$fdr)    else 0.05
-  fc         <- if (!is.null(body$fc))     as.numeric(body$fc)     else 1.5
-  top_n      <- if (!is.null(body$topN))   as.integer(body$topN)   else 15L
-  pt_size    <- if (!is.null(body$size))   as.numeric(body$size)   else 0.5
-  fmt        <- if (!is.null(body$format) && body$format %in% c("pdf", "svg")) body$format else "png"
-  out_dpi    <- if (!is.null(body$dlDpi)) as.integer(body$dlDpi) else 100L
-  ann_map    <- body$annMap   # named list gene_id -> symbol, or NULL
+  label      <- body$label     # e.g. "Treatment_B vs ctrl"
+  ann_map    <- body$annMap    # named list gene_id -> symbol, or NULL
 
   if (is.null(session_id) || session_id == "") stop("sessionId is required")
-
-  if (!requireNamespace("ggpubr",   quietly = TRUE)) stop("R package 'ggpubr' is not installed on the server")
-  if (!requireNamespace("ggplot2",  quietly = TRUE)) stop("R package 'ggplot2' is not installed on the server")
-  if (!requireNamespace("ggrepel", quietly = TRUE))  stop("R package 'ggrepel' is not installed on the server")
 
   results_path <- file.path(RESULTS_DIR, paste0(session_id, "_results.rds"))
   if (!file.exists(results_path)) stop("Results not found — please run DESeq2 first")
 
-  saved  <- readRDS(results_path)
+  saved <- readRDS(results_path)
 
   # Locate contrast by label (fall back to first)
-  res_df <- if ("contrasts" %in% names(saved)) {
+  ct_obj <- if ("contrasts" %in% names(saved)) {
     labels <- sapply(saved$contrasts, function(ct) ct$label)
     idx    <- if (!is.null(label) && label %in% labels) which(labels == label)[1] else 1L
-    saved$contrasts[[idx]]$results
-  } else {
-    saved$results
-  }
+    saved$contrasts[[idx]]
+  } else list(results = saved$results, label = label)
+
+  res_df <- ct_obj$results
   if (is.null(res_df) || nrow(res_df) == 0) stop("No results found for this contrast")
 
-  # Build data.frame in the format ggmaplot expects
-  plot_df <- data.frame(
-    baseMean       = as.numeric(res_df$baseMean),
-    log2FoldChange = as.numeric(res_df$log2FC),
-    padj           = as.numeric(res_df$padj),
-    row.names      = res_df$gene,
-    stringsAsFactors = FALSE
-  )
-  plot_df <- plot_df[!is.na(plot_df$baseMean) & is.finite(plot_df$baseMean), ]
+  ct_label <- if (!is.null(ct_obj$label) && nchar(ct_obj$label) > 0) ct_obj$label else
+              if (!is.null(label) && nchar(label) > 0) label else "MA Plot"
 
-  # Remap gene IDs to symbols when annotation map is provided
-  if (!is.null(ann_map) && length(ann_map) > 0) {
-    ann_vec  <- unlist(ann_map)          # named character vector: gene_id -> symbol
-    rn       <- rownames(plot_df)
-    idx      <- match(rn, names(ann_vec))
-    mask     <- !is.na(idx)
-    rn[mask] <- ann_vec[idx[mask]]
-    rownames(plot_df) <- make.unique(rn)   # avoid duplicate labels
-  }
+  # Build symbol lookup
+  sym_vec <- if (!is.null(ann_map) && length(ann_map) > 0) unlist(ann_map) else NULL
 
-  library(ggpubr); library(ggplot2)
+  points <- lapply(seq_len(nrow(res_df)), function(i) {
+    r       <- res_df[i, ]
+    gene_id <- as.character(r$gene)
+    display <- if (!is.null(sym_vec) && gene_id %in% names(sym_vec)) sym_vec[[gene_id]] else gene_id
+    bm      <- if (!is.null(r$baseMean) && !is.na(r$baseMean) && is.finite(r$baseMean)) round(r$baseMean, 2)  else NULL
+    lfc     <- if (!is.null(r$log2FC)   && !is.na(r$log2FC))                            round(r$log2FC,   4)  else NULL
+    pj      <- if (!is.null(r$padj)     && !is.na(r$padj))                              signif(r$padj,    3)  else NULL
+    if (is.null(bm)) return(NULL)
+    list(geneId = gene_id, gene = display, baseMean = bm, log2FC = lfc, padj = pj)
+  })
+  points <- Filter(Negate(is.null), points)
 
-  ct_label <- if (!is.null(label) && nchar(label) > 0) label else "MA Plot"
-
-  p <- tryCatch(
-    ggmaplot(plot_df,
-      fdr    = fdr, fc = fc, top = top_n, size = pt_size,
-      select.top.method  = "padj",
-      palette            = c("#B31B21", "#1465AC", "darkgray"),
-      legend             = "top",
-      main               = ct_label,
-      font.label         = c(10, "bold", "black"),
-      label.rectangle    = FALSE,
-      ggtheme            = theme_bw(base_size = 13)
-    ),
-    error = function(e) stop("ggmaplot: ", e$message)
-  )
-
-  tmp <- tempfile(fileext = paste0(".", fmt))
-  on.exit(unlink(tmp), add = TRUE)
-  ggplot2::ggsave(tmp, p, width = 8, height = 10, dpi = out_dpi, bg = "white")
-
-  img_bytes <- readBin(tmp, "raw", file.info(tmp)$size)
-  list(image = jsonlite::base64_enc(img_bytes), format = fmt)
+  list(points = points, label = ct_label)
 }
 
 # ── Session: save (persist edited metadata / sample selection) ────────────────
@@ -672,6 +639,24 @@ function(req, res) {
   }
   count_dist <- list(raw = make_dist(raw_log2), vst = make_dist(vst_sub))
 
+  norm_mat <- counts(dds, normalized = TRUE)
+
+  # ── Attach per-group normalized count means to each contrast result df ─────────
+  grp_vec <- as.character(meta[[column]])
+  result_dfs <- lapply(seq_along(contrasts_list), function(i) {
+    ct <- contrasts_list[[i]]; df <- result_dfs[[i]]
+    genes_in_df   <- rownames(norm_mat)[rownames(norm_mat) %in% df$gene]
+    trt_samps     <- rownames(meta)[grp_vec == ct$treatment]
+    ref_samps     <- rownames(meta)[grp_vec == ct$reference]
+    trt_samps     <- intersect(trt_samps, colnames(norm_mat))
+    ref_samps     <- intersect(ref_samps, colnames(norm_mat))
+    mean_trt <- if (length(trt_samps) > 0) rowMeans(norm_mat[genes_in_df, trt_samps, drop = FALSE], na.rm = TRUE) else setNames(rep(NA_real_, length(genes_in_df)), genes_in_df)
+    mean_ref <- if (length(ref_samps) > 0) rowMeans(norm_mat[genes_in_df, ref_samps, drop = FALSE], na.rm = TRUE) else setNames(rep(NA_real_, length(genes_in_df)), genes_in_df)
+    df$meanTreatment <- mean_trt[df$gene]
+    df$meanReference <- mean_ref[df$gene]
+    df
+  })
+
   # ── Build output for newly computed contrasts ──────────────────────────────────
   contrasts_out <- lapply(seq_along(contrasts_list), function(i) {
     ct <- contrasts_list[[i]]; df <- result_dfs[[i]]
@@ -699,7 +684,6 @@ function(req, res) {
          label     = paste(ct$treatment, "vs", ct$reference),
          results   = result_dfs[[i]])
   })
-  norm_mat <- counts(dds, normalized = TRUE)
 
   saveRDS(list(contrasts   = c(old_kept, new_saved),
                pca         = list(scores = scores, variance = variance),
@@ -1211,8 +1195,8 @@ function(req, res) {
 
   p <- ggviolin(df, x = "group", y = "expr", fill = "group",
                 palette    = pal,
-                add        = "boxplot",
-                add.params = list(fill = "white", width = 0.12),
+                add        = c("jitter", "boxplot"),
+                add.params = list(fill = "white", width = 0.12, size = 1.2, alpha = 0.6),
                 ylab       = expr_label,
                 xlab       = "") +
     labs(title    = title_str,
@@ -1242,7 +1226,54 @@ function(req, res) {
   ggplot2::ggsave(tmp, p, width = max(5, length(all_groups) * 1.4), height = 6.5, dpi = 140, bg = "white")
 
   img_bytes <- readBin(tmp, "raw", file.info(tmp)$size)
-  list(image = jsonlite::base64_enc(img_bytes))
+
+  # ── Per-group normalized count summary ────────────────────────────────────────
+  group_summary <- tryCatch({
+    nm <- saved$norm_matrix
+    if (!is.null(nm) && gene %in% rownames(nm)) {
+      gene_norm <- nm[gene, samp, drop = TRUE]
+      grp_chr   <- as.character(meta[samp, group_col])
+      lapply(all_groups, function(g) {
+        vals <- gene_norm[grp_chr == g]
+        list(group  = g,
+             mean   = round(mean(vals,   na.rm = TRUE), 2),
+             median = round(median(vals, na.rm = TRUE), 2),
+             sd     = round(sd(vals,     na.rm = TRUE), 2),
+             n      = sum(!is.na(vals)))
+      })
+    } else NULL
+  }, error = function(e) NULL)
+
+  # ── Per-contrast DESeq2 stats for this gene ────────────────────────────────────
+  contrast_stats <- tryCatch({
+    if (!is.null(saved$contrasts) && length(saved$contrasts) > 0) {
+      lapply(saved$contrasts, function(ct) {
+        res_df   <- ct$results
+        gene_row <- if (!is.null(res_df)) res_df[res_df$gene == gene, ] else NULL
+        if (is.null(gene_row) || nrow(gene_row) == 0) return(NULL)
+        r <- gene_row[1, ]
+        list(
+          contrast  = ct$label,
+          treatment = ct$treatment,
+          reference = ct$reference,
+          baseMean  = if (!is.null(r$baseMean) && !is.na(r$baseMean)) round(r$baseMean, 2) else NULL,
+          log2FC    = if (!is.null(r$log2FC)   && !is.na(r$log2FC))   round(r$log2FC,  4) else NULL,
+          lfcSE     = if (!is.null(r$lfcSE)    && !is.na(r$lfcSE))    round(r$lfcSE,   4) else NULL,
+          pvalue    = if (!is.null(r$pvalue)   && !is.na(r$pvalue))   signif(r$pvalue, 4) else NULL,
+          padj      = if (!is.null(r$padj)     && !is.na(r$padj))     signif(r$padj,   4) else NULL
+        )
+      })
+    } else NULL
+  }, error = function(e) NULL)
+  # Drop NULLs
+  contrast_stats <- Filter(Negate(is.null), contrast_stats)
+  if (length(contrast_stats) == 0) contrast_stats <- NULL
+
+  list(
+    image         = jsonlite::base64_enc(img_bytes),
+    groupSummary  = group_summary,
+    contrastStats = contrast_stats
+  )
 }
 
 # ── BioMart annotation ─────────────────────────────────────────────────────────
