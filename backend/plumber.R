@@ -986,6 +986,7 @@ function(req, res) {
   body          <- fromJSON(rawToChar(req$bodyRaw))
   session_id    <- body$sessionId
   fdr           <- if (!is.null(body$fdr))          as.numeric(body$fdr)        else 0.05
+  min_lfc       <- if (!is.null(body$minLfc))        as.numeric(body$minLfc)     else 0
   top_n         <- if (!is.null(body$topN))          as.integer(body$topN)       else 50L
   mode          <- if (!is.null(body$mode))          body$mode                   else "vst"
   cluster_rows  <- if (!is.null(body$clusterRows))   isTRUE(body$clusterRows)    else TRUE
@@ -1029,7 +1030,7 @@ function(req, res) {
   # ── Gene selection helper (shared by both modes) ────────────────────────────
   sig_per_contrast <- lapply(contrasts_use, function(ct) {
     df <- ct$results
-    df$gene[!is.na(df$padj) & df$padj < fdr]
+    df$gene[!is.na(df$padj) & df$padj < fdr & abs(df$log2FC) >= min_lfc]
   })
   names(sig_per_contrast) <- sapply(contrasts_use, function(ct) ct$label)
 

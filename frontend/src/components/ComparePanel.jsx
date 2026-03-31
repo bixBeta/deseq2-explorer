@@ -209,13 +209,15 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
   const outerRef = useRef(null)
   const plotRef  = useRef(null)
   const [fdr, setFdr]                 = useState(0.05)
+  const [minLfc, setMinLfc]           = useState(0)
   const [topN, setTopN]               = useState(50)
+  const [geneSet, setGeneSet]         = useState('union')
   const mode = 'vst'
   const [clusterRows, setClusterRows] = useState(true)
   const [clusterCols, setClusterCols] = useState(true)
   const [distMethod, setDistMethod]   = useState('pearson')
   const [colorBy, setColorBy]         = useState('group')
-  const geneSet = 'union'
+
   const [loading, setLoading]         = useState(false)
   const [error, setError]             = useState(null)
   const [hasPlot, setHasPlot]         = useState(false)
@@ -259,14 +261,14 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
     if (prevOpts.current === opts) return
     prevOpts.current = opts
     if (hasPlot) generate()
-  }, [clusterRows, clusterCols, distMethod, colorBy, geneSet, activeLabels, debouncedPalette])
+  }, [clusterRows, clusterCols, distMethod, colorBy, geneSet, activeLabels, debouncedPalette, minLfc])
 
   async function generate() {
     setLoading(true); setError(null); setHasPlot(false)
     try {
       const data = await apiFetch('/api/heatmap', {
         sessionId: session.sessionId,
-        fdr, topN, mode,
+        fdr, minLfc, topN, mode,
         clusterRows, clusterCols,
         distMethod,
         colorBy: colorBy || '',
@@ -347,11 +349,27 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
                    style={{ width: 58, fontSize: '0.78rem', padding: '2px 6px' }} />
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', color: 'var(--text-2)' }}>
+            |FC| ≥
+            <input type="number" value={minLfc} min={0} max={10} step={0.1}
+                   onChange={e => setMinLfc(Number(e.target.value))}
+                   style={{ width: 52, fontSize: '0.78rem', padding: '2px 6px' }} />
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', color: 'var(--text-2)' }}>
             Top N
             <input type="number" value={topN} min={5} max={500} step={5}
                    onChange={e => setTopN(Number(e.target.value))}
                    style={{ width: 58, fontSize: '0.78rem', padding: '2px 6px' }} />
           </label>
+          <select value={geneSet} onChange={e => setGeneSet(e.target.value)}
+                  style={{ fontSize: '0.78rem', padding: '3px 8px', minWidth: 150 }}>
+            <option value="union">All contrasts (union)</option>
+            <option value="intersection">All contrasts (intersect)</option>
+            {contrasts.map((c, i) => (
+              <option key={i} value={c.label ?? c.treatment ?? `Contrast ${i+1}`}>
+                {c.label ?? c.treatment ?? `Contrast ${i+1}`} only
+              </option>
+            ))}
+          </select>
         </ControlGroup>
 
         {/* Annotation */}
