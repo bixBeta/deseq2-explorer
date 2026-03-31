@@ -119,26 +119,26 @@ export default function MAPlot({ design, session, annMap }) {
     }))
 
     const layout = {
-      title: { text: plotLabel, font: { size: 14, color: getComputedStyle(document.documentElement).getPropertyValue('--text-1').trim() || '#1e293b' } },
+      title: { text: plotLabel, font: { size: 14, color: getComputedStyle(document.body).getPropertyValue('--text-1').trim() || getComputedStyle(document.documentElement).getPropertyValue('--text-1').trim() || '#1e293b' } },
       xaxis: {
         title: 'log₁₀(baseMean + 1)',
-        gridcolor: getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || '#e2e8f0',
+        gridcolor: getComputedStyle(document.body).getPropertyValue('--border').trim() || getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || '#e2e8f0',
         zeroline: false,
-        color: getComputedStyle(document.documentElement).getPropertyValue('--text-2').trim() || '#475569',
+        color: getComputedStyle(document.body).getPropertyValue('--text-2').trim() || getComputedStyle(document.documentElement).getPropertyValue('--text-2').trim() || '#475569',
       },
       yaxis: {
         title: 'log₂ Fold Change',
-        gridcolor: getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || '#e2e8f0',
+        gridcolor: getComputedStyle(document.body).getPropertyValue('--border').trim() || getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || '#e2e8f0',
         zeroline: true,
-        zerolinecolor: getComputedStyle(document.documentElement).getPropertyValue('--text-3').trim() || '#94a3b8',
+        zerolinecolor: getComputedStyle(document.body).getPropertyValue('--text-3').trim() || getComputedStyle(document.documentElement).getPropertyValue('--text-3').trim() || '#94a3b8',
         zerolinewidth: 1.5,
-        color: getComputedStyle(document.documentElement).getPropertyValue('--text-2').trim() || '#475569',
+        color: getComputedStyle(document.body).getPropertyValue('--text-2').trim() || getComputedStyle(document.documentElement).getPropertyValue('--text-2').trim() || '#475569',
       },
-      plot_bgcolor:  getComputedStyle(document.documentElement).getPropertyValue('--bg-panel').trim()  || '#ffffff',
-      paper_bgcolor: getComputedStyle(document.documentElement).getPropertyValue('--bg-panel').trim()  || '#ffffff',
+      plot_bgcolor:  getComputedStyle(document.body).getPropertyValue('--bg-panel').trim() || getComputedStyle(document.documentElement).getPropertyValue('--bg-panel').trim(),
+      paper_bgcolor: getComputedStyle(document.body).getPropertyValue('--bg-panel').trim() || getComputedStyle(document.documentElement).getPropertyValue('--bg-panel').trim(),
       legend: {
         orientation: 'h', y: -0.13, x: 0.5, xanchor: 'center',
-        font: { size: 11, color: getComputedStyle(document.documentElement).getPropertyValue('--text-2').trim() || '#475569' },
+        font: { size: 11, color: getComputedStyle(document.body).getPropertyValue('--text-2').trim() || getComputedStyle(document.documentElement).getPropertyValue('--text-2').trim() || '#475569' },
       },
       annotations,
       height: 800,
