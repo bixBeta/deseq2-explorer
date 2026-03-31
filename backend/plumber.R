@@ -1078,7 +1078,7 @@ function(req, res) {
     )
 
   } else {
-    # ── Mode: normalized counts (Z-scored, log2+1 transformed) ────────────────
+    # ── Mode: varianceStabilizingTransformation() counts (Z-scored per gene) ───
     expr_mat <- if (!is.null(saved$norm_matrix)) saved$norm_matrix else saved$vst_matrix
     if (is.null(expr_mat)) stop("Normalized count matrix not found — please re-run the analysis")
     if (!is.null(saved$norm_matrix)) expr_mat <- log2(expr_mat + 1)

@@ -293,8 +293,8 @@ function SectionPCA() {
     <>
       <H2>✦ PCA Explorer</H2>
       <P>
-        The PCA tab runs principal component analysis on the variance-stabilising
-        transformed (VST) counts and displays an interactive scatter plot.
+        The PCA tab runs principal component analysis on counts transformed with
+        DESeq2's <code>varianceStabilizingTransformation()</code> and displays an interactive scatter plot.
       </P>
       <H3>Scatter plot controls</H3>
       <Ul items={[
@@ -334,8 +334,8 @@ function SectionCompare() {
       </P>
       <H3>▦ Heatmap</H3>
       <P>
-        An interactive heatmap of the top N DEGs across samples, coloured by VST-normalised
-        expression (z-scored per gene). Samples are grouped by metadata column. Hover over
+        An interactive heatmap of the top N DEGs across samples, coloured by
+        <code>varianceStabilizingTransformation()</code>-normalised expression (z-scored per gene). Samples are grouped by metadata column. Hover over
         cells to see exact values. Generated via heatmaply on the server.
       </P>
       <H3>♩ Gene Explorer</H3>

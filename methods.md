@@ -24,7 +24,7 @@ If the filtered gene list exceeds `topN` (default: 50), genes are ranked by mean
 ### Display modes
 
 **Normalized counts (VST Z-score)**
-VST-normalized counts are extracted from the DESeq2 `vst()` output. Each gene (row) is Z-score standardized across samples (`scale = "row"`). Genes with zero variance are set to 0. This is the default display mode.
+VST-normalized counts are extracted from the DESeq2 `varianceStabilizingTransformation()` output (run with `blind = FALSE`). Each gene (row) is Z-score standardized across samples. Genes with zero variance are set to 0. This is the default display mode.
 
 **log₂FC across contrasts**
 A matrix of log₂ fold changes is built with genes as rows and contrasts as columns. Missing values (gene not tested in a contrast) are set to 0. No additional scaling is applied.

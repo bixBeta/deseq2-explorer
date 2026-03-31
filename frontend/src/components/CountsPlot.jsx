@@ -187,7 +187,7 @@ export default function CountsPlot({ countDist, design, metadata, sampleLabels =
                 <path d="M1 10 Q3 2 5 6 Q7 10 9 4 Q11 0 12 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
                 <circle cx="5" cy="6" r="1.2" fill="currentColor"/>
                 <circle cx="9" cy="4" r="1.2" fill="currentColor"/>
-              </svg> VST normalized</>
+              </svg> VST (varianceStabilizingTransformation)</>
             )],
           ].map(([key, lbl]) => (
             <button key={key} onClick={() => setCountType(key)}
