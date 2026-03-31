@@ -369,6 +369,17 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
           </select>
         </ControlGroup>
 
+        {/* Annotation */}
+        {metaCols.length > 0 && (
+          <ControlGroup label="Annotation">
+            <select value={colorBy} onChange={e => setColorBy(e.target.value)}
+                    style={{ fontSize: '0.78rem', padding: '3px 8px', minWidth: 120 }}>
+              {metaCols.map(col => <option key={col} value={col}>{col}</option>)}
+            </select>
+            {loading && <span style={{ fontSize: '0.7rem', color: 'var(--text-3)', animation: 'pulse 1s infinite' }}>updating…</span>}
+          </ControlGroup>
+        )}
+
         {/* Clustering */}
         <ControlGroup label="Clustering">
           <Switch val={clusterRows} set={setClusterRows} label="Rows" />
@@ -380,17 +391,6 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
             </select>
           )}
         </ControlGroup>
-
-        {/* Annotation */}
-        {metaCols.length > 0 && (
-          <ControlGroup label="Annotation">
-            <select value={colorBy} onChange={e => setColorBy(e.target.value)}
-                    style={{ fontSize: '0.78rem', padding: '3px 8px', minWidth: 120 }}>
-              {metaCols.map(col => <option key={col} value={col}>{col}</option>)}
-            </select>
-            {loading && <span style={{ fontSize: '0.7rem', color: 'var(--text-3)', animation: 'pulse 1s infinite' }}>updating…</span>}
-          </ControlGroup>
-        )}
 
         {/* Generate */}
         <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 8, marginLeft: 'auto' }}>
