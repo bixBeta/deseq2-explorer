@@ -339,11 +339,11 @@ export default function App() {
                 backdropFilter: 'blur(12px)',
               }}>
         {/* Logo */}
-        <div className="flex items-center gap-3">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <AppIcon />
-          <TRExLogo size={28} />
-          <span style={{ fontSize: '0.65rem', color: 'var(--text-3)', opacity: 0.4, fontWeight: 300, margin: '0 -6px' }}>×</span>
-          <span className="font-bold text-base gradient-text">DESeq2 ExploreR</span>
+          <span style={{ fontSize: '0.6rem', color: 'var(--text-3)', opacity: 0.4, fontWeight: 300 }}>×</span>
+          <TRExLogo size={34} />
+          <span className="font-bold text-base gradient-text" style={{ marginLeft: 6 }}>DESeq2 ExploreR</span>
         </div>
 
         {/* Step breadcrumb */}
