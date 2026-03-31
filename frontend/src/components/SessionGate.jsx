@@ -5,7 +5,7 @@ const HEX = 'M 37,20 L 28.5,34.7 L 11.5,34.7 L 3,20 L 11.5,5.3 L 28.5,5.3 Z'
 
 function AppIconLarge() {
   return (
-    <svg width="56" height="56" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg width="48" height="48" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="sg-bg" x1="3" y1="5" x2="37" y2="35" gradientUnits="userSpaceOnUse">
           <stop offset="0%"   stopColor="#1e1b4b"/>
@@ -27,12 +27,46 @@ function AppIconLarge() {
   )
 }
 
+const STEPS = [
+  {
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+        <rect x="3" y="3" width="14" height="14" rx="2" stroke="currentColor" strokeWidth="1.4"/>
+        <path d="M7 10h6M10 7v6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+      </svg>
+    ),
+    title: 'Upload',
+    desc: 'Load a DESeq2 RDS result or raw count matrix with metadata',
+  },
+  {
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+        <circle cx="10" cy="10" r="7" stroke="currentColor" strokeWidth="1.4"/>
+        <path d="M10 6v4l3 2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+      </svg>
+    ),
+    title: 'Analyse',
+    desc: 'Run DESeq2 with custom contrasts, FDR thresholds and LFC shrinkage',
+  },
+  {
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+        <path d="M3 14 Q6 6 10 10 Q14 14 17 6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+        <circle cx="10" cy="10" r="1.5" fill="currentColor"/>
+      </svg>
+    ),
+    title: 'Explore',
+    desc: 'Interactive PCA, MA plots, heatmaps, violin plots and DE tables',
+  },
+]
+
 export default function SessionGate({ onAuth, onExample }) {
-  const [email, setEmail]     = useState('')
-  const [pin, setPin]         = useState('')
-  const [loading, setLoading] = useState(false)
+  const [email, setEmail]       = useState('')
+  const [pin, setPin]           = useState('')
+  const [loading, setLoading]   = useState(false)
   const [exLoading, setExLoading] = useState(false)
-  const [error, setError]     = useState(null)
+  const [error, setError]       = useState(null)
+  const [showForm, setShowForm] = useState(false)   // false = path selector, true = sign-in form
 
   async function tryExample() {
     setExLoading(true)
@@ -72,82 +106,246 @@ export default function SessionGate({ onAuth, onExample }) {
   return (
     <>
     <ProgressBar active={exLoading} label="Loading example data…" />
-    <div className="w-full max-w-md">
-      {/* Logo */}
-      <div className="text-center mb-8">
-        <div className="mx-auto mb-4" style={{ width: 56, height: 56 }}><AppIconLarge /></div>
-        <h1 className="text-2xl font-bold gradient-text mb-1">DESeq2 ExploreR</h1>
-        <p className="text-sm" style={{ color: 'var(--text-3)' }}>
-          Differential expression analysis
+
+    <div style={{
+      width: '100%', maxWidth: 960,
+      display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32,
+      alignItems: 'start',
+    }}>
+
+      {/* ── Left: Hero + workflow steps ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+
+        {/* Branding */}
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+            <AppIconLarge />
+            <div>
+              <h1 className="text-2xl font-bold gradient-text" style={{ lineHeight: 1.2 }}>DESeq2 ExploreR</h1>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-3)', marginTop: 2 }}>
+                Interactive differential expression analysis
+              </p>
+            </div>
+          </div>
+          <p style={{ fontSize: '0.88rem', color: 'var(--text-2)', lineHeight: 1.7 }}>
+            Upload your RNA-seq count matrix or pre-computed DESeq2 results, define
+            contrasts, and explore differential expression through interactive
+            visualisations — no command line required.
+          </p>
+        </div>
+
+        {/* Workflow steps */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {STEPS.map((s, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'flex-start', gap: 14,
+              padding: '12px 14px', borderRadius: 10,
+              background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)',
+            }}>
+              <div style={{
+                flexShrink: 0, width: 36, height: 36, borderRadius: 8,
+                background: 'rgba(var(--accent-rgb),0.12)', border: '1px solid rgba(var(--accent-rgb),0.2)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: 'var(--accent)',
+              }}>
+                {s.icon}
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                  <span style={{
+                    fontSize: '0.65rem', fontWeight: 700, color: 'var(--accent)',
+                    background: 'rgba(var(--accent-rgb),0.12)', borderRadius: 4,
+                    padding: '1px 6px', letterSpacing: '0.05em',
+                  }}>{String(i + 1).padStart(2, '0')}</span>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-1)' }}>{s.title}</span>
+                </div>
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-3)', lineHeight: 1.5, margin: 0 }}>{s.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Developed by */}
+        <p style={{ fontSize: '0.72rem', color: 'var(--text-3)', opacity: 0.6 }}>
+          Built with DESeq2, R/Plumber, React & Plotly ·{' '}
+          <a href="https://github.com/bixBeta" target="_blank" rel="noopener noreferrer"
+             style={{ color: 'var(--accent)', textDecoration: 'none' }}>@bixBeta</a>
         </p>
       </div>
 
-      <form onSubmit={submit} className="glass p-6 flex flex-col gap-4">
-        <div>
-          <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--text-3)' }}>
-            Email
-          </label>
-          <input type="email" required value={email}
-            onChange={e => setEmail(e.target.value)}
-            placeholder="you@example.com" />
-        </div>
+      {/* ── Right: Path selector or Sign-in form ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-        <div>
-          <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--text-3)' }}>
-            PIN{' '}
-            <span style={{ fontWeight: 400 }}>(4–8 digits — same PIN always shows your sessions)</span>
-          </label>
-          <input type="password" inputMode="numeric" required
-            minLength={4} maxLength={8}
-            value={pin}
-            onChange={e => setPin(e.target.value.replace(/\D/g, ''))}
-            placeholder="••••" />
-        </div>
+        {!showForm ? (
+          /* Path selector */
+          <>
+            <div style={{ marginBottom: 4 }}>
+              <h2 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-1)', marginBottom: 4 }}>
+                Get started
+              </h2>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-3)' }}>
+                Choose how you'd like to proceed
+              </p>
+            </div>
 
-        {error && (
-          <div className="text-xs px-3 py-2 rounded-lg"
-               style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }}>
-            {error}
-          </div>
+            {/* Try example */}
+            <button onClick={tryExample} disabled={exLoading}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 14,
+                      padding: '16px 18px', borderRadius: 12, cursor: exLoading ? 'wait' : 'pointer',
+                      background: 'rgba(45,212,191,0.07)',
+                      border: '1px solid rgba(45,212,191,0.3)',
+                      textAlign: 'left', transition: 'all 0.15s', width: '100%',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(45,212,191,0.12)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(45,212,191,0.07)'}>
+              <div style={{
+                width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+                background: 'rgba(45,212,191,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <path d="M5 2h10M6 2v4L3 13a1.5 1.5 0 001.4 2h11.2A1.5 1.5 0 0017 13l-3-7V2"
+                        stroke="#0f766e" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                  <circle cx="7.5" cy="11" r="0.9" fill="#0f766e"/>
+                  <circle cx="10.5" cy="13" r="0.9" fill="#0f766e"/>
+                </svg>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#0f766e', marginBottom: 2 }}>
+                  {exLoading ? 'Loading example…' : 'Explore Example Data'}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-3)', lineHeight: 1.4 }}>
+                  No account needed — browse a pre-loaded RNA-seq dataset instantly
+                </div>
+              </div>
+            </button>
+
+            {/* New user */}
+            <button onClick={() => setShowForm(true)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 14,
+                      padding: '16px 18px', borderRadius: 12, cursor: 'pointer',
+                      background: 'rgba(var(--accent-rgb),0.06)',
+                      border: '1px solid rgba(var(--accent-rgb),0.25)',
+                      textAlign: 'left', transition: 'all 0.15s', width: '100%',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--accent-rgb),0.12)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--accent-rgb),0.06)'}>
+              <div style={{
+                width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+                background: 'rgba(var(--accent-rgb),0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <circle cx="10" cy="7" r="3" stroke="var(--accent)" strokeWidth="1.4"/>
+                  <path d="M4 17c0-3.3 2.7-6 6-6s6 2.7 6 6" stroke="var(--accent)" strokeWidth="1.4" strokeLinecap="round"/>
+                  <path d="M14 3v4M12 5h4" stroke="var(--accent)" strokeWidth="1.3" strokeLinecap="round"/>
+                </svg>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--accent)', marginBottom: 2 }}>
+                  New User
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-3)', lineHeight: 1.4 }}>
+                  Create a free account with your email + PIN to save sessions and results
+                </div>
+              </div>
+            </button>
+
+            {/* Returning user */}
+            <button onClick={() => setShowForm(true)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 14,
+                      padding: '16px 18px', borderRadius: 12, cursor: 'pointer',
+                      background: 'rgba(255,255,255,0.04)',
+                      border: '1px solid var(--border)',
+                      textAlign: 'left', transition: 'all 0.15s', width: '100%',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}>
+              <div style={{
+                width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+                background: 'rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <circle cx="10" cy="7" r="3" stroke="var(--text-2)" strokeWidth="1.4"/>
+                  <path d="M4 17c0-3.3 2.7-6 6-6s6 2.7 6 6" stroke="var(--text-2)" strokeWidth="1.4" strokeLinecap="round"/>
+                </svg>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-1)', marginBottom: 2 }}>
+                  Returning User
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-3)', lineHeight: 1.4 }}>
+                  Sign in with your email + PIN to resume previous sessions
+                </div>
+              </div>
+            </button>
+
+            {error && (
+              <div className="text-xs px-3 py-2 rounded-lg"
+                   style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }}>
+                {error}
+              </div>
+            )}
+          </>
+        ) : (
+          /* Sign-in form */
+          <>
+            <button onClick={() => { setShowForm(false); setError(null) }}
+                    style={{
+                      alignSelf: 'flex-start', background: 'none', border: 'none',
+                      cursor: 'pointer', fontSize: '0.8rem', color: 'var(--text-3)',
+                      display: 'flex', alignItems: 'center', gap: 4, padding: 0,
+                    }}>
+              ← Back
+            </button>
+
+            <div>
+              <h2 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-1)', marginBottom: 4 }}>
+                Sign in
+              </h2>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-3)' }}>
+                New users are created automatically on first sign-in
+              </p>
+            </div>
+
+            <form onSubmit={submit} className="glass p-6 flex flex-col gap-4">
+              <div>
+                <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--text-3)' }}>
+                  Email
+                </label>
+                <input type="email" required value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="you@example.com" />
+              </div>
+
+              <div>
+                <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--text-3)' }}>
+                  PIN{' '}
+                  <span style={{ fontWeight: 400 }}>(4–8 digits — same PIN always shows your sessions)</span>
+                </label>
+                <input type="password" inputMode="numeric" required
+                  minLength={4} maxLength={8}
+                  value={pin}
+                  onChange={e => setPin(e.target.value.replace(/\D/g, ''))}
+                  placeholder="••••" />
+              </div>
+
+              {error && (
+                <div className="text-xs px-3 py-2 rounded-lg"
+                     style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }}>
+                  {error}
+                </div>
+              )}
+
+              <button type="submit" className="btn-primary w-full justify-center mt-1" disabled={loading}>
+                {loading
+                  ? <><span className="animate-spin inline-block">⟳</span> Verifying…</>
+                  : 'Continue →'}
+              </button>
+            </form>
+          </>
         )}
-
-        <button type="submit" className="btn-primary w-full justify-center mt-1" disabled={loading}>
-          {loading
-            ? <><span className="animate-spin inline-block">⟳</span> Verifying…</>
-            : 'Continue →'}
-        </button>
-      </form>
-
-      <p className="text-center text-xs mt-4" style={{ color: 'var(--text-3)' }}>
-        New users will be prompted to create their first session after signing in
-      </p>
-
-      {/* Example data */}
-      <div className="mt-6">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-          <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-3)', whiteSpace: 'nowrap' }}>or explore without an account</span>
-          <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-        </div>
-        <button
-          onClick={tryExample}
-          disabled={exLoading}
-          className="w-full"
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            padding: '10px 16px', borderRadius: 10, border: '1px solid rgba(45,212,191,0.25)',
-            background: 'rgba(45,212,191,0.06)', color: '#0f766e',
-            fontSize: '0.85rem', fontWeight: 500, cursor: exLoading ? 'wait' : 'pointer',
-            transition: 'all 0.15s',
-          }}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path d="M5 2h6M6 2v3.5L3 11a1.5 1.5 0 001.4 2h7.2A1.5 1.5 0 0013 11L10 5.5V2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-            <circle cx="6.5" cy="9" r="0.75" fill="currentColor"/>
-            <circle cx="9" cy="10.5" r="0.75" fill="currentColor"/>
-          </svg>
-          {exLoading ? 'Loading example…' : 'Browse Example Data'}
-        </button>
       </div>
     </div>
     </>
