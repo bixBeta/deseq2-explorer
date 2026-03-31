@@ -787,6 +787,44 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
     URL.revokeObjectURL(url)
   }
 
+  function downloadFilteredCSV() {
+    const geneHdr = [
+      'gene_id', 'symbol',
+      ...(hasCoords    ? ['chr', 'start', 'end']                              : []),
+      ...(hasDesc      ? ['description']                                       : []),
+      ...(hasBiotype   ? ['biotype']                                           : []),
+      ...(hasOrthologs ? ['human_ortholog']                                   : []),
+    ]
+    const statHdrs = contrasts.flatMap(ct => {
+      const l = ct.label ?? ct.treatment ?? 'Contrast'
+      return STAT_COLS.map(s => {
+        const colName = s.key === 'meanTreatment' ? `${l}__mean_${ct.treatment ?? 'trt'}`
+                      : s.key === 'meanReference' ? `${l}__mean_${ct.reference ?? 'ref'}`
+                      : `${l}__${s.key}`
+        return colName
+      })
+    })
+    const hdr  = [...geneHdr, ...statHdrs].join(',')
+    const body = sorted.map(r => {
+      const gene = [
+        r.gene, r.symbol,
+        ...(hasCoords    ? [r.chr ?? '', r.start ?? '', r.end ?? '']          : []),
+        ...(hasDesc      ? [`"${(r.description || '').replace(/"/g,'""')}"`]  : []),
+        ...(hasBiotype   ? [r.biotype ?? '']                                  : []),
+        ...(hasOrthologs ? [r.humanOrtholog ?? '']                            : []),
+      ]
+      const stats = contrasts.flatMap(ct => {
+        const l = ct.label ?? ct.treatment ?? 'Contrast'
+        return STAT_COLS.map(s => r.contrasts[l]?.[s.key] ?? '')
+      })
+      return [...gene, ...stats].join(',')
+    }).join('\n')
+    const blob = new Blob([hdr + '\n' + body], { type: 'text/csv' })
+    const url  = URL.createObjectURL(blob)
+    Object.assign(document.createElement('a'), { href: url, download: `de_pivot_filtered_${sorted.length}genes.csv` }).click()
+    URL.revokeObjectURL(url)
+  }
+
   const fmtN   = (v, d = 3) => {
     if (v == null) return '—'
     const n = typeof v === 'number' ? v : Number(v)
@@ -881,9 +919,17 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
         <span style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>
           {sorted.length.toLocaleString()} genes
         </span>
-        <button className="btn-ghost" onClick={downloadCSV} style={{ marginLeft: 'auto', fontSize: '0.78rem' }}>
-          ↓ CSV
-        </button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          <button className="btn-ghost" onClick={downloadCSV} style={{ fontSize: '0.78rem' }}
+                  title="Download all genes (no filters)">
+            ↓ All CSV
+          </button>
+          <button className="btn-ghost" onClick={downloadFilteredCSV} style={{ fontSize: '0.78rem' }}
+                  title={`Download filtered view (${sorted.length.toLocaleString()} genes)`}
+                  disabled={sorted.length === 0}>
+            ↓ Filtered CSV
+          </button>
+        </div>
       </div>
 
       {/* ── Advanced filters panel ── */}
