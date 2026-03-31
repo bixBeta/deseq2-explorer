@@ -128,11 +128,9 @@ const HEATMAP_PRESETS = [
 ]
 
 function PaletteRow({ palette, setPalette }) {
-  const updateColor = (i, val) => {
-    const next = [...palette]
-    next[i] = val
-    setPalette(next)
-  }
+  // drafts: live preview while picker is open; only committed to palette on picker close
+  const [drafts, setDrafts] = useState(palette)
+  useEffect(() => { setDrafts(palette) }, [palette])
 
   const labels = ['Low', 'Mid', 'High']
 
@@ -160,7 +158,7 @@ function PaletteRow({ palette, setPalette }) {
 
       {/* Custom pickers */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {palette.map((col, i) => (
+        {drafts.map((col, i) => (
           <label key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer' }}>
             <span style={{ fontSize: '0.62rem', color: 'var(--text-3)', textTransform: 'uppercase' }}>{labels[i]}</span>
             <div style={{ position: 'relative', width: 28, height: 28 }}>
@@ -168,14 +166,29 @@ function PaletteRow({ palette, setPalette }) {
                 display: 'block', width: 28, height: 28, borderRadius: 5,
                 background: col, border: '2px solid var(--border)', cursor: 'pointer',
               }} />
-              <input type="color" value={col} onChange={e => updateColor(i, e.target.value)}
+              <input type="color" value={col}
+                     onInput={e => {
+                       // live swatch preview while dragging — does NOT update palette
+                       const next = [...drafts]; next[i] = e.target.value; setDrafts(next)
+                     }}
+                     onChange={e => {
+                       // fires when picker closes — commit to palette and trigger regen
+                       const next = [...drafts]; next[i] = e.target.value
+                       setDrafts(next); setPalette(next)
+                     }}
                      style={{
                        position: 'absolute', inset: 0, opacity: 0,
                        width: '100%', height: '100%', cursor: 'pointer',
                      }} />
             </div>
             <input type="text" value={col} maxLength={7}
-                   onChange={e => { if (/^#[0-9a-fA-F]{0,6}$/.test(e.target.value)) updateColor(i, e.target.value) }}
+                   onChange={e => {
+                     if (/^#[0-9a-fA-F]{0,6}$/.test(e.target.value)) {
+                       const next = [...drafts]; next[i] = e.target.value
+                       setDrafts(next)
+                       if (e.target.value.length === 7) setPalette(next)
+                     }
+                   }}
                    style={{
                      width: 60, fontSize: '0.65rem', padding: '1px 4px', textAlign: 'center',
                      fontFamily: 'monospace', background: 'var(--bg-card2)',
