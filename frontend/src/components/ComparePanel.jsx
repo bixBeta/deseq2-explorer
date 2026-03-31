@@ -210,12 +210,12 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
   const plotRef  = useRef(null)
   const [fdr, setFdr]                 = useState(0.05)
   const [topN, setTopN]               = useState(50)
-  const [mode, setMode]               = useState('vst')
+  const mode = 'vst'
   const [clusterRows, setClusterRows] = useState(true)
   const [clusterCols, setClusterCols] = useState(true)
   const [distMethod, setDistMethod]   = useState('pearson')
   const [colorBy, setColorBy]         = useState('group')
-  const [geneSet, setGeneSet]         = useState('union')
+  const geneSet = 'union'
   const [loading, setLoading]         = useState(false)
   const [error, setError]             = useState(null)
   const [hasPlot, setHasPlot]         = useState(false)
@@ -250,11 +250,6 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
     [contrasts]
   )
 
-  // If current geneSet is a contrast label no longer active, reset to union
-  useEffect(() => {
-    if (geneSet !== 'union' && geneSet !== 'intersection' && !activeLabels.includes(geneSet))
-      setGeneSet('union')
-  }, [activeLabels])
 
   // Auto-regenerate on any option change when a plot already exists
   const prevOpts = useRef(null)
@@ -357,26 +352,6 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
                    onChange={e => setTopN(Number(e.target.value))}
                    style={{ width: 58, fontSize: '0.78rem', padding: '2px 6px' }} />
           </label>
-        </ControlGroup>
-
-        {/* Mode + Gene set */}
-        <ControlGroup label="Data">
-          <div style={{ display: 'flex', gap: 2, padding: '2px', borderRadius: 6,
-                        background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}>
-            {[['vst', 'Norm Z-score'], ['lfc', 'log₂FC']].map(([k, lbl]) => (
-              <button key={k} onClick={() => setMode(k)} style={TAB_BTN(mode === k)}>{lbl}</button>
-            ))}
-          </div>
-          <select value={geneSet} onChange={e => setGeneSet(e.target.value)}
-                  style={{ fontSize: '0.78rem', padding: '3px 8px', minWidth: 150 }}>
-            <option value="union">Union (any contrast)</option>
-            <option value="intersection">Intersection (all)</option>
-            {contrasts.map((c, i) => (
-              <option key={i} value={c.label ?? c.treatment ?? `Contrast ${i+1}`}>
-                {c.label ?? c.treatment ?? `Contrast ${i+1}`} only
-              </option>
-            ))}
-          </select>
         </ControlGroup>
 
         {/* Annotation */}
