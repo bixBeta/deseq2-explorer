@@ -119,21 +119,26 @@ export default function MAPlot({ design, session, annMap }) {
     }))
 
     const layout = {
-      title: { text: plotLabel, font: { size: 14, color: '#1e293b' } },
+      title: { text: plotLabel, font: { size: 14, color: getComputedStyle(document.documentElement).getPropertyValue('--text-1').trim() || '#1e293b' } },
       xaxis: {
         title: 'log₁₀(baseMean + 1)',
-        gridcolor: '#e2e8f0', zeroline: false, color: '#475569',
+        gridcolor: getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || '#e2e8f0',
+        zeroline: false,
+        color: getComputedStyle(document.documentElement).getPropertyValue('--text-2').trim() || '#475569',
       },
       yaxis: {
         title: 'log₂ Fold Change',
-        gridcolor: '#e2e8f0', zeroline: true,
-        zerolinecolor: '#94a3b8', zerolinewidth: 1.5, color: '#475569',
+        gridcolor: getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || '#e2e8f0',
+        zeroline: true,
+        zerolinecolor: getComputedStyle(document.documentElement).getPropertyValue('--text-3').trim() || '#94a3b8',
+        zerolinewidth: 1.5,
+        color: getComputedStyle(document.documentElement).getPropertyValue('--text-2').trim() || '#475569',
       },
-      plot_bgcolor:  '#ffffff',
-      paper_bgcolor: '#ffffff',
+      plot_bgcolor:  getComputedStyle(document.documentElement).getPropertyValue('--bg-panel').trim()  || '#ffffff',
+      paper_bgcolor: getComputedStyle(document.documentElement).getPropertyValue('--bg-panel').trim()  || '#ffffff',
       legend: {
         orientation: 'h', y: -0.13, x: 0.5, xanchor: 'center',
-        font: { size: 11, color: '#475569' },
+        font: { size: 11, color: getComputedStyle(document.documentElement).getPropertyValue('--text-2').trim() || '#475569' },
       },
       annotations,
       height: 800,
