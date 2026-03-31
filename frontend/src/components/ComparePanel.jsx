@@ -128,20 +128,29 @@ const HEATMAP_PRESETS = [
 ]
 
 function PaletteRow({ palette, setPalette }) {
-  // drafts: live preview while picker is open; only committed to palette on picker close
+  // drafts: live swatch preview; setPalette is debounced via timer so drag doesn't spam regen
   const [drafts, setDrafts] = useState(palette)
+  const commitTimer = useRef(null)
   useEffect(() => { setDrafts(palette) }, [palette])
 
   const labels = ['Low', 'Mid', 'High']
 
+  function handleColorChange(i, val) {
+    const next = [...drafts]; next[i] = val
+    setDrafts(next)
+    // debounce the commit so regen only fires after user stops dragging
+    clearTimeout(commitTimer.current)
+    commitTimer.current = setTimeout(() => setPalette(next), 600)
+  }
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-      {/* Preset chips */}
+      {/* Preset chips — commit immediately */}
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
         {HEATMAP_PRESETS.map(p => {
           const active = JSON.stringify(p.colors) === JSON.stringify(palette)
           return (
-            <button key={p.label} onClick={() => setPalette(p.colors)}
+            <button key={p.label} onClick={() => { clearTimeout(commitTimer.current); setPalette(p.colors) }}
                     title={p.label}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 0,
@@ -167,15 +176,8 @@ function PaletteRow({ palette, setPalette }) {
                 background: col, border: '2px solid var(--border)', cursor: 'pointer',
               }} />
               <input type="color" value={col}
-                     onInput={e => {
-                       // live swatch preview while dragging — does NOT update palette
-                       const next = [...drafts]; next[i] = e.target.value; setDrafts(next)
-                     }}
-                     onChange={e => {
-                       // fires when picker closes — commit to palette and trigger regen
-                       const next = [...drafts]; next[i] = e.target.value
-                       setDrafts(next); setPalette(next)
-                     }}
+                     onInput={e => handleColorChange(i, e.target.value)}
+                     onChange={e => handleColorChange(i, e.target.value)}
                      style={{
                        position: 'absolute', inset: 0, opacity: 0,
                        width: '100%', height: '100%', cursor: 'pointer',
@@ -184,9 +186,8 @@ function PaletteRow({ palette, setPalette }) {
             <input type="text" value={col} maxLength={7}
                    onChange={e => {
                      if (/^#[0-9a-fA-F]{0,6}$/.test(e.target.value)) {
-                       const next = [...drafts]; next[i] = e.target.value
-                       setDrafts(next)
-                       if (e.target.value.length === 7) setPalette(next)
+                       const next = [...drafts]; next[i] = e.target.value; setDrafts(next)
+                       if (e.target.value.length === 7) { clearTimeout(commitTimer.current); setPalette(next) }
                      }
                    }}
                    style={{
