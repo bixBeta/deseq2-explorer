@@ -1,6 +1,15 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import Plotly from 'plotly.js-dist-min'
 
+function useDebounce(value, delay) {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay)
+    return () => clearTimeout(t)
+  }, [value, delay])
+  return debounced
+}
+
 // ── Shared fetch helper ────────────────────────────────────────────────────────
 async function apiFetch(path, body) {
   const res = await fetch(path, {
@@ -46,15 +55,18 @@ function UpSetTab({ session, contrasts }) {
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState(null)
 
-  async function generate() {
+  const dFdr    = useDebounce(fdr,    600)
+  const dMinLfc = useDebounce(minLfc, 600)
+
+  useEffect(() => {
+    if (!session?.sessionId || !contrasts?.length) return
     setLoading(true); setError(null); setImgSrc(null)
-    try {
-      const activeLabels = (contrasts || []).map(c => c.label ?? `${c.treatment}|${c.reference}`)
-      const data = await apiFetch('/api/upset', { sessionId: session.sessionId, fdr, minLfc, activeLabels })
-      setImgSrc(`data:image/png;base64,${data.image}`)
-    } catch (e) { setError(e.message) }
-    finally { setLoading(false) }
-  }
+    const activeLabels = contrasts.map(c => c.label ?? `${c.treatment}|${c.reference}`)
+    apiFetch('/api/upset', { sessionId: session.sessionId, fdr: dFdr, minLfc: dMinLfc, activeLabels })
+      .then(data => { setImgSrc(`data:image/png;base64,${data.image}`) })
+      .catch(e  => { setError(e.message) })
+      .finally(() => setLoading(false))
+  }, [session, contrasts, dFdr, dMinLfc])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -71,9 +83,7 @@ function UpSetTab({ session, contrasts }) {
                  onChange={e => setMinLfc(Number(e.target.value))}
                  style={{ width: 70, fontSize: '0.8rem', padding: '2px 6px' }} />
         </label>
-        <button className="btn-ghost" onClick={generate} disabled={loading}>
-          {loading ? 'Generating…' : 'Generate UpSet Plot'}
-        </button>
+        {loading && <span style={{ fontSize: '0.78rem', color: 'var(--text-3)', fontStyle: 'italic' }}>Generating…</span>}
       </div>
 
       {error && <ErrorBox msg={error} />}
@@ -84,7 +94,7 @@ function UpSetTab({ session, contrasts }) {
         </div>
       )}
 
-      {!imgSrc && !loading && !error && <Placeholder text='Configure parameters and click "Generate UpSet Plot" to visualize contrast overlaps.' />}
+      {!imgSrc && !loading && !error && <Placeholder text="Waiting for data…" />}
     </div>
   )
 }
