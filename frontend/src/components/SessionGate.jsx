@@ -3,6 +3,27 @@ import ProgressBar from './ProgressBar'
 
 const HEX = 'M 37,20 L 28.5,34.7 L 11.5,34.7 L 3,20 L 11.5,5.3 L 28.5,5.3 Z'
 
+function TRExLogoLarge() {
+  return (
+    <svg width="48" height="48" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="trex-lg-bg" x1="3" y1="5" x2="37" y2="35" gradientUnits="userSpaceOnUse">
+          <stop offset="0%"   stopColor="#1a0a2e"/>
+          <stop offset="100%" stopColor="#2d1a4a"/>
+        </linearGradient>
+        <filter id="trex-lg-shadow" x="-15%" y="-15%" width="130%" height="130%">
+          <feDropShadow dx="0" dy="2" stdDeviation="2" floodColor="#a855f7" floodOpacity="0.3"/>
+        </filter>
+      </defs>
+      <path d={HEX} fill="url(#trex-lg-bg)" filter="url(#trex-lg-shadow)" stroke="#a855f7" strokeWidth="1.2"/>
+      <text x="20" y="17" textAnchor="middle" fill="#e2c4ff"
+            fontFamily="Inter,system-ui,sans-serif" fontWeight="800" fontSize="10">TR</text>
+      <text x="20" y="29" textAnchor="middle" fill="#c084fc"
+            fontFamily="Inter,system-ui,sans-serif" fontWeight="700" fontSize="10">Ex</text>
+    </svg>
+  )
+}
+
 function AppIconLarge() {
   return (
     <svg width="48" height="48" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -120,6 +141,8 @@ export default function SessionGate({ onAuth, onExample }) {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
             <AppIconLarge />
+            <span style={{ fontSize: '1rem', color: 'var(--text-3)', opacity: 0.4, fontWeight: 200 }}>×</span>
+            <TRExLogoLarge />
             <div>
               <h1 className="text-2xl font-bold gradient-text" style={{ lineHeight: 1.2 }}>DESeq2 ExploreR</h1>
               <p style={{ fontSize: '0.82rem', color: 'var(--text-3)', marginTop: 2 }}>

@@ -14,6 +14,27 @@ const ICON_VARIANT = 'C'
 // Flat-top hexagon path centered at (20,20) r=17
 const HEX = 'M 37,20 L 28.5,34.7 L 11.5,34.7 L 3,20 L 11.5,5.3 L 28.5,5.3 Z'
 
+function TRExLogo({ size = 34 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="trex-bg" x1="3" y1="5" x2="37" y2="35" gradientUnits="userSpaceOnUse">
+          <stop offset="0%"   stopColor="#1a0a2e"/>
+          <stop offset="100%" stopColor="#2d1a4a"/>
+        </linearGradient>
+        <filter id="trex-shadow" x="-15%" y="-15%" width="130%" height="130%">
+          <feDropShadow dx="0" dy="2" stdDeviation="2" floodColor="#a855f7" floodOpacity="0.3"/>
+        </filter>
+      </defs>
+      <path d={HEX} fill="url(#trex-bg)" filter="url(#trex-shadow)" stroke="#a855f7" strokeWidth="1.2"/>
+      <text x="20" y="17" textAnchor="middle" fill="#e2c4ff"
+            fontFamily="Inter,system-ui,sans-serif" fontWeight="800" fontSize="10">TR</text>
+      <text x="20" y="29" textAnchor="middle" fill="#c084fc"
+            fontFamily="Inter,system-ui,sans-serif" fontWeight="700" fontSize="10">Ex</text>
+    </svg>
+  )
+}
+
 function AppIcon({ variant = ICON_VARIANT }) {
   // Variant A — clean hexagon, deep indigo→violet, bold D
   if (variant === 'A') return (
@@ -321,6 +342,8 @@ export default function App() {
         <div className="flex items-center gap-3">
           <AppIcon />
           <span className="font-bold text-base gradient-text">DESeq2 ExploreR</span>
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-3)', opacity: 0.5, fontWeight: 300 }}>×</span>
+          <TRExLogo size={28} />
         </div>
 
         {/* Step breadcrumb */}
