@@ -691,7 +691,7 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
             {hasDesc      && <col style={{ width: COL.desc?.w    ?? 160 }} />}
             {hasBiotype   && <col style={{ width: COL.biotype?.w ?? 110 }} />}
             {hasOrthologs && <col style={{ width: COL.ortho?.w   ??  90 }} />}
-            {contrastLabels.flatMap(lbl => STAT_COLS.map(s => <col key={`${lbl}_${s.key}`} style={{ width: s.key === 'meanTreatment' || s.key === 'meanReference' ? 90 : 80 }} />))}
+            {contrastLabels.flatMap(lbl => STAT_COLS.map(s => <col key={`${lbl}_${s.key}`} style={{ width: s.key === 'meanTreatment' || s.key === 'meanReference' ? 120 : 80 }} />))}
           </colgroup>
           <thead style={{ position: 'sticky', top: 0, zIndex: 22, background: 'var(--bg-panel)' }}>
             {/* Row 1: frozen Gene banner + contrast group headers.
@@ -755,7 +755,9 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
                   return (
                     <th key={`${lbl}_${s.key}`}
                         onClick={() => toggleSort(lbl, s.key)}
-                        style={{ padding: '4px 8px', whiteSpace: 'nowrap', cursor: 'pointer',
+                        style={{ padding: '4px 8px',
+                                 whiteSpace: (s.key === 'meanTreatment' || s.key === 'meanReference') ? 'normal' : 'nowrap',
+                                 wordBreak: 'break-word', cursor: 'pointer',
                                  fontWeight: active ? 700 : 400, fontSize: '0.68rem',
                                  color: active ? ACCENT_TEXT : 'var(--text-3)',
                                  background: active ? 'rgba(var(--accent-rgb),0.04)' : 'var(--bg-panel)',
