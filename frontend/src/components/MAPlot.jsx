@@ -239,18 +239,6 @@ export default function MAPlot({ design, session, annMap }) {
           </span>
         </div>
 
-        {loading && (
-          <span style={{ fontSize: '0.72rem', color: 'var(--text-3)', fontStyle: 'italic',
-                         display: 'flex', alignItems: 'center', gap: 4 }}>
-            <span style={{
-              width: 8, height: 8, borderRadius: '50%',
-              border: '2px solid var(--accent)', borderTopColor: 'transparent',
-              display: 'inline-block', animation: 'spin 0.7s linear infinite',
-            }} />
-            Loading…
-          </span>
-        )}
-
         <span style={{ fontSize: '0.68rem', color: 'var(--text-3)', marginLeft: 'auto' }}>
           Click a point to open violin plot
         </span>
@@ -267,15 +255,34 @@ export default function MAPlot({ design, session, annMap }) {
         </div>
       )}
 
-      {/* ── Plot ── */}
+      {/* ── Plot (with centered loading overlay) ── */}
       {!rawPoints && !loading && !error && (
         <div style={{ height: 480, display: 'flex', alignItems: 'center', justifyContent: 'center',
                       color: 'var(--text-3)', fontSize: '0.85rem' }}>
           Waiting for data…
         </div>
       )}
-      <div ref={plotRef} style={{ width: '100%', height: 800,
-                                   display: rawPoints ? 'block' : 'none' }} />
+      <div style={{ position: 'relative', width: '100%', display: rawPoints || loading ? 'block' : 'none' }}>
+        <div ref={plotRef} style={{ width: '100%', height: 800,
+                                     visibility: loading ? 'hidden' : 'visible' }} />
+        {loading && (
+          <div style={{
+            position: 'absolute', inset: 0,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            gap: 14,
+          }}>
+            <span style={{
+              width: 40, height: 40, borderRadius: '50%',
+              border: '3px solid rgba(var(--accent-rgb),0.2)',
+              borderTopColor: 'var(--accent)',
+              display: 'inline-block', animation: 'spin 0.7s linear infinite',
+            }} />
+            <span style={{ fontSize: '0.82rem', color: 'var(--text-3)', fontStyle: 'italic' }}>
+              Loading…
+            </span>
+          </div>
+        )}
+      </div>
 
       {/* ── Violin modal on point click ── */}
       {violinGene && (
