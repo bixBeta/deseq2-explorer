@@ -34,7 +34,7 @@ const TAB_BTN = (active) => ({
   transition: 'all 0.15s',
 })
 
-export default function PCAPlot({ pca, design }) {
+export default function PCAPlot({ pca, design, sampleLabels = {} }) {
   const outerRef      = useRef(null)
   const plotRef       = useRef(null)
   const screeRef      = useRef(null)
@@ -140,7 +140,7 @@ export default function PCAPlot({ pca, design }) {
         x:    pts.map(s => s[xPC] ?? 0),
         y:    pts.map(s => s[yPC] ?? 0),
         z:    pts.map(s => s[zPC] ?? 0),
-        text: pts.map(s => s.sample),
+        text: pts.map(s => sampleLabels[s.sample] ?? s.sample),
         mode: showLabels ? 'markers+text' : 'markers',
         type: 'scatter3d',
         name: grp,
@@ -179,7 +179,7 @@ export default function PCAPlot({ pca, design }) {
       const traces = Object.entries(groups).map(([grp, pts], i) => ({
         x:    pts.map(s => s[xPC] ?? 0),
         y:    pts.map(s => s[yPC] ?? 0),
-        text: pts.map(s => s.sample),
+        text: pts.map(s => sampleLabels[s.sample] ?? s.sample),
         mode: showLabels ? 'markers+text' : 'markers',
         type: 'scatter',
         name: grp,
@@ -220,7 +220,7 @@ export default function PCAPlot({ pca, design }) {
           .forEach(el => el.style.setProperty('background', 'transparent', 'important'))
       })
     }
-  }, [pca, design, xPC, yPC, zPC, is3D, showLabels, ptSize, opacity, plotTab, pcKeys, variance, paletteName, colorBy])
+  }, [pca, design, xPC, yPC, zPC, is3D, showLabels, ptSize, opacity, plotTab, pcKeys, variance, paletteName, colorBy, sampleLabels])
 
   // Draw scree plot
   useEffect(() => {

@@ -1,11 +1,13 @@
 import { useState, useCallback, useRef } from 'react'
 
-export default function MetadataEditor({ parseInfo, metaState, onConfirm, onBack }) {
+export default function MetadataEditor({ parseInfo, metaState, sampleLabels = {}, onConfirm, onBack }) {
   const { columns = [], geneCount, sampleCount } = parseInfo || {}
 
   // rows: array of { sample, col1, col2, ... }
   const [rows, setRows]         = useState(metaState?.rows || [])
   const [selected, setSelected] = useState(metaState?.selected || new Set(rows.map(r => r.sample)))
+  // labels: { [originalSample]: displayName }
+  const [labels, setLabels]     = useState(sampleLabels)
   const [editCell, setEditCell] = useState(null)   // { rowIdx, col }
   const [editVal, setEditVal]   = useState('')
   const [undoStack, setUndoStack] = useState(null)  // { rows, indices } of last removal
@@ -75,7 +77,7 @@ export default function MetadataEditor({ parseInfo, metaState, onConfirm, onBack
   }, [editCell, editVal])
 
   function confirm() {
-    onConfirm({ rows, selected })
+    onConfirm({ rows, selected, labels })
   }
 
   const thStyle = {
@@ -148,6 +150,7 @@ export default function MetadataEditor({ parseInfo, metaState, onConfirm, onBack
                   style={{ width: 14, padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }} />
               </th>
               <th style={thStyle}>Sample</th>
+              <th style={{ ...thStyle, color: 'var(--accent)' }}>Display Name</th>
               {columns.map(col => (
                 <th key={col} style={thStyle}>{col}</th>
               ))}
@@ -168,6 +171,42 @@ export default function MetadataEditor({ parseInfo, metaState, onConfirm, onBack
                   <td style={{ padding: '6px 10px', fontWeight: 500, color: 'var(--text-2)',
                                borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
                     {row.sample}
+                  </td>
+                  {/* Editable display name */}
+                  <td style={{ padding: '4px 6px', borderBottom: '1px solid var(--border)', minWidth: 120 }}>
+                    {editCell?.rowIdx === ri && editCell?.col === '__label__' ? (
+                      <input
+                        autoFocus
+                        value={editVal}
+                        onChange={e => setEditVal(e.target.value)}
+                        onBlur={() => {
+                          setLabels(prev => ({ ...prev, [row.sample]: editVal || row.sample }))
+                          setEditCell(null)
+                        }}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            setLabels(prev => ({ ...prev, [row.sample]: editVal || row.sample }))
+                            setEditCell(null)
+                          }
+                          if (e.key === 'Escape') setEditCell(null)
+                        }}
+                        style={{ padding: '3px 6px', fontSize: '0.78rem', borderRadius: 4, width: '100%' }}
+                      />
+                    ) : (
+                      <span
+                        onClick={() => isChecked && (setEditCell({ rowIdx: ri, col: '__label__' }), setEditVal(labels[row.sample] ?? row.sample))}
+                        style={{
+                          display: 'block', padding: '3px 6px', borderRadius: 4,
+                          color: labels[row.sample] && labels[row.sample] !== row.sample ? 'var(--accent)' : 'var(--text-2)',
+                          cursor: isChecked ? 'text' : 'default',
+                          minHeight: 24, transition: 'background 0.15s',
+                          fontStyle: labels[row.sample] && labels[row.sample] !== row.sample ? 'italic' : 'normal',
+                        }}
+                        onMouseEnter={e => { if (isChecked) e.target.style.background = 'var(--bg-card2)' }}
+                        onMouseLeave={e => { e.target.style.background = 'transparent' }}>
+                        {labels[row.sample] ?? row.sample}
+                      </span>
+                    )}
                   </td>
                   {columns.map(col => {
                     const isEditing = editCell?.rowIdx === ri && editCell?.col === col
@@ -212,7 +251,7 @@ export default function MetadataEditor({ parseInfo, metaState, onConfirm, onBack
       </div>
 
       <p className="text-xs" style={{ color: 'var(--text-3)' }}>
-        Tip: uncheck samples to exclude them from the DESeq2 run · click a cell to edit its value · changes apply only to this session
+        Tip: uncheck samples to exclude them · click <span style={{ color: 'var(--accent)' }}>Display Name</span> to rename a sample in all plots · click any metadata cell to edit
       </p>
     </div>
   )

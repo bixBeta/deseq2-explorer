@@ -104,6 +104,7 @@ export default function App() {
   const [design,      setDesign]      = useState(null)
   const [annMap,      setAnnMap]      = useState(null)   // gene_id → symbol
   const [annDetails,  setAnnDetails]  = useState(null)   // gene_id → { chr, start, end, description } (GTF only)
+  const [sampleLabels, setSampleLabels] = useState({})   // originalSample → displayName
   const [saveStatus,  setSaveStatus]  = useState('idle')   // 'idle' | 'saving' | 'saved'
   const [copied,      setCopied]      = useState(false)
   const [showHelp,    setShowHelp]    = useState(false)
@@ -157,6 +158,7 @@ export default function App() {
       setDesign(info.design)
       if (info.annMap    && Object.keys(info.annMap).length    > 0) setAnnMap(info.annMap)
       if (info.annDetails && Object.keys(info.annDetails).length > 0) setAnnDetails(info.annDetails)
+      if (info.sampleLabels && Object.keys(info.sampleLabels).length > 0) setSampleLabels(info.sampleLabels)
       // Restore metaState so "Add Contrast" can route back to the design panel
       if (info.metadataRows?.length > 0) {
         setParseInfo({ columns: info.columns, levels: info.levels, metadataRows: info.metadataRows })
@@ -183,6 +185,7 @@ export default function App() {
   function handleLogout() {
     setAuth(null); setSessions([]); setSession(null)
     setParseInfo(null); setMetaState(null); setResults(null); setDesign(null); setAnnMap(null); setAnnDetails(null)
+    setSampleLabels({})
     setStep('session')
   }
 
@@ -190,6 +193,7 @@ export default function App() {
   function handleNewSession() {
     setSession(null)
     setParseInfo(null); setMetaState(null); setResults(null); setDesign(null); setAnnMap(null); setAnnDetails(null)
+    setSampleLabels({})
     setStep('picker')
   }
 
@@ -199,7 +203,7 @@ export default function App() {
   }
 
   /* ── Build save payload (shared by manual save, autosave, beacon) ── */
-  function buildSaveBody(ms = metaState) {
+  function buildSaveBody(ms = metaState, sl = sampleLabels) {
     const body = { sessionId: session.sessionId, email: auth.email, pin: auth.pin }
     if (ms) {
       body.keepSamples = [...ms.selected]
@@ -207,6 +211,7 @@ export default function App() {
     }
     if (annMap     && Object.keys(annMap).length     > 0) body.annMap     = annMap
     if (annDetails && Object.keys(annDetails).length > 0) body.annDetails = annDetails
+    if (sl && Object.keys(sl).length > 0) body.sampleLabels = sl
     return body
   }
 
@@ -229,16 +234,18 @@ export default function App() {
   }
 
   /* ── Tab-close beacon save ── */
-  const annMapRef     = useRef(annMap)
-  const annDetailsRef = useRef(annDetails)
-  const metaRef       = useRef(metaState)
-  const sessionRef    = useRef(session)
-  const authRef       = useRef(auth)
-  useEffect(() => { annMapRef.current     = annMap      }, [annMap])
-  useEffect(() => { annDetailsRef.current = annDetails  }, [annDetails])
-  useEffect(() => { metaRef.current       = metaState   }, [metaState])
-  useEffect(() => { sessionRef.current    = session     }, [session])
-  useEffect(() => { authRef.current       = auth        }, [auth])
+  const annMapRef       = useRef(annMap)
+  const annDetailsRef   = useRef(annDetails)
+  const metaRef         = useRef(metaState)
+  const sessionRef      = useRef(session)
+  const authRef         = useRef(auth)
+  const sampleLabelsRef = useRef(sampleLabels)
+  useEffect(() => { annMapRef.current       = annMap        }, [annMap])
+  useEffect(() => { annDetailsRef.current   = annDetails    }, [annDetails])
+  useEffect(() => { metaRef.current         = metaState     }, [metaState])
+  useEffect(() => { sessionRef.current      = session       }, [session])
+  useEffect(() => { authRef.current         = auth          }, [auth])
+  useEffect(() => { sampleLabelsRef.current = sampleLabels  }, [sampleLabels])
 
   useEffect(() => {
     function onUnload() {
@@ -247,6 +254,7 @@ export default function App() {
       const ms = metaRef.current
       const am = annMapRef.current
       const ad = annDetailsRef.current
+      const sl = sampleLabelsRef.current
       const body = { sessionId: s.sessionId, email: a.email, pin: a.pin }
       if (ms) {
         body.keepSamples = [...ms.selected]
@@ -254,6 +262,7 @@ export default function App() {
       }
       if (am && Object.keys(am).length > 0) body.annMap = am
       if (ad && Object.keys(ad).length > 0) body.annDetails = ad
+      if (sl && Object.keys(sl).length > 0) body.sampleLabels = sl
       navigator.sendBeacon('/api/session/save', new Blob([JSON.stringify(body)], { type: 'application/json' }))
     }
     window.addEventListener('beforeunload', onUnload)
@@ -270,7 +279,9 @@ export default function App() {
     setStep('metadata')
   }
   async function handleMetaConfirm(ms) {
+    const newLabels = ms.labels || {}
     setMetaState(ms)
+    setSampleLabels(newLabels)
     setStep('design')
     // Auto-persist edits so they survive logout/resume
     if (session && auth && !session.isExample) {
@@ -278,7 +289,7 @@ export default function App() {
         await fetch('/api/session/save', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(buildSaveBody(ms)),
+          body: JSON.stringify(buildSaveBody(ms, newLabels)),
         })
       } catch (e) {
         console.error('Auto-save metadata failed:', e)
@@ -412,7 +423,7 @@ export default function App() {
         )}
         {step === 'upload'   && <Uploader session={session} onParsed={handleParsed} />}
         {step === 'metadata' && (
-          <MetadataEditor parseInfo={parseInfo} metaState={metaState}
+          <MetadataEditor parseInfo={parseInfo} metaState={metaState} sampleLabels={sampleLabels}
                           onConfirm={handleMetaConfirm}
                           onBack={results ? () => setStep('results') : () => setStep('upload')} />
         )}
@@ -426,6 +437,7 @@ export default function App() {
           <Results results={results} design={design} onBack={handleResultsBack}
                    onEditSamples={metaState ? handleEditSamples : null}
                    session={session} annMap={annMap} annDetails={annDetails}
+                   sampleLabels={sampleLabels}
                    onAnnotate={(map, details) => { setAnnMap(map); setAnnDetails(details || null) }} />
         )}
       </main>

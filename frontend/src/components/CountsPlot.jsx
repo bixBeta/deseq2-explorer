@@ -31,7 +31,7 @@ const TAB_BTN = (active) => ({
   transition: 'all 0.15s',
 })
 
-export default function CountsPlot({ countDist, design, metadata }) {
+export default function CountsPlot({ countDist, design, metadata, sampleLabels = {} }) {
   const outerRef     = useRef(null)
   const plotRef      = useRef(null)
   const [countType,   setCountType]  = useState('vst')
@@ -83,9 +83,10 @@ export default function CountsPlot({ countDist, design, metadata }) {
       const showLegend = !legendShown.has(grp)
       if (showLegend) legendShown.add(grp)
       const col = colorMap[grp]
+      const displayName = sampleLabels[d.sample] ?? d.sample
       return {
         type: 'violin',
-        x0:   d.sample,
+        x0:   displayName,
         y:    d.values,
         name: grp,
         legendgroup: grp,
@@ -100,15 +101,14 @@ export default function CountsPlot({ countDist, design, metadata }) {
         line:     { color: col, width: 1.5 },
         opacity:  1,
         showlegend: showLegend,
-        hovertemplate: `<b>${d.sample}</b><br>%{y:.3f}<extra>${grp}</extra>`,
+        hovertemplate: `<b>${displayName}</b><br>%{y:.3f}<extra>${grp}</extra>`,
       }
     })
 
     const yTitle = countType === 'raw' ? 'log₂(count + 1)' : 'VST value'
 
-    // Build two-line x-axis labels: sample name + group/colorBy value below
-    const tickvals = data.map(d => d.sample)
-    const ticktext = data.map(d => d.sample)
+    const tickvals = data.map(d => sampleLabels[d.sample] ?? d.sample)
+    const ticktext = data.map(d => sampleLabels[d.sample] ?? d.sample)
 
     const layout = {
       paper_bgcolor: 'transparent',
@@ -150,7 +150,7 @@ export default function CountsPlot({ countDist, design, metadata }) {
       plotRef.current?.querySelectorAll('.modebar-container, .modebar, .modebar-group')
         .forEach(el => el.style.setProperty('background', 'transparent', 'important'))
     })
-  }, [countDist, countType, showPoints, paletteName, colorBy, sampleMeta])
+  }, [countDist, countType, showPoints, paletteName, colorBy, sampleMeta, sampleLabels])
 
   if (!countDist?.vst?.length) {
     return (

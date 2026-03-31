@@ -197,6 +197,12 @@ function(req, res) {
     error = function(e) NULL
   )
 
+  sample_labels_out <- tryCatch(
+    if (!is.na(row$sample_labels_json[1]) && nchar(row$sample_labels_json[1]) > 0)
+      fromJSON(row$sample_labels_json[1]) else NULL,
+    error = function(e) NULL
+  )
+
   list(
     sessionId    = row$id[1],
     name         = if (!is.na(row$name[1])) row$name[1] else "Session",
@@ -208,7 +214,8 @@ function(req, res) {
     metadataRows = metadata_rows,
     results      = results_out,
     annMap       = ann_map_out,
-    annDetails   = ann_details_out
+    annDetails   = ann_details_out,
+    sampleLabels = sample_labels_out
   )
 }
 
@@ -371,8 +378,9 @@ function(req, res) {
   email       <- body$email; pin <- body$pin; session_id <- body$sessionId
   keep_samps  <- body$keepSamples
   edited_meta <- body$editedMeta
-  ann_map     <- body$annMap      # named list gene_id -> symbol, or NULL
-  ann_details <- body$annDetails  # named list gene_id -> { description, biotype, ... }
+  ann_map      <- body$annMap       # named list gene_id -> symbol, or NULL
+  ann_details  <- body$annDetails   # named list gene_id -> { description, biotype, ... }
+  sample_labels <- body$sampleLabels # named list originalSample -> displayLabel, or NULL
 
   if (is.null(email) || is.null(pin)) stop("email and pin are required")
   if (is.null(session_id) || session_id == "") stop("sessionId is required")
@@ -416,9 +424,11 @@ function(req, res) {
   saveRDS(list(counts = counts, metadata = meta), rds_path)
 
   # Persist annotation map and details if provided
-  ann_map_json     <- if (!is.null(ann_map)     && length(ann_map)     > 0) toJSON(ann_map,     auto_unbox = TRUE) else NULL
-  ann_details_json <- if (!is.null(ann_details) && length(ann_details) > 0) toJSON(ann_details, auto_unbox = TRUE) else NULL
-  session_update(session_id, ann_map_json = ann_map_json, ann_details_json = ann_details_json)
+  ann_map_json        <- if (!is.null(ann_map)      && length(ann_map)      > 0) toJSON(ann_map,      auto_unbox = TRUE) else NULL
+  ann_details_json    <- if (!is.null(ann_details)  && length(ann_details)  > 0) toJSON(ann_details,  auto_unbox = TRUE) else NULL
+  sample_labels_json  <- if (!is.null(sample_labels) && length(sample_labels) > 0) toJSON(sample_labels, auto_unbox = TRUE) else NULL
+  session_update(session_id, ann_map_json = ann_map_json, ann_details_json = ann_details_json,
+                 sample_labels_json = sample_labels_json)
 
   list(ok = TRUE)
 }
@@ -1115,7 +1125,7 @@ function(req, res) {
       Colv                  = colv_arg,
       distfun               = make_distfun(dist_method),
       scale                 = "none",
-      colors                = grDevices::colorRampPalette(c("#1565C0", "white", "#B71C1C"))(256),
+      colors                = grDevices::colorRampPalette(palette_colors)(256),
       xlab                  = "Sample",
       ylab                  = "Gene",
       main                  = paste0("Normalized counts Z-score (FDR < ", fdr, ", top ", nrow(mat_scaled), " genes)"),

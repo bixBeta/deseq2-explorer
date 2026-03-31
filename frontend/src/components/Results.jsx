@@ -24,7 +24,7 @@ function saveIcons(icons) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(icons)) } catch {}
 }
 
-export default function Results({ results, design, onBack, onEditSamples, session, annMap, annDetails, onAnnotate }) {
+export default function Results({ results, design, onBack, onEditSamples, session, annMap, annDetails, sampleLabels = {}, onAnnotate }) {
   const [activeIdx,   setActiveIdx]   = useState(0)
   const [vizTab,      setVizTab]      = useState('counts')
   const [customIcons, setCustomIcons] = useState(loadIcons)   // { key: icon }
@@ -218,7 +218,7 @@ export default function Results({ results, design, onBack, onEditSamples, sessio
       {/* ── Content ── */}
       <div className="glass" style={{ padding: 20, minHeight: 480 }}>
         <div style={{ display: vizTab === 'counts' ? 'block' : 'none' }}>
-          <CountsPlot countDist={countDist} design={design} metadata={pca?.scores} />
+          <CountsPlot countDist={countDist} design={design} metadata={pca?.scores} sampleLabels={sampleLabels} />
         </div>
         <div style={{ display: vizTab === 'ma' ? 'block' : 'none' }}>
           <MAPlot
@@ -228,7 +228,7 @@ export default function Results({ results, design, onBack, onEditSamples, sessio
           />
         </div>
         <div style={{ display: vizTab === 'pca' ? 'block' : 'none' }}>
-          <PCAPlot pca={pca} design={design} />
+          <PCAPlot pca={pca} design={design} sampleLabels={sampleLabels} />
         </div>
         <div style={{ display: vizTab === 'table' ? 'block' : 'none' }}>
           <ResultsTable
@@ -245,7 +245,7 @@ export default function Results({ results, design, onBack, onEditSamples, sessio
           <AnnotationPanel geneIds={geneIds} annMap={annMap} onAnnotate={(map, details) => { onAnnotate(map, details); if (map) setVizTab('table') }} />
         </div>
         <div style={{ display: vizTab === 'compare' ? 'block' : 'none' }}>
-          <ComparePanel session={session} contrasts={contrastList} annMap={annMap} annDetails={annDetails} pca={pca} />
+          <ComparePanel session={session} contrasts={contrastList} annMap={annMap} annDetails={annDetails} pca={pca} sampleLabels={sampleLabels} />
         </div>
       </div>
     </div>

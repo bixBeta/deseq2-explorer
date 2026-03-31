@@ -47,6 +47,25 @@ function applySymbolsToFig(fig, annMap) {
   return fig
 }
 
+// Rename sample names in heatmap x-axis (columns) using sampleLabels map
+function applySampleLabelsToFig(fig, sampleLabels) {
+  if (!sampleLabels || !Object.keys(sampleLabels).length || !fig) return fig
+  const rename = (v) => (typeof v === 'string' ? (sampleLabels[v] ?? v) : v)
+  // x-axis tick labels
+  if (fig.layout) {
+    Object.keys(fig.layout).filter(k => /^xaxis/.test(k)).forEach(ax => {
+      if (fig.layout[ax]?.ticktext) fig.layout[ax].ticktext = fig.layout[ax].ticktext.map(rename)
+    })
+  }
+  // heatmap trace x values
+  if (fig.data) {
+    fig.data.forEach(trace => {
+      if (trace.x) trace.x = trace.x.map(rename)
+    })
+  }
+  return fig
+}
+
 // ── UpSet Plot ─────────────────────────────────────────────────────────────────
 function UpSetTab({ session, contrasts }) {
   const [fdr, setFdr]         = useState(0.05)
@@ -177,7 +196,7 @@ function PaletteRow({ palette, setPalette }) {
 const DIST_METHODS = ['euclidean', 'pearson', 'spearman', 'kendall', 'manhattan', 'maximum']
 
 // ── Heatmap (interactive via heatmaply → Plotly JSON) ─────────────────────────
-function HeatmapTab({ session, annMap, pca, contrasts }) {
+function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
   const outerRef = useRef(null)
   const plotRef  = useRef(null)
   const [fdr, setFdr]                 = useState(0.05)
@@ -259,6 +278,7 @@ function HeatmapTab({ session, annMap, pca, contrasts }) {
         font: { ...(fig.layout?.font || {}), color: '#94a3b8' },
       }
       applySymbolsToFig(fig, annMap)
+      applySampleLabelsToFig(fig, sampleLabels)
 
       await Plotly.react(plotRef.current, fig.data, fig.layout, {
         responsive: true, displaylogo: false,
@@ -1114,7 +1134,7 @@ const SINGLE_TABS = SUB_TABS.filter(t => t.key !== 'upset')
 
 const contrastKey = c => c.label ?? `${c.treatment}|${c.reference}`
 
-export default function ComparePanel({ session, contrasts, annMap, annDetails, pca }) {
+export default function ComparePanel({ session, contrasts, annMap, annDetails, pca, sampleLabels = {} }) {
   const [subTab,      setSubTab]     = useState('upset')
   // Set of contrast keys currently included in the view
   const [activeKeys, setActiveKeys] = useState(() => new Set((contrasts || []).map(contrastKey)))
@@ -1215,7 +1235,7 @@ export default function ComparePanel({ session, contrasts, annMap, annDetails, p
       )}
 
       <div style={{ display: effectiveTab === 'upset'   ? 'block' : 'none' }}><UpSetTab   session={session} contrasts={activeContrasts} /></div>
-      <div style={{ display: effectiveTab === 'heatmap' ? 'block' : 'none' }}><HeatmapTab session={session} annMap={annMap} pca={pca} contrasts={activeContrasts} /></div>
+      <div style={{ display: effectiveTab === 'heatmap' ? 'block' : 'none' }}><HeatmapTab session={session} annMap={annMap} pca={pca} contrasts={activeContrasts} sampleLabels={sampleLabels} /></div>
       <div style={{ display: effectiveTab === 'genes'   ? 'block' : 'none' }}><GeneExplorer session={session} contrasts={activeContrasts} annMap={annMap} /></div>
       <div style={{ display: effectiveTab === 'table'   ? 'block' : 'none' }}><TableExplorer contrasts={activeContrasts} annMap={annMap} annDetails={annDetails} /></div>
     </div>
