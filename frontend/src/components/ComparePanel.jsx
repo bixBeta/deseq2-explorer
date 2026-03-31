@@ -982,7 +982,7 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
               Rows {((safePage - 1) * pageSize + 1).toLocaleString()}–{Math.min(safePage * pageSize, sorted.length).toLocaleString()} of {sorted.length.toLocaleString()}
             </span>
             <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1) }}
-                    style={{ fontSize: '0.72rem', padding: '1px 4px', marginLeft: 4 }}>
+                    style={{ fontSize: '0.72rem', padding: '1px 4px', marginLeft: 4, width: '15%' }}>
               {PAGE_SIZES.map(n => <option key={n} value={n}>{n} / page</option>)}
             </select>
             <span style={{ marginLeft: 'auto' }}>Page {safePage} of {totalPages}</span>
