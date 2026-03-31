@@ -206,6 +206,7 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
   const [error, setError]             = useState(null)
   const [hasPlot, setHasPlot]         = useState(false)
   const [palette, setPalette]         = useState(['#1565C0', '#ffffff', '#B71C1C'])
+  const debouncedPalette              = useDebounce(palette, 700)
 
   // Derive metadata columns from PCA scores (same source as CountsPlot)
   const metaCols = useMemo(() => {
@@ -244,12 +245,12 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
   // Auto-regenerate on any option change when a plot already exists
   const prevOpts = useRef(null)
   useEffect(() => {
-    const opts = JSON.stringify({ clusterRows, clusterCols, distMethod, colorBy, geneSet, activeLabels, palette })
+    const opts = JSON.stringify({ clusterRows, clusterCols, distMethod, colorBy, geneSet, activeLabels, palette: debouncedPalette })
     if (prevOpts.current === null) { prevOpts.current = opts; return }
     if (prevOpts.current === opts) return
     prevOpts.current = opts
     if (hasPlot) generate()
-  }, [clusterRows, clusterCols, distMethod, colorBy, geneSet, activeLabels, palette])
+  }, [clusterRows, clusterCols, distMethod, colorBy, geneSet, activeLabels, debouncedPalette])
 
   async function generate() {
     setLoading(true); setError(null); setHasPlot(false)
