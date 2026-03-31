@@ -289,86 +289,119 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
     finally { setLoading(false) }
   }
 
-  const ToggleBtn = ({ val, set, label }) => (
-    <button onClick={() => set(v => !v)}
-            style={{
-              padding: '3px 10px', borderRadius: 6, border: '1px solid var(--border)',
-              cursor: 'pointer', fontSize: '0.75rem', fontWeight: val ? 600 : 400,
-              background: val ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)',
-              color: val ? 'var(--text-1)' : 'var(--text-3)', transition: 'all 0.15s',
-            }}>
-      {label}
-    </button>
+  // Compact toggle switch component
+  const Switch = ({ val, set, label }) => (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', userSelect: 'none' }}>
+      <div onClick={() => set(v => !v)}
+           style={{
+             width: 34, height: 18, borderRadius: 9, position: 'relative', cursor: 'pointer',
+             background: val ? 'var(--accent)' : 'rgba(255,255,255,0.12)',
+             border: `1px solid ${val ? 'var(--accent)' : 'var(--border)'}`,
+             transition: 'background 0.2s, border-color 0.2s',
+             flexShrink: 0,
+           }}>
+        <div style={{
+          position: 'absolute', top: 1, left: val ? 15 : 1,
+          width: 14, height: 14, borderRadius: '50%',
+          background: val ? '#fff' : 'rgba(255,255,255,0.5)',
+          transition: 'left 0.2s',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+        }} />
+      </div>
+      <span style={{ fontSize: '0.78rem', color: val ? 'var(--text-1)' : 'var(--text-3)', fontWeight: val ? 500 : 400 }}>
+        {label}
+      </span>
+    </label>
+  )
+
+  const ControlGroup = ({ label, children }) => (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 6,
+      padding: '8px 12px', borderRadius: 8,
+      background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)',
+      minWidth: 0,
+    }}>
+      <span style={{ fontSize: '0.65rem', fontWeight: 600, letterSpacing: '0.06em',
+                     color: 'var(--text-3)', textTransform: 'uppercase' }}>{label}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>{children}</div>
+    </div>
   )
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {/* Row 1: FDR, Top N, mode */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', color: 'var(--text-2)' }}>
-          FDR
-          <input type="number" value={fdr} min={0.001} max={0.5} step={0.01}
-                 onChange={e => setFdr(Number(e.target.value))}
-                 style={{ width: 65, fontSize: '0.8rem', padding: '2px 6px' }} />
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', color: 'var(--text-2)' }}>
-          Top N
-          <input type="number" value={topN} min={5} max={500} step={5}
-                 onChange={e => setTopN(Number(e.target.value))}
-                 style={{ width: 65, fontSize: '0.8rem', padding: '2px 6px' }} />
-        </label>
-        <div style={{ display: 'flex', gap: 2, padding: '2px', borderRadius: 6,
-                      background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}>
-          {[['vst', 'Norm Z-score'], ['lfc', 'log₂FC']].map(([k, lbl]) => (
-            <button key={k} onClick={() => setMode(k)} style={TAB_BTN(mode === k)}>{lbl}</button>
-          ))}
-        </div>
-        <span style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>Genes</span>
-        <select value={geneSet} onChange={e => setGeneSet(e.target.value)}
-                style={{ fontSize: '0.78rem', padding: '2px 6px', minWidth: 140 }}>
-          <option value="union">Union (any contrast)</option>
-          <option value="intersection">Intersection (all contrasts)</option>
-          {contrasts.map((c, i) => (
-            <option key={i} value={c.label ?? c.treatment ?? `Contrast ${i+1}`}>
-              {c.label ?? c.treatment ?? `Contrast ${i+1}`} only
-            </option>
-          ))}
-        </select>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 
-        <button className="btn-ghost" onClick={generate} disabled={loading}>
-          {loading ? 'Generating…' : 'Generate Heatmap'}
-        </button>
-      </div>
+      {/* Control bar */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'stretch' }}>
 
-      {/* Row 2: clustering + annotation — compact inline */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>Cluster</span>
-        <ToggleBtn val={clusterRows} set={setClusterRows} label="Rows" />
-        <ToggleBtn val={clusterCols} set={setClusterCols} label="Columns" />
+        {/* Cutoffs */}
+        <ControlGroup label="Cutoffs">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', color: 'var(--text-2)' }}>
+            FDR
+            <input type="number" value={fdr} min={0.001} max={0.5} step={0.01}
+                   onChange={e => setFdr(Number(e.target.value))}
+                   style={{ width: 58, fontSize: '0.78rem', padding: '2px 6px' }} />
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', color: 'var(--text-2)' }}>
+            Top N
+            <input type="number" value={topN} min={5} max={500} step={5}
+                   onChange={e => setTopN(Number(e.target.value))}
+                   style={{ width: 58, fontSize: '0.78rem', padding: '2px 6px' }} />
+          </label>
+        </ControlGroup>
 
-        {(clusterRows || clusterCols) && (
-          <>
-            <span style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginLeft: 4 }}>Distance</span>
+        {/* Mode + Gene set */}
+        <ControlGroup label="Data">
+          <div style={{ display: 'flex', gap: 2, padding: '2px', borderRadius: 6,
+                        background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}>
+            {[['vst', 'Norm Z-score'], ['lfc', 'log₂FC']].map(([k, lbl]) => (
+              <button key={k} onClick={() => setMode(k)} style={TAB_BTN(mode === k)}>{lbl}</button>
+            ))}
+          </div>
+          <select value={geneSet} onChange={e => setGeneSet(e.target.value)}
+                  style={{ fontSize: '0.78rem', padding: '3px 8px', minWidth: 150 }}>
+            <option value="union">Union (any contrast)</option>
+            <option value="intersection">Intersection (all)</option>
+            {contrasts.map((c, i) => (
+              <option key={i} value={c.label ?? c.treatment ?? `Contrast ${i+1}`}>
+                {c.label ?? c.treatment ?? `Contrast ${i+1}`} only
+              </option>
+            ))}
+          </select>
+        </ControlGroup>
+
+        {/* Clustering */}
+        <ControlGroup label="Clustering">
+          <Switch val={clusterRows} set={setClusterRows} label="Rows" />
+          <Switch val={clusterCols} set={setClusterCols} label="Columns" />
+          {(clusterRows || clusterCols) && (
             <select value={distMethod} onChange={e => setDistMethod(e.target.value)}
-                    style={{ fontSize: '0.78rem', padding: '2px 6px' }}>
+                    style={{ fontSize: '0.78rem', padding: '3px 8px', minWidth: 110 }}>
               {DIST_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
             </select>
-          </>
-        )}
+          )}
+        </ControlGroup>
 
+        {/* Annotation */}
         {metaCols.length > 0 && (
-          <>
-            <span style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginLeft: 4 }}>Color by</span>
+          <ControlGroup label="Annotation">
             <select value={colorBy} onChange={e => setColorBy(e.target.value)}
-                    style={{ fontSize: '0.78rem', padding: '2px 6px', minWidth: 110 }}>
+                    style={{ fontSize: '0.78rem', padding: '3px 8px', minWidth: 120 }}>
               {metaCols.map(col => <option key={col} value={col}>{col}</option>)}
             </select>
-            {loading && <span style={{ fontSize: '0.7rem', color: 'var(--text-3)' }}>updating…</span>}
-          </>
+            {loading && <span style={{ fontSize: '0.7rem', color: 'var(--text-3)', animation: 'pulse 1s infinite' }}>updating…</span>}
+          </ControlGroup>
         )}
+
+        {/* Generate */}
+        <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 8, marginLeft: 'auto' }}>
+          <button className="btn-primary" onClick={generate} disabled={loading}
+                  style={{ whiteSpace: 'nowrap' }}>
+            {loading ? '⏳ Generating…' : '▶ Generate Heatmap'}
+          </button>
+        </div>
       </div>
 
-      {/* Row 3: color palette */}
+      {/* Palette row */}
       <PaletteRow palette={palette} setPalette={setPalette} />
 
       {error && <ErrorBox msg={error} />}
