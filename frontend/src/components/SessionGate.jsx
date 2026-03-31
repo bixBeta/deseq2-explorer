@@ -280,7 +280,7 @@ export default function SessionGate({ onAuth, onExample }) {
                       border: '1px solid var(--border)',
                       textAlign: 'left', transition: 'all 0.15s', width: '100%',
                     }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(168,85,247,0.08)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}>
               <div style={{
                 width: 40, height: 40, borderRadius: 10, flexShrink: 0,
