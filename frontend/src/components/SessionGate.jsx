@@ -297,6 +297,7 @@ export default function SessionGate({ onAuth, onExample }) {
                 </div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-3)', lineHeight: 1.4 }}>
                   Sign in with your email + PIN to resume previous sessions
+                  <br /><span style={{ visibility: 'hidden' }}>placeholder</span>
                 </div>
               </div>
             </button>
