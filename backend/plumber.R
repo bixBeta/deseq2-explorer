@@ -816,8 +816,8 @@ function(req, res) {
 
   p <- ggviolin(df, x = "group", y = "expr", fill = "group",
                 palette    = c("#1465AC", "#B31B21"),
-                add        = "boxplot",
-                add.params = list(fill = "white", width = 0.15),
+                add        = c("jitter", "boxplot"),
+                add.params = list(fill = "white", width = 0.15, size = 1.2, alpha = 0.6),
                 ylab       = "log2(counts + 1)",
                 xlab       = "") +
     labs(title = if (!is.null(symbol) && nchar(trimws(symbol)) > 0) symbol else gene,

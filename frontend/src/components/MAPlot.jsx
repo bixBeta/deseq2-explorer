@@ -137,6 +137,7 @@ export default function MAPlot({ design, session, annMap }) {
       },
       annotations,
       height: 800,
+      width: plotRef.current ? plotRef.current.clientWidth : undefined,
       margin: { t: 50, r: 24, b: 70, l: 64 },
       hovermode: 'closest',
       shapes: [
@@ -155,6 +156,7 @@ export default function MAPlot({ design, session, annMap }) {
 
     const config = {
       responsive: true,
+      autosize: true,
       displaylogo: false,
       toImageButtonOptions: { filename: 'maplot', scale: 2, format: 'png' },
       modeBarButtonsToRemove: ['select2d', 'lasso2d'],
