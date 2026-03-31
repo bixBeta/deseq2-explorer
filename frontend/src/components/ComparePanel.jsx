@@ -138,11 +138,6 @@ function PaletteRow({ palette, setPalette }) {
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-      <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-3)',
-                     textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-        Palette
-      </span>
-
       {/* Preset chips */}
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
         {HEATMAP_PRESETS.map(p => {
@@ -392,6 +387,13 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
           )}
         </ControlGroup>
 
+        {/* Palette — spans both columns */}
+        <div style={{ gridColumn: '1 / -1' }}>
+          <ControlGroup label="Palette">
+            <PaletteRow palette={palette} setPalette={setPalette} />
+          </ControlGroup>
+        </div>
+
         {/* Generate — spans both columns, aligned right */}
         <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end' }}>
           <button className="btn-primary" onClick={generate} disabled={loading}
@@ -400,9 +402,6 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
           </button>
         </div>
       </div>
-
-      {/* Palette row */}
-      <PaletteRow palette={palette} setPalette={setPalette} />
 
       {error && <ErrorBox msg={error} />}
 
