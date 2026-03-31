@@ -244,12 +244,12 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
   // Auto-regenerate on any option change when a plot already exists
   const prevOpts = useRef(null)
   useEffect(() => {
-    const opts = JSON.stringify({ clusterRows, clusterCols, distMethod, colorBy, geneSet, activeLabels })
+    const opts = JSON.stringify({ clusterRows, clusterCols, distMethod, colorBy, geneSet, activeLabels, palette })
     if (prevOpts.current === null) { prevOpts.current = opts; return }
     if (prevOpts.current === opts) return
     prevOpts.current = opts
     if (hasPlot) generate()
-  }, [clusterRows, clusterCols, distMethod, colorBy, geneSet, activeLabels])
+  }, [clusterRows, clusterCols, distMethod, colorBy, geneSet, activeLabels, palette])
 
   async function generate() {
     setLoading(true); setError(null); setHasPlot(false)
@@ -404,6 +404,23 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
       </div>
 
       {error && <ErrorBox msg={error} />}
+
+      {hasPlot && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            onClick={() => Plotly.downloadImage(plotRef.current, { format: 'png', filename: 'heatmap', width: 1600, height: 1200, scale: 2 })}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              padding: '4px 12px', borderRadius: 6, cursor: 'pointer', fontSize: '0.78rem',
+              background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)',
+              color: 'var(--text-2)', transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(var(--accent-rgb),0.12)'; e.currentTarget.style.color = 'var(--accent)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = 'var(--text-2)' }}>
+            ↓ Export PNG
+          </button>
+        </div>
+      )}
 
       <div ref={outerRef} className="resizable-plot"
            style={{ width: '100%', height: 800, display: hasPlot ? 'block' : 'none' }}>
