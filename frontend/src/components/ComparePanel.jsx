@@ -478,9 +478,10 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
   const [page,          setPage]          = useState(1)
   const [pageSize,      setPageSize]      = useState(50)
   const [showAdvanced,  setShowAdvanced]  = useState(false)
-  const [minBaseMean,   setMinBaseMean]   = useState('')
-  const [minAbsLFC,     setMinAbsLFC]     = useState('')
-  const [direction,     setDirection]     = useState('any') // 'any' | 'up' | 'down'
+  const [minBaseMean,    setMinBaseMean]    = useState('')
+  const [minAbsLFC,      setMinAbsLFC]      = useState('')
+  const [direction,      setDirection]      = useState('any') // 'any' | 'up' | 'down'
+  const [filterContrast, setFilterContrast] = useState(null)  // null = follow sort contrast
   const hasDetails = !!annDetails
 
   // Single-pass scan of annDetails to determine which optional columns are available.
@@ -536,7 +537,7 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
   // Filter
   const filtered = useMemo(() => {
     const lq          = search.toLowerCase()
-    const filterLabel = sortContrast ?? contrastLabels[0]
+    const filterLabel = filterContrast ?? sortContrast ?? contrastLabels[0]
     const bmMin       = minBaseMean !== '' ? Number(minBaseMean) : null
     const lfcMin      = minAbsLFC   !== '' ? Number(minAbsLFC)   : null
 
@@ -562,7 +563,7 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
 
       return true
     })
-  }, [pivotRows, search, fdrCut, contrastLabels, sortContrast, minBaseMean, minAbsLFC, direction])
+  }, [pivotRows, search, fdrCut, contrastLabels, sortContrast, filterContrast, minBaseMean, minAbsLFC, direction])
 
   // Sort
   const sorted = useMemo(() => {
@@ -578,7 +579,7 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
   }, [filtered, sortContrast, sortStat, sortDir, contrastLabels])
 
   // Reset to page 1 whenever filters or sort change
-  useEffect(() => { setPage(1) }, [search, fdrCut, sortContrast, sortStat, sortDir, minBaseMean, minAbsLFC, direction])
+  useEffect(() => { setPage(1) }, [search, fdrCut, sortContrast, sortStat, sortDir, filterContrast, minBaseMean, minAbsLFC, direction])
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize))
   const safePage   = Math.min(page, totalPages)
@@ -711,10 +712,10 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
             border: '1px solid var(--border)',
           }}>
           {showAdvanced ? '▲' : '▼'} Filters
-          {(minBaseMean !== '' || minAbsLFC !== '' || direction !== 'any') && (
+          {(minBaseMean !== '' || minAbsLFC !== '' || direction !== 'any' || filterContrast) && (
             <span style={{ marginLeft: 5, background: 'var(--accent)', color: '#fff',
                            borderRadius: 10, padding: '0 5px', fontSize: '0.65rem' }}>
-              {[minBaseMean !== '', minAbsLFC !== '', direction !== 'any'].filter(Boolean).length}
+              {[minBaseMean !== '', minAbsLFC !== '', direction !== 'any', !!filterContrast].filter(Boolean).length}
             </span>
           )}
         </button>
@@ -757,11 +758,16 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
               <option value="down">Down only</option>
             </select>
           </label>
-          <span style={{ fontSize: '0.68rem', color: 'var(--text-3)', fontStyle: 'italic' }}>
-            Applied to: {sortContrast ?? contrastLabels[0] ?? '—'}
-          </span>
-          {(minBaseMean !== '' || minAbsLFC !== '' || direction !== 'any') && (
-            <button onClick={() => { setMinBaseMean(''); setMinAbsLFC(''); setDirection('any') }}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            Contrast
+            <select value={filterContrast ?? ''} onChange={e => setFilterContrast(e.target.value || null)}
+                    style={{ fontSize: '0.78rem', padding: '2px 6px' }}>
+              <option value="">Follow sort</option>
+              {contrastLabels.map(l => <option key={l} value={l}>{l}</option>)}
+            </select>
+          </label>
+          {(minBaseMean !== '' || minAbsLFC !== '' || direction !== 'any' || filterContrast) && (
+            <button onClick={() => { setMinBaseMean(''); setMinAbsLFC(''); setDirection('any'); setFilterContrast(null) }}
                     style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: 5, cursor: 'pointer',
                              background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-3)' }}>
               Clear
@@ -953,7 +959,7 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
             display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
             padding: '7px 12px', borderTop: '1px solid var(--border)',
             fontSize: '0.72rem', color: 'var(--text-3)', background: 'var(--bg-panel)',
-            position: 'sticky', bottom: 0,
+            position: 'sticky', bottom: 0, zIndex: 25,
           }}>
             {/* Page nav */}
             {[
@@ -973,12 +979,13 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
               </button>
             ))}
             <span style={{ margin: '0 4px' }}>
-              Page {safePage} / {totalPages} · {sorted.length.toLocaleString()} genes
+              Rows {((safePage - 1) * pageSize + 1).toLocaleString()}–{Math.min(safePage * pageSize, sorted.length).toLocaleString()} of {sorted.length.toLocaleString()}
             </span>
             <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1) }}
                     style={{ fontSize: '0.72rem', padding: '1px 4px', marginLeft: 4 }}>
               {PAGE_SIZES.map(n => <option key={n} value={n}>{n} / page</option>)}
             </select>
+            <span style={{ marginLeft: 'auto' }}>Page {safePage} of {totalPages}</span>
           </div>
         )}
       </div>
