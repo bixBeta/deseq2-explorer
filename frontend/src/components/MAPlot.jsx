@@ -136,6 +136,7 @@ export default function MAPlot({ design, session, annMap }) {
         font: { size: 11, color: '#475569' },
       },
       annotations,
+      height: 800,
       margin: { t: 50, r: 24, b: 70, l: 64 },
       hovermode: 'closest',
       shapes: [
