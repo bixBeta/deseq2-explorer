@@ -8,12 +8,12 @@ A web-based differential expression analysis platform for RNA-seq data, powered 
 
 ## Features
 
-- **Full DESeq2 pipeline** — VST normalization, multiple contrasts in a single run, parallel execution via `mirai`
-- **Interactive visualizations** — PCA, MA plots, heatmaps (log2FC or Z-scored counts), UpSet plots, violin plots
-- **Gene annotation** — Ensembl REST API + BioMart fallback; NCBI E-utilities for RefSeq / numeric gene IDs (bacteria, fungi, archaea, any organism)
+- **Full DESeq2 pipeline** — `varianceStabilizingTransformation()` normalization, multiple contrasts in a single run, parallel execution via `mirai`
+- **Interactive visualizations** — PCA, MA plots, heatmaps (Z-scored VST counts), UpSet plots, violin plots
+- **Gene annotation** — g:Profiler (client-side), Ensembl REST API + BioMart fallback, NCBI E-utilities for RefSeq / numeric gene IDs (bacteria, fungi, archaea, any organism), GTF/GFF upload
 - **Multi-contrast Compare panel** — Toggle individual contrasts on/off across all plots; all contrasts preserved in session
 - **Session persistence** — SQLite-backed sessions with email + PIN authentication; results survive server restarts
-- **Export** — Download plots as PNG/PDF; email results summary on completion
+- **Export** — Download plots as PNG; email results summary on completion
 - **No local R required** — Fully containerized via Docker
 
 ---
@@ -102,7 +102,7 @@ Upload RDS → Edit Metadata → Design Contrasts → Run DESeq2 → Explore Res
 | 4 | *(auto)* | DESeq2 runs in parallel; progress shown in real time |
 | 5 | **Results** | PCA, MA plot, count distributions, DE table |
 | 6 | **Compare** | Heatmap, UpSet plot, Table Explorer across all contrasts |
-| 7 | **Annotate** | Map gene IDs to symbols via Ensembl, BioMart, or NCBI |
+| 7 | **Annotate** | Map gene IDs to symbols via g:Profiler, BioMart, NCBI, or GTF/GFF |
 
 ---
 
@@ -110,14 +110,14 @@ Upload RDS → Edit Metadata → Design Contrasts → Run DESeq2 → Explore Res
 
 ### Results
 - **PCA** — Interactive 2D/3D scatter; color by any metadata column; select which PCs to plot
-- **MA Plot** — log2FC vs mean expression; highlight significant genes; download PNG/PDF
-- **Count Distributions** — Raw log2 and VST-transformed violin plots per sample
+- **MA Plot** — log2FC vs mean expression; highlight significant genes; download PNG
+- **Count Distributions** — Raw log2 and `varianceStabilizingTransformation()`-normalized violin plots per sample
 - **DE Table** — Sortable, filterable results table with gene symbols, LFC, p-values, padj
 
 ### Compare
 Requires 2+ contrasts (or exactly 1 for the Heatmap). Active contrasts can be toggled per session — all others are preserved and can be re-added.
 
-- **Heatmap** — log2FC across contrasts or Z-scored normalized counts; configurable clustering (Pearson, Spearman, Kendall, Euclidean)
+- **Heatmap** — Z-scored `varianceStabilizingTransformation()` counts for top N DEGs; configurable clustering (Pearson, Spearman, Kendall, Euclidean, Manhattan)
 - **UpSet Plot** — Overlap of significant DEGs across active contrasts
 - **Gene Explorer** — Per-gene multi-group violin with Kruskal-Wallis + pairwise Wilcoxon tests
 - **Table Explorer** — Wide-format pivot table (all contrasts × LFC/pval/padj); CSV export
@@ -127,7 +127,7 @@ Map gene IDs to symbols and descriptions. Three methods available:
 
 | Method | Best for |
 |--------|----------|
-| **g:Profiler** | Ensembl IDs, well-supported organisms |
+| **g:Profiler** | Ensembl IDs, well-supported organisms; runs client-side |
 | **BioMart** *(experimental)* | Ensembl IDs, non-model organisms, orthologs |
 | **GTF / GFF** | Custom genomes, bacterial/viral/organellar data |
 
@@ -144,7 +144,7 @@ Configurable from the Design panel before each run:
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `alpha` | 0.05 | FDR significance threshold |
-| `lfcThreshold` | 0 | Minimum |log2FC| for hypothesis testing |
+| `lfcThreshold` | 0 | Minimum \|log2FC\| for hypothesis testing |
 | `minCount` | 1 | Minimum count for pre-filtering |
 | `minSamples` | 2 | Samples in which gene must reach `minCount` |
 | `fitType` | `parametric` | Dispersion estimation method |
@@ -153,12 +153,18 @@ Configurable from the Design panel before each run:
 
 ---
 
+## Methods
+
+A detailed description of all statistical methods used — including DESeq2 model fitting, PCA, heatmap clustering, and gene-level tests — is available in [methods.md](methods.md).
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
 | Frontend | React 19, Vite 5, Tailwind CSS 3, Plotly.js |
-| Backend | R 4.4, Plumber, DESeq2, mirai, heatmaply, UpSetR |
+| Backend | R 4.4, Plumber, DESeq2, mirai, heatmaply, UpSetR, ggpubr |
 | Database | SQLite (via RSQLite) |
 | Proxy | nginx (reverse proxy, SPA routing, 512 MB upload limit) |
 | Process mgmt | supervisord |
@@ -206,13 +212,15 @@ All endpoints accept and return JSON. Base path: `/api/`
 | `POST /api/session/delete` | Delete session |
 | `POST /api/parse` | Parse uploaded RDS, extract metadata |
 | `POST /api/deseq2` | Run DESeq2 analysis |
-| `POST /api/maplot` | Render MA plot → base64 PNG/PDF |
-| `POST /api/geneplot` | Single-gene violin plot |
-| `POST /api/geneplot/compare` | Multi-group violin with Wilcoxon tests |
+| `POST /api/maplot` | Render MA plot → base64 PNG |
+| `POST /api/geneplot` | Single-gene violin plot (two-group, Wilcoxon) |
+| `POST /api/geneplot/compare` | Multi-group violin (Kruskal-Wallis + pairwise Wilcoxon) |
 | `POST /api/heatmap` | Interactive heatmap (Plotly JSON) |
 | `POST /api/upset` | UpSet plot → base64 PNG |
 | `POST /api/annotate/biomart` | Ensembl REST + BioMart annotation |
 | `POST /api/annotate/ncbi` | NCBI E-utilities annotation (gene IDs + RefSeq) |
+
+> **Note:** g:Profiler annotation is called directly from the browser to the g:Profiler public API — it does not go through the backend.
 
 ---
 
@@ -301,5 +309,6 @@ MIT
 - [DESeq2](https://bioconductor.org/packages/DESeq2/) — Love et al., *Genome Biology* 2014
 - [heatmaply](https://github.com/talgalili/heatmaply) — Interactive heatmaps
 - [UpSetR](https://github.com/hms-dbmi/UpSetR) — UpSet visualizations
+- [ggpubr](https://github.com/kassambara/ggpubr) — Publication-ready plots and statistical annotations
 - [Plumber](https://www.rplumber.io/) — R REST API framework
 - [Plotly.js](https://plotly.com/javascript/) — Interactive charts
