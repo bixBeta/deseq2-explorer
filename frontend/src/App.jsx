@@ -191,10 +191,11 @@ export default function App() {
 
   /* ── Start New Session (stay logged in) ── */
   function handleNewSession() {
+    const isExample = session?.isExample
     setSession(null)
     setParseInfo(null); setMetaState(null); setResults(null); setDesign(null); setAnnMap(null); setAnnDetails(null)
     setSampleLabels({})
-    setStep('picker')
+    setStep(isExample ? 'session' : 'picker')
   }
 
   /* ── Edit Samples after results (keeps results so user can navigate back) ── */
