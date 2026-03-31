@@ -341,9 +341,9 @@ export default function App() {
         {/* Logo */}
         <div className="flex items-center gap-3">
           <AppIcon />
-          <span className="font-bold text-base gradient-text">DESeq2 ExploreR</span>
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-3)', opacity: 0.5, fontWeight: 300 }}>×</span>
           <TRExLogo size={28} />
+          <span style={{ fontSize: '0.65rem', color: 'var(--text-3)', opacity: 0.4, fontWeight: 300, margin: '0 -6px' }}>×</span>
+          <span className="font-bold text-base gradient-text">DESeq2 ExploreR</span>
         </div>
 
         {/* Step breadcrumb */}
