@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react'
 
 export default function GeneViolinModal({ gene, symbol: rawSymbol, session, contrast, column, onClose }) {
   const symbol = (rawSymbol && rawSymbol !== 'None' && rawSymbol !== 'N/A') ? rawSymbol : null
-  const [imgSrc,  setImgSrc]  = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error,   setError]   = useState(null)
+  const [imgSrc,       setImgSrc]       = useState(null)
+  const [loading,      setLoading]      = useState(true)
+  const [error,        setError]        = useState(null)
+  const [deseqStats,   setDeseqStats]   = useState(null)
+  const [groupSummary, setGroupSummary] = useState(null)
 
   // Fetch plot from R backend
   useEffect(() => {
@@ -30,6 +32,8 @@ export default function GeneViolinModal({ gene, symbol: rawSymbol, session, cont
       .then(data => {
         if (data.error) throw new Error(data.error)
         setImgSrc(`data:image/png;base64,${data.image}`)
+        if (data.deseqStats)   setDeseqStats(data.deseqStats)
+        if (data.groupSummary) setGroupSummary(data.groupSummary)
         setLoading(false)
       })
       .catch(e => {
@@ -152,6 +156,118 @@ export default function GeneViolinModal({ gene, symbol: rawSymbol, session, cont
               style={{ width: '100%', height: '100%', objectFit: 'contain',
                        display: 'block' }}
             />
+          </div>
+        )}
+
+        {/* DESeq2 stats + normalized count summary */}
+        {(deseqStats || groupSummary) && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+            {/* DESeq2 results row */}
+            {deseqStats && (
+              <div>
+                <p style={{
+                  margin: '0 0 5px', fontSize: '0.72rem', fontWeight: 600,
+                  color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em',
+                }}>
+                  DESeq2 Results
+                  {deseqStats.contrast && (
+                    <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: '#94a3b8', marginLeft: 6 }}>
+                      {deseqStats.contrast}
+                    </span>
+                  )}
+                </p>
+                <table style={{
+                  width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem',
+                  background: '#f8fafc', borderRadius: 8, overflow: 'hidden',
+                  border: '1px solid #e2e8f0',
+                }}>
+                  <thead>
+                    <tr style={{ background: '#f1f5f9', color: '#475569' }}>
+                      {['baseMean', 'log₂FC', 'lfcSE', 'p-value', 'padj'].map(h => (
+                        <th key={h} style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 600, fontSize: '0.72rem', borderBottom: '1px solid #e2e8f0' }}>
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      {[
+                        deseqStats.baseMean != null ? deseqStats.baseMean.toLocaleString() : '—',
+                        deseqStats.log2FC   != null ? deseqStats.log2FC   : '—',
+                        deseqStats.lfcSE    != null ? deseqStats.lfcSE    : '—',
+                        deseqStats.pvalue   != null ? deseqStats.pvalue   : '—',
+                        deseqStats.padj     != null ? deseqStats.padj     : '—',
+                      ].map((val, i) => (
+                        <td key={i} style={{
+                          padding: '6px 10px', textAlign: 'right',
+                          color: i === 4 && deseqStats.padj != null
+                            ? (deseqStats.padj < 0.05 ? '#16a34a' : '#dc2626')
+                            : '#1e293b',
+                          fontWeight: i === 4 ? 600 : 400,
+                          fontFamily: 'monospace',
+                        }}>
+                          {String(val)}
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Per-group normalized count summary */}
+            {groupSummary && groupSummary.length > 0 && (
+              <div>
+                <p style={{
+                  margin: '0 0 5px', fontSize: '0.72rem', fontWeight: 600,
+                  color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em',
+                }}>
+                  Normalized Counts Summary
+                </p>
+                <table style={{
+                  width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem',
+                  background: '#f8fafc', borderRadius: 8, overflow: 'hidden',
+                  border: '1px solid #e2e8f0',
+                }}>
+                  <thead>
+                    <tr style={{ background: '#f1f5f9', color: '#475569' }}>
+                      {['Group', 'n', 'Mean', 'Median', 'SD'].map(h => (
+                        <th key={h} style={{
+                          padding: '6px 10px',
+                          textAlign: h === 'Group' ? 'left' : 'right',
+                          fontWeight: 600, fontSize: '0.72rem',
+                          borderBottom: '1px solid #e2e8f0',
+                        }}>
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {groupSummary.map((row, i) => (
+                      <tr key={i} style={{ borderTop: i > 0 ? '1px solid #e2e8f0' : undefined }}>
+                        <td style={{
+                          padding: '6px 10px', fontWeight: 600,
+                          color: i === 0 ? '#1465AC' : '#B31B21',
+                        }}>
+                          {row.group}
+                        </td>
+                        {[row.n, row.mean, row.median, row.sd].map((v, j) => (
+                          <td key={j} style={{
+                            padding: '6px 10px', textAlign: 'right',
+                            color: '#1e293b', fontFamily: 'monospace',
+                          }}>
+                            {v != null ? v : '—'}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 

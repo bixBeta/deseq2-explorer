@@ -861,7 +861,69 @@ function(req, res) {
   ggplot2::ggsave(tmp, p, width = 5, height = 6, dpi = 140, bg = "white")
 
   img_bytes <- readBin(tmp, "raw", file.info(tmp)$size)
-  list(image = jsonlite::base64_enc(img_bytes))
+
+  # ── DESeq2 stats for this gene + contrast ─────────────────────────────────
+  deseq_stats   <- NULL
+  group_summary <- NULL
+
+  tryCatch({
+    results_path <- file.path(RESULTS_DIR, paste0(session_id, "_results.rds"))
+    if (file.exists(results_path)) {
+      saved <- readRDS(results_path)
+
+      # Find matching contrast
+      ct_match <- NULL
+      if (!is.null(saved$contrasts) && length(saved$contrasts) > 0) {
+        for (ct in saved$contrasts) {
+          if (!is.null(label) && nchar(label) > 0) {
+            if (identical(ct$label, label)) { ct_match <- ct; break }
+          } else if (!is.null(treatment) && !is.null(reference)) {
+            if (identical(ct$treatment, treatment) && identical(ct$reference, reference)) { ct_match <- ct; break }
+          }
+        }
+        if (is.null(ct_match)) ct_match <- saved$contrasts[[1]]
+      }
+
+      if (!is.null(ct_match) && !is.null(ct_match$results)) {
+        res_df   <- ct_match$results
+        gene_row <- res_df[res_df$gene == gene, ]
+        if (nrow(gene_row) > 0) {
+          r <- gene_row[1, ]
+          deseq_stats <- list(
+            baseMean = if (!is.null(r$baseMean) && !is.na(r$baseMean)) round(r$baseMean, 2) else NULL,
+            log2FC   = if (!is.null(r$log2FC)   && !is.na(r$log2FC))   round(r$log2FC,  4) else NULL,
+            padj     = if (!is.null(r$padj)      && !is.na(r$padj))     signif(r$padj,   4) else NULL,
+            pvalue   = if (!is.null(r$pvalue)    && !is.na(r$pvalue))   signif(r$pvalue, 4) else NULL,
+            lfcSE    = if (!is.null(r$lfcSE)     && !is.na(r$lfcSE))    round(r$lfcSE,   4) else NULL,
+            contrast = ct_match$label
+          )
+        }
+      }
+
+      # Per-group normalized count summary from saved norm_matrix
+      nm <- saved$norm_matrix
+      if (!is.null(nm) && gene %in% rownames(nm)) {
+        gene_norm <- nm[gene, keep, drop = TRUE]
+        grp_vec   <- as.character(meta[keep, group_col])
+        group_summary <- lapply(groups_of_interest, function(g) {
+          vals <- gene_norm[grp_vec == g]
+          list(
+            group  = g,
+            mean   = round(mean(vals, na.rm = TRUE), 2),
+            median = round(median(vals, na.rm = TRUE), 2),
+            sd     = round(sd(vals, na.rm = TRUE), 2),
+            n      = sum(!is.na(vals))
+          )
+        })
+      }
+    }
+  }, error = function(e) NULL)
+
+  list(
+    image        = jsonlite::base64_enc(img_bytes),
+    deseqStats   = deseq_stats,
+    groupSummary = group_summary
+  )
 }
 
 # ── UpSet plot: DEG overlap across contrasts ──────────────────────────────────
