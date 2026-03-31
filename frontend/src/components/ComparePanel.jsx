@@ -467,12 +467,20 @@ const STAT_COLS = [
   { key: 'padj',          label: 'padj'        },
 ]
 
+const PAGE_SIZES = [25, 50, 100, 200]
+
 function TableExplorer({ contrasts, annMap, annDetails }) {
-  const [search,      setSearch]      = useState('')
-  const [fdrCut,      setFdrCut]      = useState(1)
-  const [sortContrast, setSortContrast] = useState(null)   // contrast label or null
-  const [sortStat,    setSortStat]    = useState('padj')
-  const [sortDir,     setSortDir]     = useState(1)      // 1 asc, -1 desc
+  const [search,        setSearch]        = useState('')
+  const [fdrCut,        setFdrCut]        = useState(1)
+  const [sortContrast,  setSortContrast]  = useState(null)
+  const [sortStat,      setSortStat]      = useState('padj')
+  const [sortDir,       setSortDir]       = useState(1)      // 1 asc, -1 desc
+  const [page,          setPage]          = useState(1)
+  const [pageSize,      setPageSize]      = useState(50)
+  const [showAdvanced,  setShowAdvanced]  = useState(false)
+  const [minBaseMean,   setMinBaseMean]   = useState('')
+  const [minAbsLFC,     setMinAbsLFC]     = useState('')
+  const [direction,     setDirection]     = useState('any') // 'any' | 'up' | 'down'
   const hasDetails = !!annDetails
 
   // Single-pass scan of annDetails to determine which optional columns are available.
@@ -527,8 +535,16 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
 
   // Filter
   const filtered = useMemo(() => {
-    const lq = search.toLowerCase()
+    const lq          = search.toLowerCase()
+    const filterLabel = sortContrast ?? contrastLabels[0]
+    const bmMin       = minBaseMean !== '' ? Number(minBaseMean) : null
+    const lfcMin      = minAbsLFC   !== '' ? Number(minAbsLFC)   : null
+
     return pivotRows.filter(r => {
+      // Text search
+      if (lq && !r.gene.toLowerCase().includes(lq) && !r.symbol.toLowerCase().includes(lq)) return false
+
+      // FDR: any contrast
       if (fdrCut < 1) {
         const anySig = contrastLabels.some(l => {
           const p = r.contrasts[l]?.padj
@@ -536,10 +552,17 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
         })
         if (!anySig) return false
       }
-      if (!lq) return true
-      return r.gene.toLowerCase().includes(lq) || r.symbol.toLowerCase().includes(lq)
+
+      // Advanced filters applied to the active sort contrast
+      const s = r.contrasts[filterLabel]
+      if (bmMin  != null && (s?.baseMean == null || s.baseMean < bmMin))           return false
+      if (lfcMin != null && (s?.log2FC   == null || Math.abs(s.log2FC) < lfcMin)) return false
+      if (direction === 'up'   && (s?.log2FC == null || s.log2FC <= 0)) return false
+      if (direction === 'down' && (s?.log2FC == null || s.log2FC >= 0)) return false
+
+      return true
     })
-  }, [pivotRows, search, fdrCut, contrastLabels])
+  }, [pivotRows, search, fdrCut, contrastLabels, sortContrast, minBaseMean, minAbsLFC, direction])
 
   // Sort
   const sorted = useMemo(() => {
@@ -553,6 +576,13 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
       return sortDir * (av - bv)
     })
   }, [filtered, sortContrast, sortStat, sortDir, contrastLabels])
+
+  // Reset to page 1 whenever filters or sort change
+  useEffect(() => { setPage(1) }, [search, fdrCut, sortContrast, sortStat, sortDir, minBaseMean, minAbsLFC, direction])
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize))
+  const safePage   = Math.min(page, totalPages)
+  const pageRows   = sorted.slice((safePage - 1) * pageSize, safePage * pageSize)
 
   function toggleSort(cLabel, stat) {
     if (sortContrast === cLabel && sortStat === stat) setSortDir(d => -d)
@@ -657,7 +687,7 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {/* Controls */}
+      {/* ── Main controls bar ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <input value={search} onChange={e => setSearch(e.target.value)}
                placeholder="Search gene ID or symbol…"
@@ -672,6 +702,22 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
             <option value={0.001}>0.001</option>
           </select>
         </label>
+        <button
+          onClick={() => setShowAdvanced(v => !v)}
+          style={{
+            fontSize: '0.75rem', padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
+            background: showAdvanced ? 'rgba(var(--accent-rgb),0.12)' : 'transparent',
+            color: showAdvanced ? 'var(--accent-text)' : 'var(--text-3)',
+            border: '1px solid var(--border)',
+          }}>
+          {showAdvanced ? '▲' : '▼'} Filters
+          {(minBaseMean !== '' || minAbsLFC !== '' || direction !== 'any') && (
+            <span style={{ marginLeft: 5, background: 'var(--accent)', color: '#fff',
+                           borderRadius: 10, padding: '0 5px', fontSize: '0.65rem' }}>
+              {[minBaseMean !== '', minAbsLFC !== '', direction !== 'any'].filter(Boolean).length}
+            </span>
+          )}
+        </button>
         <span style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>
           {sorted.length.toLocaleString()} genes
         </span>
@@ -679,6 +725,50 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
           ↓ CSV
         </button>
       </div>
+
+      {/* ── Advanced filters panel ── */}
+      {showAdvanced && (
+        <div style={{
+          display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center',
+          padding: '10px 14px', borderRadius: 8,
+          background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid var(--border)',
+          fontSize: '0.78rem', color: 'var(--text-2)',
+        }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            baseMean ≥
+            <input type="number" min={0} value={minBaseMean}
+                   onChange={e => setMinBaseMean(e.target.value)}
+                   placeholder="e.g. 10"
+                   style={{ width: 80, fontSize: '0.78rem', padding: '2px 6px' }} />
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            |log₂FC| ≥
+            <input type="number" min={0} step={0.1} value={minAbsLFC}
+                   onChange={e => setMinAbsLFC(e.target.value)}
+                   placeholder="e.g. 1"
+                   style={{ width: 80, fontSize: '0.78rem', padding: '2px 6px' }} />
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            Direction
+            <select value={direction} onChange={e => setDirection(e.target.value)}
+                    style={{ fontSize: '0.78rem', padding: '2px 6px' }}>
+              <option value="any">Any</option>
+              <option value="up">Up only</option>
+              <option value="down">Down only</option>
+            </select>
+          </label>
+          <span style={{ fontSize: '0.68rem', color: 'var(--text-3)', fontStyle: 'italic' }}>
+            Applied to: {sortContrast ?? contrastLabels[0] ?? '—'}
+          </span>
+          {(minBaseMean !== '' || minAbsLFC !== '' || direction !== 'any') && (
+            <button onClick={() => { setMinBaseMean(''); setMinAbsLFC(''); setDirection('any') }}
+                    style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: 5, cursor: 'pointer',
+                             background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-3)' }}>
+              Clear
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Two-level pivot table */}
       <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 580,
@@ -772,7 +862,7 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
             </tr>
           </thead>
           <tbody>
-            {sorted.slice(0, 2000).map((r, i) => {
+            {pageRows.map((r, i) => {
               const gStr   = typeof r.gene === 'string' ? r.gene : String(r.gene ?? '')
               const symStr = typeof r.symbol      === 'string' ? r.symbol      : ''
               const chrStr = typeof r.chr         === 'string' ? r.chr         : ''
@@ -851,15 +941,44 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
             })}
           </tbody>
         </table>
-        {sorted.length > 2000 && (
-          <div style={{ padding: '8px 14px', textAlign: 'center', fontSize: '0.72rem',
-                        color: 'var(--text-3)', borderTop: '1px solid var(--border)' }}>
-            Showing first 2,000 of {sorted.length.toLocaleString()} genes — use filters or download CSV
-          </div>
-        )}
         {sorted.length === 0 && (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: '0.82rem' }}>
             No genes match current filters
+          </div>
+        )}
+
+        {/* ── Pagination footer ── */}
+        {sorted.length > 0 && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+            padding: '7px 12px', borderTop: '1px solid var(--border)',
+            fontSize: '0.72rem', color: 'var(--text-3)', background: 'var(--bg-panel)',
+            position: 'sticky', bottom: 0,
+          }}>
+            {/* Page nav */}
+            {[
+              { label: '«', to: 1,            disabled: safePage === 1 },
+              { label: '‹', to: safePage - 1, disabled: safePage === 1 },
+              { label: '›', to: safePage + 1, disabled: safePage === totalPages },
+              { label: '»', to: totalPages,   disabled: safePage === totalPages },
+            ].map(btn => (
+              <button key={btn.label} onClick={() => setPage(btn.to)} disabled={btn.disabled}
+                      style={{
+                        padding: '2px 7px', borderRadius: 5, cursor: btn.disabled ? 'default' : 'pointer',
+                        border: '1px solid var(--border)', fontSize: '0.78rem',
+                        background: 'transparent', color: btn.disabled ? 'var(--text-3)' : 'var(--text-2)',
+                        opacity: btn.disabled ? 0.4 : 1,
+                      }}>
+                {btn.label}
+              </button>
+            ))}
+            <span style={{ margin: '0 4px' }}>
+              Page {safePage} / {totalPages} · {sorted.length.toLocaleString()} genes
+            </span>
+            <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1) }}
+                    style={{ fontSize: '0.72rem', padding: '1px 4px', marginLeft: 4 }}>
+              {PAGE_SIZES.map(n => <option key={n} value={n}>{n} / page</option>)}
+            </select>
           </div>
         )}
       </div>
