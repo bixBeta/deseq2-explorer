@@ -331,7 +331,7 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 
       {/* Control bar */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'stretch' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, alignItems: 'start' }}>
 
         {/* Cutoffs */}
         <ControlGroup label="Cutoffs">
@@ -392,8 +392,8 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
           )}
         </ControlGroup>
 
-        {/* Generate */}
-        <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 8, marginLeft: 'auto' }}>
+        {/* Generate — spans both columns, aligned right */}
+        <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end' }}>
           <button className="btn-primary" onClick={generate} disabled={loading}
                   style={{ whiteSpace: 'nowrap' }}>
             {loading ? '⏳ Generating…' : '▶ Generate Heatmap'}
