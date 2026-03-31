@@ -15,8 +15,8 @@ function TRExLogoLarge() {
       <path d={HEX} fill="url(#trex-lg-bg)" stroke="#6d28d9" strokeWidth="1"/>
       <text x="20" y="17" textAnchor="middle" fill="#c4b5fd"
             fontFamily="Inter,system-ui,sans-serif" fontWeight="700" fontSize="10">TR</text>
-      <text x="20" y="29" textAnchor="middle" fill="#a78bfa"
-            fontFamily="Inter,system-ui,sans-serif" fontWeight="600" fontSize="10">Ex</text>
+      <text x="20" y="29" textAnchor="middle" fill="#c4b5fd"
+            fontFamily="Inter,system-ui,sans-serif" fontWeight="700" fontSize="10">Ex</text>
     </svg>
   )
 }
