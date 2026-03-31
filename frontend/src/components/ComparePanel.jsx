@@ -831,6 +831,12 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
     if (!isFinite(n)) return '—'
     return n.toPrecision(d)
   }
+  const fmtP   = (v) => {
+    if (v == null) return '—'
+    const n = typeof v === 'number' ? v : Number(v)
+    if (!isFinite(n)) return '—'
+    return n < 0.0001 ? n.toExponential(2) : n.toPrecision(3)
+  }
   const fmtLFC = (v) => {
     if (v == null) return '—'
     const n = typeof v === 'number' ? v : Number(v)
@@ -1143,8 +1149,8 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
                     <td key={`${lbl}_mt`}  style={{ ...base, color: 'var(--text-2)' }}>{fmtN(s?.meanTreatment, 4)}</td>,
                     <td key={`${lbl}_mr`}  style={{ ...base, color: 'var(--text-2)' }}>{fmtN(s?.meanReference,  4)}</td>,
                     <td key={`${lbl}_lfc`} style={{ ...base, fontWeight: 500, color: lfcColor }}>{s ? fmtLFC(s.log2FC) : '—'}</td>,
-                    <td key={`${lbl}_pv`}  style={{ ...base, color: 'var(--text-3)' }}>{fmtN(s?.pvalue, 3)}</td>,
-                    <td key={`${lbl}_pa`}  style={{ ...base, ...groupRight, color: padjColor(s?.padj) }}>{fmtN(s?.padj, 3)}</td>,
+                    <td key={`${lbl}_pv`}  style={{ ...base, color: 'var(--text-3)' }}>{fmtP(s?.pvalue)}</td>,
+                    <td key={`${lbl}_pa`}  style={{ ...base, ...groupRight, color: padjColor(s?.padj) }}>{fmtP(s?.padj)}</td>,
                   ]
                 })}
               </tr>
