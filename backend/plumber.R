@@ -620,14 +620,19 @@ function(req, res) {
     result_dfs <- lapply(contrasts_list, run_one_contrast)
   }
 
-  # ── PCA using varianceStabilizingTransformation() — up to 10 PCs ─────────────
+  # ── VST for heatmap / count distributions (blind=FALSE: design-aware) ─────────
   vsd     <- varianceStabilizingTransformation(dds, blind = FALSE)
   vst_mat <- assay(vsd)
-  rv      <- rowVars(vst_mat)
-  top500  <- vst_mat[order(rv, decreasing = TRUE)[seq_len(min(500, nrow(vst_mat)))], ]
-  pca_obj <- prcomp(t(top500), scale. = FALSE)
-  n_pc    <- min(10, ncol(pca_obj$x))
-  scores  <- as.data.frame(pca_obj$x[, 1:n_pc, drop = FALSE])
+
+  # ── PCA using varianceStabilizingTransformation() — up to 10 PCs ─────────────
+  # blind=TRUE matches DESeq2::plotPCA() convention for exploratory ordination
+  vsd_blind <- varianceStabilizingTransformation(dds, blind = TRUE)
+  pca_mat   <- assay(vsd_blind)
+  rv        <- rowVars(pca_mat)
+  top500    <- pca_mat[order(rv, decreasing = TRUE)[seq_len(min(500, nrow(pca_mat)))], ]
+  pca_obj   <- prcomp(t(top500), scale. = FALSE)
+  n_pc      <- min(10, ncol(pca_obj$x))
+  scores    <- as.data.frame(pca_obj$x[, 1:n_pc, drop = FALSE])
   scores$sample <- rownames(scores)
   for (col in colnames(meta)) scores[[col]] <- as.character(meta[scores$sample, col])
   variance <- summary(pca_obj)$importance["Proportion of Variance", 1:n_pc] * 100

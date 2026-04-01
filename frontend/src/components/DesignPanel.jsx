@@ -57,7 +57,11 @@ export default function DesignPanel({
   const [error,      setError]      = useState(null)
   const [status,     setStatus]     = useState(null)
 
-  const { columns = [] } = parseInfo || {}
+  const _cols = parseInfo?.columns
+  const columns = Array.isArray(_cols) ? _cols
+                : typeof _cols === 'string' ? [_cols]
+                : (_cols && typeof _cols === 'object') ? Object.values(_cols)
+                : []
 
   const levelOptions = useMemo(() => {
     if (!column || !metaState?.rows) return []

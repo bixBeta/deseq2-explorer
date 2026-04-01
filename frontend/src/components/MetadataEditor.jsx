@@ -1,7 +1,12 @@
 import { useState, useCallback, useRef } from 'react'
 
 export default function MetadataEditor({ parseInfo, metaState, sampleLabels = {}, onConfirm, onBack }) {
-  const { columns = [], geneCount, sampleCount } = parseInfo || {}
+  const _cols = parseInfo?.columns
+  const columns = Array.isArray(_cols) ? _cols
+                : typeof _cols === 'string' ? [_cols]
+                : (_cols && typeof _cols === 'object') ? Object.values(_cols)
+                : []
+  const { geneCount, sampleCount } = parseInfo || {}
 
   // rows: array of { sample, col1, col2, ... }
   const [rows, setRows]         = useState(metaState?.rows || [])

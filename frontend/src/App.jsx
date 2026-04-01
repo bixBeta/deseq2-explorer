@@ -178,10 +178,11 @@ export default function App() {
   /* ── Example data (no auth) ── */
   function handleExample(data) {
     setSession({ sessionId: 'example', email: 'example', isExample: true })
-    setParseInfo({ columns: data.columns, levels: data.levels, metadataRows: data.metadataRows })
+    const norm = normParseInfo(data)
+    setParseInfo({ columns: norm.columns, levels: norm.levels, metadataRows: norm.metadataRows })
     setMetaState({
-      rows:     data.metadataRows,
-      selected: new Set(data.metadataRows.map(r => r.sample)),
+      rows:     norm.metadataRows,
+      selected: new Set(norm.metadataRows.map(r => r.sample)),
     })
     if (data.hasResults && data.results) {
       setResults(data.results)
@@ -210,18 +211,20 @@ export default function App() {
       if (info.sampleLabels && Object.keys(info.sampleLabels).length > 0) setSampleLabels(info.sampleLabels)
       // Restore metaState so "Add Contrast" can route back to the design panel
       if (info.metadataRows?.length > 0) {
-        setParseInfo({ columns: info.columns, levels: info.levels, metadataRows: info.metadataRows })
+        const norm = normParseInfo(info)
+        setParseInfo({ columns: norm.columns, levels: norm.levels, metadataRows: norm.metadataRows })
         setMetaState({
-          rows:     info.metadataRows,
-          selected: new Set(info.metadataRows.map(r => r.sample)),
+          rows:     norm.metadataRows,
+          selected: new Set(norm.metadataRows.map(r => r.sample)),
         })
       }
       setStep('results')
     } else if (info.hasData && info.metadataRows) {
-      setParseInfo({ columns: info.columns, levels: info.levels, metadataRows: info.metadataRows })
+      const norm = normParseInfo(info)
+      setParseInfo({ columns: norm.columns, levels: norm.levels, metadataRows: norm.metadataRows })
       setMetaState({
-        rows:     info.metadataRows || [],
-        selected: new Set((info.metadataRows || []).map(r => r.sample)),
+        rows:     norm.metadataRows,
+        selected: new Set(norm.metadataRows.map(r => r.sample)),
       })
       if (info.design) setDesign(info.design)
       setStep('metadata')
@@ -319,15 +322,31 @@ export default function App() {
     return () => window.removeEventListener('beforeunload', onUnload)
   }, [])
 
+  /* ── Normalise R JSON arrays ──────────────────────────────────────────────
+   * jsonlite quirks:
+   *   - unboxedJSON collapses a length-1 vector to a bare scalar string
+   *   - a named list serialises as {} instead of []
+   * Handle all three: array, string (unboxed), object (named list), null
+   * ─────────────────────────────────────────────────────────────────────── */
+  function toArr(v) {
+    if (Array.isArray(v)) return v
+    if (typeof v === 'string') return [v]           // unboxed single element
+    if (v && typeof v === 'object') return Object.values(v)
+    return []
+  }
+  function normParseInfo(raw) {
+    return {
+      ...raw,
+      columns:      toArr(raw.columns),
+      metadataRows: toArr(raw.metadataRows),
+    }
+  }
+
   /* ── Workflow ── */
   function handleParsed(info) {
-    setParseInfo(info)
-    // Normalise metadataRows — R's jsonlite may return a named list as a JSON
-    // object instead of an array; Object.values() handles both cases safely.
-    const rawRows = info.metadataRows
-    const rows = Array.isArray(rawRows) ? rawRows
-                 : rawRows && typeof rawRows === 'object' ? Object.values(rawRows)
-                 : []
+    const norm = normParseInfo(info)
+    setParseInfo(norm)
+    const rows = norm.metadataRows
     setMetaState({
       rows,
       selected: new Set(rows.map(r => r.sample).filter(Boolean)),
