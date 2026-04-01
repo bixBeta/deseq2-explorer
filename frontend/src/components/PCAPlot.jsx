@@ -34,13 +34,13 @@ const TAB_BTN = (active) => ({
   transition: 'all 0.15s',
 })
 
-export default function PCAPlot({ pca, design, sampleLabels = {} }) {
+export default function PCAPlot({ pca, design, sampleLabels = {}, annMap = {} }) {
   const outerRef      = useRef(null)
   const plotRef       = useRef(null)
   const screeRef      = useRef(null)
   const screeOuterRef = useRef(null)
 
-  const [plotTab,     setPlotTab]     = useState('scatter')   // 'scatter' | 'scree'
+  const [plotTab,     setPlotTab]     = useState('scatter')   // 'scatter' | 'scree' | 'loadings'
   const [is3D,        setIs3D]        = useState(false)
   const [xPC,         setXPC]         = useState('PC1')
   const [yPC,         setYPC]         = useState('PC2')
@@ -50,6 +50,8 @@ export default function PCAPlot({ pca, design, sampleLabels = {} }) {
   const [opacity,     setOpacity]     = useState(0.85)
   const [paletteName, setPaletteName] = useState('Clinical')
   const [colorBy,     setColorBy]     = useState(design?.column ?? null)
+  const [rankByPC,    setRankByPC]    = useState('PC1')
+  const [topN,        setTopN]        = useState(20)
 
   // Derive available PC keys + variance + metadata columns from data
   const { pcKeys, variance, metaCols } = useMemo(() => {
@@ -294,7 +296,7 @@ export default function PCAPlot({ pca, design, sampleLabels = {} }) {
       {/* ── Sub-tab bar ── */}
       <div style={{ display: 'flex', gap: 4, padding: '3px', borderRadius: 8,
                     background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}>
-        {[['scatter', '◉ Scatter'], ['scree', '↗ Scree']].map(([key, lbl]) => (
+        {[['scatter', '◉ Scatter'], ['scree', '↗ Scree'], ['loadings', '≋ Loadings']].map(([key, lbl]) => (
           <button key={key} onClick={() => setPlotTab(key)} style={TAB_BTN(plotTab === key)}>
             {lbl}
           </button>
@@ -480,6 +482,194 @@ export default function PCAPlot({ pca, design, sampleLabels = {} }) {
           <div ref={screeRef} style={{ width: '100%', height: '100%' }} />
         </div>
       )}
+
+      {/* ── Loadings table ── */}
+      {plotTab === 'loadings' && (
+        <LoadingsTable
+          loadings={pca?.loadings}
+          pcKeys={pcKeys}
+          variance={variance}
+          annMap={annMap}
+          rankByPC={rankByPC}
+          setRankByPC={setRankByPC}
+          topN={topN}
+          setTopN={setTopN}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Loadings table component ──────────────────────────────────────────────────
+function LoadingsTable({ loadings, pcKeys, variance, annMap, rankByPC, setRankByPC, topN, setTopN }) {
+  const hasAnn = annMap && Object.keys(annMap).length > 0
+
+  const sorted = useMemo(() => {
+    if (!loadings?.length) return []
+    const pc = rankByPC
+    return [...loadings]
+      .filter(r => r[pc] != null)
+      .sort((a, b) => Math.abs(b[pc]) - Math.abs(a[pc]))
+      .slice(0, topN)
+  }, [loadings, rankByPC, topN])
+
+  // Show a subset of PC columns (selected PC + first 4 others, to avoid huge tables)
+  const displayPCs = useMemo(() => {
+    const others = pcKeys.filter(k => k !== rankByPC).slice(0, 4)
+    return [rankByPC, ...others]
+  }, [pcKeys, rankByPC])
+
+  function fmtLoading(v) {
+    if (v == null) return '—'
+    const n = Number(v)
+    return (n >= 0 ? '+' : '') + n.toFixed(4)
+  }
+
+  function downloadCSV() {
+    if (!sorted.length) return
+    const allPCs = pcKeys
+    const header = ['Rank', 'Gene', ...(hasAnn ? ['Symbol'] : []), ...allPCs.map(k => {
+      const vi = pcKeys.indexOf(k)
+      return variance[vi] != null ? `${k} (${Number(variance[vi]).toFixed(1)}%)` : k
+    })]
+    const rows = sorted.map((r, i) => [
+      i + 1,
+      r.gene,
+      ...(hasAnn ? [annMap[r.gene] || ''] : []),
+      ...allPCs.map(k => r[k] != null ? Number(r[k]).toFixed(6) : ''),
+    ])
+    const csv = [header, ...rows].map(r => r.join(',')).join('\n')
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })),
+      download: `pca_loadings_${rankByPC}.csv`,
+    })
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+  }
+
+  if (!loadings?.length) return (
+    <div style={{ color: 'var(--text-3)', fontSize: '0.85rem', padding: 20 }}>
+      No loadings data — re-run the analysis to generate loadings.
+    </div>
+  )
+
+  const thS = {
+    padding: '8px 12px', fontSize: '0.72rem', fontWeight: 600,
+    color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.04em',
+    background: 'var(--bg-card2)', borderBottom: '1px solid var(--border)',
+    borderRight: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 2,
+    whiteSpace: 'nowrap',
+  }
+  const tdS = {
+    padding: '5px 12px', fontSize: '0.78rem',
+    borderBottom: '1px solid var(--border)',
+    borderRight: '1px solid var(--border)',
+  }
+
+  return (
+    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* Controls */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-3)',
+                         textTransform: 'uppercase', letterSpacing: '0.04em' }}>Rank by</span>
+          <select value={rankByPC} onChange={e => setRankByPC(e.target.value)}
+                  style={{ fontSize: '0.78rem', padding: '2px 6px', minWidth: 70 }}>
+            {pcKeys.map(k => {
+              const vi = pcKeys.indexOf(k)
+              const vp = variance[vi] != null ? ` (${Number(variance[vi]).toFixed(1)}%)` : ''
+              return <option key={k} value={k}>{k}{vp}</option>
+            })}
+          </select>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-3)',
+                         textTransform: 'uppercase', letterSpacing: '0.04em' }}>Top</span>
+          <select value={topN} onChange={e => setTopN(Number(e.target.value))}
+                  style={{ fontSize: '0.78rem', padding: '2px 6px' }}>
+            {[10, 20, 30, 50].map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </div>
+        <button onClick={downloadCSV}
+                style={{ marginLeft: 'auto', padding: '4px 12px', fontSize: '0.75rem',
+                         borderRadius: 6, border: '1px solid var(--border)',
+                         background: 'var(--bg-card2)', color: 'var(--text-2)',
+                         cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+          <svg width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Download CSV
+        </button>
+      </div>
+
+      {/* Table */}
+      <div className="glass" style={{ overflow: 'auto', maxHeight: 600, borderRadius: 10 }}>
+        <table style={{ borderCollapse: 'collapse', minWidth: '100%', fontSize: '0.78rem' }}>
+          <thead>
+            <tr>
+              <th style={{ ...thS, width: 40, textAlign: 'center' }}>#</th>
+              <th style={thS}>Gene</th>
+              {hasAnn && <th style={thS}>Symbol</th>}
+              {displayPCs.map((k, ci) => {
+                const vi = pcKeys.indexOf(k)
+                const vp = variance[vi] != null ? ` (${Number(variance[vi]).toFixed(1)}%)` : ''
+                const isRank = k === rankByPC
+                return (
+                  <th key={k} style={{
+                    ...thS,
+                    color: isRank ? 'var(--accent-text)' : 'var(--text-3)',
+                    ...(ci === displayPCs.length - 1 ? { borderRight: 'none' } : {}),
+                  }}>
+                    {k}{vp}{isRank ? ' ▼' : ''}
+                  </th>
+                )
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((row, i) => {
+              const sym = hasAnn ? (annMap[row.gene] || null) : null
+              return (
+                <tr key={row.gene}>
+                  <td style={{ ...tdS, textAlign: 'center', color: 'var(--text-3)', width: 40 }}>{i + 1}</td>
+                  <td style={{ ...tdS, fontFamily: 'monospace', color: 'var(--text-2)', whiteSpace: 'nowrap' }}>
+                    {row.gene}
+                  </td>
+                  {hasAnn && (
+                    <td style={{ ...tdS, color: sym ? 'var(--accent-text)' : 'var(--text-3)',
+                                 fontStyle: sym ? 'normal' : 'italic', whiteSpace: 'nowrap' }}>
+                      {sym || '—'}
+                    </td>
+                  )}
+                  {displayPCs.map((k, ci) => {
+                    const val = row[k]
+                    const n   = val != null ? Number(val) : null
+                    const isRank = k === rankByPC
+                    const color = n == null ? 'var(--text-3)'
+                                : n > 0    ? '#34d399'
+                                :             '#f87171'
+                    return (
+                      <td key={k} style={{
+                        ...tdS,
+                        fontFamily: 'monospace',
+                        color: isRank ? color : 'var(--text-2)',
+                        fontWeight: isRank ? 600 : 400,
+                        ...(ci === displayPCs.length - 1 ? { borderRight: 'none' } : {}),
+                      }}>
+                        {fmtLoading(val)}
+                      </td>
+                    )
+                  })}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>
+        Showing top {sorted.length} genes by |loading| on {rankByPC} · loadings shown for {rankByPC} + first {displayPCs.length - 1} other PCs · download CSV for all PCs
+        {hasAnn ? ' · annotations loaded' : ' · load annotations in the Annotation tab to add gene symbols'}
+      </p>
     </div>
   )
 }

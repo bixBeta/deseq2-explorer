@@ -641,9 +641,23 @@ function(req, res) {
   scores$sample <- rownames(scores)
   for (col in colnames(meta)) scores[[col]] <- as.character(meta[scores$sample, col])
   variance <- summary(pca_obj)$importance["Proportion of Variance", 1:n_pc] * 100
+  # ── Top loadings: top 50 genes per PC by absolute loading, all PCs returned ──
+  rot_mat    <- pca_obj$rotation
+  n_top_load <- 50L
+  top_genes  <- unique(unlist(lapply(seq_len(n_pc), function(j)
+    rownames(rot_mat)[order(abs(rot_mat[, j]), decreasing = TRUE)[seq_len(min(n_top_load, nrow(rot_mat)))]]
+  )))
+  sub_rot      <- rot_mat[top_genes, , drop = FALSE]
+  loadings_out <- lapply(seq_len(nrow(sub_rot)), function(i) {
+    row        <- as.list(sub_rot[i, ])
+    row$gene   <- rownames(sub_rot)[i]
+    row
+  })
+
   pca_list <- list(
     scores   = lapply(seq_len(nrow(scores)), function(i) as.list(scores[i, ])),
-    variance = as.numeric(variance)
+    variance = as.numeric(variance),
+    loadings = loadings_out
   )
 
   # ── Count distributions for violin plots (sampled genes for performance) ───────

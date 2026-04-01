@@ -228,7 +228,7 @@ export default function Results({ results, design, onBack, onEditSamples, sessio
           />
         </div>
         <div style={{ display: vizTab === 'pca' ? 'block' : 'none' }}>
-          <PCAPlot pca={pca} design={design} sampleLabels={sampleLabels} />
+          <PCAPlot pca={pca} design={design} sampleLabels={sampleLabels} annMap={annMap} />
         </div>
         <div style={{ display: vizTab === 'table' ? 'block' : 'none' }}>
           <ResultsTable
