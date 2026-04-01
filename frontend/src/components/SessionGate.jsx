@@ -308,6 +308,45 @@ export default function SessionGate({ onAuth, onExample }) {
                 {error}
               </div>
             )}
+
+            {/* ── Data Prep Tool link ── */}
+            <div style={{ marginTop: 6, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+              <p style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginBottom: 8 }}>
+                Need to prepare your data first?
+              </p>
+              <a href="/prep/" target="_blank" rel="noopener noreferrer"
+                 style={{
+                   display: 'flex', alignItems: 'center', gap: 13,
+                   padding: '13px 15px', borderRadius: 11,
+                   background: 'rgba(99,102,241,0.04)',
+                   border: '1px solid rgba(99,102,241,0.18)',
+                   textDecoration: 'none', transition: 'all 0.15s',
+                 }}
+                 onMouseEnter={e => e.currentTarget.style.background = 'rgba(99,102,241,0.1)'}
+                 onMouseLeave={e => e.currentTarget.style.background = 'rgba(99,102,241,0.04)'}>
+                <div style={{
+                  width: 38, height: 38, borderRadius: 9, flexShrink: 0,
+                  background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.2)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {/* wrench + table icon */}
+                  <svg width="19" height="19" fill="none" stroke="#a5b4fc" strokeWidth="1.5" viewBox="0 0 24 24">
+                    <rect x="3" y="3" width="18" height="4" rx="1"/>
+                    <rect x="3" y="10" width="18" height="4" rx="1"/>
+                    <path d="M3 17h7M14 17h2M19 17h2" strokeLinecap="round"/>
+                    <circle cx="11" cy="19" r="1.5" fill="#a5b4fc" stroke="none"/>
+                  </svg>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.86rem', fontWeight: 600, color: '#a5b4fc', marginBottom: 2 }}>
+                    Data Prep Tool ↗
+                  </div>
+                  <div style={{ fontSize: '0.73rem', color: 'var(--text-3)', lineHeight: 1.45 }}>
+                    Build a DESeq2-ready RDS from a count matrix + metadata — runs in your browser
+                  </div>
+                </div>
+              </a>
+            </div>
           </>
         ) : (
           /* Sign-in form */

@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Data Prep · DESeq2 ExploreR</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #070b14;
+      --bg2:     #0d1421;
+      --surface: rgba(255,255,255,0.04);
+      --surf2:   rgba(255,255,255,0.07);
+      --border:  rgba(255,255,255,0.08);
+      --bord2:   rgba(255,255,255,0.13);
+      --accent:  #6366f1;
+      --acc2:    #8b5cf6;
+      --t1: #f1f5f9;
+      --t2: #94a3b8;
+      --t3: #475569;
+      --ok:   #10b981;
+      --warn: #f59e0b;
+      --err:  #f87171;
+      --r: 10px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--t1);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      position: sticky; top: 0; z-index: 100;
+      height: 54px;
+      background: rgba(7,11,20,0.9);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 24px;
+    }
+    .hdr-left { display: flex; align-items: center; gap: 14px; }
+    .back-link {
+      display: flex; align-items: center; gap: 6px;
+      color: var(--t3); text-decoration: none; font-size: 0.8rem;
+      transition: color .15s;
+    }
+    .back-link:hover { color: var(--t1); }
+    .vdiv { width: 1px; height: 16px; background: var(--bord2); }
+    .hdr-title {
+      font-size: 0.9rem; font-weight: 600;
+      background: linear-gradient(90deg, #818cf8, #a78bfa);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .hdr-sub { font-size: 0.72rem; color: var(--t3); }
+
+    /* WebR badge */
+    .wbadge {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 11px; border-radius: 20px; font-size: 0.72rem; font-weight: 500;
+    }
+    .wbadge.loading { background: rgba(245,158,11,.1); color: var(--warn); border: 1px solid rgba(245,158,11,.2); }
+    .wbadge.ready   { background: rgba(16,185,129,.1);  color: var(--ok);   border: 1px solid rgba(16,185,129,.2); }
+    .wbadge.error   { background: rgba(248,113,113,.1); color: var(--err);  border: 1px solid rgba(248,113,113,.2); }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spin {
+      width: 9px; height: 9px; border-radius: 50%; display: inline-block;
+      border: 2px solid rgba(245,158,11,.3); border-top-color: var(--warn);
+      animation: spin .8s linear infinite;
+    }
+    .spin-acc {
+      width: 9px; height: 9px; border-radius: 50%; display: inline-block;
+      border: 2px solid rgba(99,102,241,.3); border-top-color: var(--accent);
+      animation: spin .8s linear infinite;
+    }
+
+    /* ── Main layout ── */
+    main { max-width: 920px; margin: 0 auto; padding: 32px 20px 80px; }
+
+    /* ── Step indicator ── */
+    .steps { display: flex; align-items: center; margin-bottom: 28px; }
+    .step-item { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .step-num {
+      width: 24px; height: 24px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .72rem; font-weight: 700;
+      border: 2px solid var(--bord2); color: var(--t3); background: var(--surface);
+      transition: all .2s;
+    }
+    .step-label { font-size: .8rem; color: var(--t3); font-weight: 500; transition: color .2s; white-space: nowrap; }
+    .step-line { flex: 1; height: 1px; background: var(--border); margin: 0 12px; }
+
+    .step-item.active .step-num  { border-color: var(--accent); background: rgba(99,102,241,.15); color: #a5b4fc; }
+    .step-item.active .step-label{ color: var(--t1); }
+    .step-item.done .step-num    { border-color: var(--ok); background: rgba(16,185,129,.12); color: var(--ok); }
+    .step-item.done .step-label  { color: var(--t2); }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--r); padding: 22px; margin-bottom: 18px;
+      transition: opacity .2s;
+    }
+    .card.disabled { opacity: .35; pointer-events: none; }
+    .card-title    { font-size: .95rem; font-weight: 600; color: var(--t1); margin-bottom: 3px; }
+    .card-sub      { font-size: .76rem; color: var(--t2); margin-bottom: 16px; }
+
+    /* ── Dropzone ── */
+    .dropzone {
+      border: 2px dashed var(--bord2); border-radius: var(--r);
+      padding: 38px 20px; text-align: center; cursor: pointer;
+      transition: all .2s;
+    }
+    .dropzone:hover, .dropzone.over {
+      border-color: var(--accent); background: rgba(99,102,241,.05);
+    }
+    .dropzone p   { color: var(--t2); font-size: .84rem; margin-top: 10px; }
+    .dropzone small { color: var(--t3); font-size: .74rem; display: block; margin-top: 5px; }
+    .dz-icon { color: var(--t3); }
+
+    /* stats chips */
+    .chips { display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0 12px; }
+    .chip {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 11px; border-radius: 20px; font-size: .76rem;
+      background: rgba(99,102,241,.1); border: 1px solid rgba(99,102,241,.2); color: #a5b4fc;
+    }
+
+    /* preview */
+    .preview-wrap {
+      overflow: auto; max-height: 185px;
+      border: 1px solid var(--border); border-radius: 8px;
+    }
+    .preview-tbl { border-collapse: collapse; font-size: .75rem; width: 100%; }
+    .preview-tbl th {
+      padding: 6px 11px; background: rgba(255,255,255,.05);
+      border-bottom: 1px solid var(--border); color: var(--t2);
+      text-align: left; white-space: nowrap; position: sticky; top: 0;
+    }
+    .preview-tbl td {
+      padding: 4px 11px; border-bottom: 1px solid rgba(255,255,255,.04);
+      color: var(--t2); font-family: monospace; white-space: nowrap;
+    }
+    .preview-tbl tr:last-child td { border-bottom: none; }
+    .preview-tbl td:first-child   { color: var(--t1); font-weight: 500; }
+
+    /* ── Tip box ── */
+    .tip {
+      margin-top: 14px; padding: 10px 14px; border-radius: 8px; font-size: .77rem;
+      background: rgba(99,102,241,.05); border: 1px solid rgba(99,102,241,.12);
+      color: var(--t2); line-height: 1.6;
+    }
+    .tip strong { color: #a5b4fc; }
+    .tip code   { font-family: monospace; font-size: .9em; color: #c4b5fd; }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 14px; border-radius: 7px; font-size: .8rem; font-weight: 500;
+      cursor: pointer; border: none; transition: all .15s; white-space: nowrap;
+    }
+    .btn:disabled { opacity: .38; cursor: not-allowed; }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--acc2)); color: #fff;
+    }
+    .btn-primary:not(:disabled):hover { filter: brightness(1.15); }
+    .btn-ghost {
+      background: var(--surf2); color: var(--t1); border: 1px solid var(--bord2);
+    }
+    .btn-ghost:hover { background: rgba(255,255,255,.1); }
+    .btn-del {
+      background: rgba(248,113,113,.08); color: var(--err);
+      border: 1px solid rgba(248,113,113,.18);
+      padding: 2px 7px; font-size: .7rem; border-radius: 5px;
+    }
+    .btn-del:hover { background: rgba(248,113,113,.16); }
+
+    /* toolbar */
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+
+    /* ── Metadata table ── */
+    .meta-wrap {
+      overflow: auto; max-height: 380px;
+      border: 1px solid var(--border); border-radius: 8px;
+    }
+    .meta-tbl { border-collapse: collapse; min-width: 100%; font-size: .81rem; }
+    .meta-tbl th {
+      background: rgba(255,255,255,.05); border-bottom: 1px solid var(--border);
+      border-right: 1px solid var(--border); position: sticky; top: 0; z-index: 2;
+      white-space: nowrap;
+    }
+    .meta-tbl th:last-child { border-right: none; }
+    .meta-tbl td {
+      border-bottom: 1px solid rgba(255,255,255,.04);
+      border-right: 1px solid rgba(255,255,255,.04); padding: 0;
+    }
+    .meta-tbl td:last-child  { border-right: none; }
+    .meta-tbl tr:last-child td { border-bottom: none; }
+
+    /* sample col */
+    .th-sample { padding: 8px 12px; color: var(--t2); font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+    .td-sample { padding: 6px 12px; color: var(--t2); font-family: monospace; font-size: .8rem; white-space: nowrap; min-width: 130px; }
+
+    /* editable col header */
+    .th-editable { display: flex; align-items: center; gap: 6px; padding: 6px 8px; }
+    .col-name-inp {
+      background: transparent; border: none; border-bottom: 1px solid transparent;
+      color: #a5b4fc; font-weight: 600; font-size: .72rem; text-transform: uppercase;
+      letter-spacing: .04em; outline: none; min-width: 60px; width: 90px; max-width: 140px;
+      transition: border-color .15s;
+    }
+    .col-name-inp:focus { border-bottom-color: var(--accent); }
+
+    /* data cell input */
+    .cell-inp {
+      width: 100%; background: transparent; border: none; padding: 6px 10px;
+      color: var(--t1); font-size: .81rem; outline: none; min-width: 90px;
+      transition: background .1s;
+    }
+    .cell-inp:focus   { background: rgba(99,102,241,.08); }
+    .cell-inp::placeholder { color: var(--t3); }
+    .cell-inp.invalid { background: rgba(248,113,113,.06); }
+
+    /* ── Export section ── */
+    .info-grid { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+    .info-card {
+      flex: 1; min-width: 150px; padding: 14px 16px; border-radius: 8px;
+      background: rgba(99,102,241,.06); border: 1px solid rgba(99,102,241,.14);
+    }
+    .info-card .lbl { font-size: .68rem; color: var(--t3); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
+    .info-card .val { font-size: 1.15rem; font-weight: 700; color: #a5b4fc; }
+
+    .fname-row { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+    .fname-row label { font-size: .8rem; color: var(--t2); white-space: nowrap; }
+    .fname-inp {
+      flex: 1; max-width: 300px;
+      background: var(--surface); border: 1px solid var(--bord2); border-radius: 7px;
+      color: var(--t1); padding: 7px 11px; font-size: .84rem; outline: none;
+    }
+    .fname-inp:focus { border-color: var(--accent); }
+
+    .export-btn { padding: 11px 26px; font-size: .9rem; border-radius: 9px; }
+
+    .prog-msg {
+      margin-top: 13px; font-size: .8rem; color: var(--t2);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .ok-msg {
+      margin-top: 13px; padding: 9px 13px; border-radius: 8px; font-size: .8rem;
+      background: rgba(16,185,129,.08); border: 1px solid rgba(16,185,129,.2);
+      color: var(--ok); display: flex; align-items: center; gap: 8px;
+    }
+    .err-msg {
+      margin-top: 13px; padding: 9px 13px; border-radius: 8px; font-size: .8rem;
+      background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.2);
+      color: var(--err);
+    }
+    .warn-msg {
+      margin-top: 11px; padding: 9px 13px; border-radius: 8px; font-size: .78rem;
+      background: rgba(245,158,11,.07); border: 1px solid rgba(245,158,11,.18);
+      color: var(--warn);
+    }
+
+    #file-inp, #meta-file-inp { display: none; }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ───────────────────────────────────────────────────────────────── -->
+<header>
+  <div class="hdr-left">
+    <a href="/" class="back-link">
+      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path d="M19 12H5M12 5l-7 7 7 7"/>
+      </svg>
+      DESeq2 ExploreR
+    </a>
+    <div class="vdiv"></div>
+    <div>
+      <div class="hdr-title">Data Prep Tool</div>
+    </div>
+    <div class="vdiv"></div>
+    <span class="hdr-sub">Build a DESeq2-ready RDS from counts + metadata</span>
+  </div>
+  <div id="wbadge" class="wbadge loading">
+    <div class="spin"></div>
+    <span>Loading WebR…</span>
+  </div>
+</header>
+
+<!-- ── Main ─────────────────────────────────────────────────────────────────── -->
+<main>
+
+  <!-- Step progress -->
+  <div class="steps">
+    <div class="step-item active" id="dot1">
+      <div class="step-num">1</div>
+      <div class="step-label">Count Matrix</div>
+    </div>
+    <div class="step-line"></div>
+    <div class="step-item" id="dot2">
+      <div class="step-num">2</div>
+      <div class="step-label">Metadata</div>
+    </div>
+    <div class="step-line"></div>
+    <div class="step-item" id="dot3">
+      <div class="step-num">3</div>
+      <div class="step-label">Download RDS</div>
+    </div>
+  </div>
+
+  <!-- ── Card 1: Upload count matrix ───────────────────────────────────────── -->
+  <div class="card" id="card1">
+    <div class="card-title">① Count Matrix</div>
+    <div class="card-sub">Tab-separated text file — first column is gene IDs, remaining columns are samples</div>
+
+    <div class="dropzone" id="dropzone" onclick="document.getElementById('file-inp').click()">
+      <svg class="dz-icon" width="38" height="38" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24">
+        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/>
+        <line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+      <p>Drag &amp; drop your count matrix here, or click to browse</p>
+      <small>.txt or .tsv &nbsp;·&nbsp; tab-delimited &nbsp;·&nbsp; genes as rows, samples as columns</small>
+    </div>
+    <input type="file" id="file-inp" accept=".txt,.tsv,.csv" />
+
+    <div id="matrix-stats" style="display:none">
+      <div class="chips">
+        <div class="chip">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+            <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+          </svg>
+          <span id="stat-genes">0 genes</span>
+        </div>
+        <div class="chip">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+            <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+          </svg>
+          <span id="stat-samples">0 samples</span>
+        </div>
+        <div class="chip">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+          <span id="stat-file">—</span>
+        </div>
+      </div>
+      <div class="preview-wrap">
+        <table class="preview-tbl" id="preview-tbl"></table>
+      </div>
+    </div>
+
+    <div class="tip">
+      <strong>Expected format:</strong> The first column contains gene identifiers (e.g. Ensembl IDs or gene symbols).
+      All remaining columns are samples — their column headers become sample names.
+      Values must be <strong>raw integer counts</strong> (no normalisation). Example:
+      <br /><code>gene&nbsp;&nbsp;&nbsp;sample1&nbsp;&nbsp;sample2</code><br />
+      <code>ENSG001&nbsp;142&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;87</code>
+    </div>
+  </div>
+
+  <!-- ── Card 2: Metadata editor ───────────────────────────────────────────── -->
+  <div class="card disabled" id="card2">
+    <div class="card-title">② Sample Metadata</div>
+    <div class="card-sub">Define experimental groups and covariates — each column becomes a variable in your DESeq2 design</div>
+
+    <div class="toolbar">
+      <button class="btn btn-primary" id="add-col-btn">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        Add Column
+      </button>
+      <button class="btn btn-ghost" id="import-meta-btn">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        Import Metadata
+      </button>
+      <button class="btn btn-ghost" id="clear-meta-btn">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <polyline points="3 6 5 6 21 6"/>
+          <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+        </svg>
+        Clear
+      </button>
+    </div>
+    <input type="file" id="meta-file-inp" accept=".txt,.tsv,.csv" />
+
+    <div id="no-cols-msg" style="padding:28px;text-align:center;color:var(--t3);font-size:.82rem">
+      Click <strong style="color:var(--t2)">Add Column</strong> to define a metadata variable (e.g. <em>condition</em>, <em>treatment</em>)
+    </div>
+
+    <div class="meta-wrap" id="meta-wrap" style="display:none">
+      <table class="meta-tbl">
+        <thead><tr id="meta-thead"></tr></thead>
+        <tbody id="meta-tbody"></tbody>
+      </table>
+    </div>
+
+    <div id="empty-cells-warn" class="warn-msg" style="display:none">
+      ⚠ Some metadata cells are empty. Fill in all values before downloading.
+    </div>
+
+    <div class="tip" style="margin-top:12px">
+      <strong>Tip:</strong> Add at least one column such as <code>condition</code> or <code>treatment</code>.
+      Column names are editable — click the header to rename. Import an existing tab-delimited metadata
+      file with the <strong>Import Metadata</strong> button if you already have one prepared.
+    </div>
+  </div>
+
+  <!-- ── Card 3: Download RDS ──────────────────────────────────────────────── -->
+  <div class="card disabled" id="card3">
+    <div class="card-title">③ Download RDS</div>
+    <div class="card-sub">Generate a <code>.rds</code> file ready for direct upload to DESeq2 ExploreR</div>
+
+    <div class="info-grid">
+      <div class="info-card"><div class="lbl">Genes</div><div class="val" id="ei-genes">—</div></div>
+      <div class="info-card"><div class="lbl">Samples</div><div class="val" id="ei-samples">—</div></div>
+      <div class="info-card"><div class="lbl">Metadata columns</div><div class="val" id="ei-cols">—</div></div>
+    </div>
+
+    <div class="fname-row">
+      <label for="fname-inp">Filename</label>
+      <input class="fname-inp" id="fname-inp" type="text" value="deseq2_input.rds" spellcheck="false" />
+    </div>
+
+    <button class="btn btn-primary export-btn" id="export-btn" disabled>
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      Generate &amp; Download RDS
+    </button>
+
+    <div id="prog-msg"  class="prog-msg"  style="display:none">
+      <div class="spin-acc"></div>
+      <span id="prog-text">Running R in browser…</span>
+    </div>
+    <div id="ok-msg"   class="ok-msg"    style="display:none">
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+      <span id="ok-text"></span>
+    </div>
+    <div id="err-msg"  class="err-msg"   style="display:none"></div>
+
+    <div class="tip" style="margin-top:16px">
+      <strong>Next step:</strong> Upload this <code>.rds</code> file to
+      <a href="/" style="color:#a5b4fc;text-decoration:none">DESeq2 ExploreR</a> —
+      go to <em>New Session → Upload RDS</em> to begin your differential expression analysis.
+    </div>
+  </div>
+
+</main>
+
+<!-- ── Script ───────────────────────────────────────────────────────────────── -->
+<script type="module">
+import { WebR } from 'https://webr.r-wasm.org/latest/webr.mjs';
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let webR = null;
+let webRReady = false;
+let matrix = null;    // { geneNames[], sampleNames[], rows[][], sep, fileName }
+let metaCols = [];    // [{ id, name }]
+let metaVals = {};    // { sampleName: { colId: value } }
+let colSeq = 0;       // monotonic id for columns
+
+// ── WebR init ─────────────────────────────────────────────────────────────────
+;(async () => {
+  try {
+    webR = new WebR();
+    await webR.init();
+    webRReady = true;
+    setBadge('ready', 'WebR ready');
+    refreshExportBtn();
+  } catch (e) {
+    setBadge('error', 'WebR failed — try refreshing');
+    console.error('WebR init error:', e);
+  }
+})();
+
+function setBadge(state, text) {
+  const b = document.getElementById('wbadge');
+  b.className = `wbadge ${state}`;
+  b.innerHTML = state === 'loading'
+    ? `<div class="spin"></div><span>${text}</span>`
+    : `<div class="dot"></div><span>${text}</span>`;
+}
+
+// ── Drag / file input ─────────────────────────────────────────────────────────
+const dz   = document.getElementById('dropzone');
+const fInp = document.getElementById('file-inp');
+
+dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('over');
+  const f = e.dataTransfer.files[0];
+  if (f) readCountFile(f);
+});
+fInp.addEventListener('change', () => { if (fInp.files[0]) readCountFile(fInp.files[0]); fInp.value = ''; });
+
+function readCountFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try   { parseMatrix(e.target.result, file.name); }
+    catch (err) { alert('Could not parse file:\n' + err.message); }
+  };
+  reader.readAsText(file);
+}
+
+function parseMatrix(text, fileName) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) throw new Error('File must have at least a header row and one data row.');
+
+  const sep = lines[0].includes('\t') ? '\t' : ',';
+  const header = splitLine(lines[0], sep);
+  const sampleNames = header.slice(1);
+  if (sampleNames.length === 0) throw new Error('No sample columns detected.');
+
+  const geneNames = [], rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const raw = lines[i].trim(); if (!raw) continue;
+    const cols = splitLine(raw, sep);
+    geneNames.push(cols[0]);
+    rows.push(cols.slice(1).map(v => { const n = Number(v); return isNaN(n) ? 0 : n; }));
+  }
+  if (geneNames.length === 0) throw new Error('No data rows found.');
+
+  matrix = { geneNames, sampleNames, rows, sep, fileName };
+
+  // Reinit metadata
+  metaCols = [];
+  metaVals = {};
+  sampleNames.forEach(s => { metaVals[s] = {}; });
+
+  // UI updates
+  document.getElementById('stat-genes').textContent   = geneNames.length.toLocaleString() + ' genes';
+  document.getElementById('stat-samples').textContent = sampleNames.length + ' samples';
+  document.getElementById('stat-file').textContent    = fileName;
+  document.getElementById('matrix-stats').style.display = 'block';
+
+  renderPreview();
+  renderMetaTable();
+  document.getElementById('card2').classList.remove('disabled');
+  document.getElementById('ei-genes').textContent   = geneNames.length.toLocaleString();
+  document.getElementById('ei-samples').textContent = sampleNames.length;
+  setDots(1);
+  refreshExportBtn();
+}
+
+function splitLine(line, sep) {
+  return line.split(sep).map(v => v.trim().replace(/^["']|["']$/g, ''));
+}
+
+// ── Preview table ─────────────────────────────────────────────────────────────
+function renderPreview() {
+  const { geneNames, sampleNames, rows } = matrix;
+  const MC = 5, MR = 6;
+  const showS = sampleNames.slice(0, MC);
+  const moreS = sampleNames.length > MC;
+
+  let h = '<thead><tr><th>Gene ID</th>';
+  showS.forEach(s => h += `<th>${esc(s)}</th>`);
+  if (moreS) h += `<th style="color:var(--t3)">+${sampleNames.length - MC} more</th>`;
+  h += '</tr></thead><tbody>';
+
+  const R = Math.min(MR, rows.length);
+  for (let i = 0; i < R; i++) {
+    h += `<tr><td>${esc(geneNames[i])}</td>`;
+    showS.forEach((_, j) => h += `<td>${(rows[i][j] ?? 0).toLocaleString()}</td>`);
+    if (moreS) h += '<td style="color:var(--t3)">…</td>';
+    h += '</tr>';
+  }
+  if (rows.length > MR) {
+    h += `<tr><td colspan="${showS.length + 1 + (moreS ? 1 : 0)}"
+               style="text-align:center;color:var(--t3);padding:7px">
+            … ${(rows.length - MR).toLocaleString()} more genes
+          </td></tr>`;
+  }
+  h += '</tbody>';
+  document.getElementById('preview-tbl').innerHTML = h;
+}
+
+// ── Metadata table ────────────────────────────────────────────────────────────
+document.getElementById('add-col-btn').addEventListener('click', () => {
+  const id = 'col_' + (++colSeq);
+  const name = colSeq === 1 ? 'condition' : 'condition' + colSeq;
+  metaCols.push({ id, name });
+  if (matrix) matrix.sampleNames.forEach(s => { if (!metaVals[s]) metaVals[s] = {}; metaVals[s][id] = ''; });
+  renderMetaTable();
+  syncExportMeta();
+});
+
+document.getElementById('clear-meta-btn').addEventListener('click', () => {
+  metaCols = [];
+  if (matrix) matrix.sampleNames.forEach(s => { metaVals[s] = {}; });
+  renderMetaTable();
+  syncExportMeta();
+});
+
+function renderMetaTable() {
+  const noMsg = document.getElementById('no-cols-msg');
+  const wrap  = document.getElementById('meta-wrap');
+
+  if (metaCols.length === 0) {
+    noMsg.style.display = ''; wrap.style.display = 'none';
+    return;
+  }
+  noMsg.style.display = 'none'; wrap.style.display = '';
+
+  // Header
+  let h = '<th><div class="th-sample">Sample</div></th>';
+  metaCols.forEach(col => {
+    h += `<th><div class="th-editable">
+      <input class="col-name-inp" data-colid="${col.id}" value="${esc(col.name)}"
+             title="Click to rename" maxlength="40"
+             spellcheck="false" />
+      <button class="btn-del" data-delcol="${col.id}" title="Remove column">✕</button>
+    </div></th>`;
+  });
+  document.getElementById('meta-thead').innerHTML = h;
+
+  // Rows
+  if (!matrix) { document.getElementById('meta-tbody').innerHTML = ''; return; }
+  let b = '';
+  matrix.sampleNames.forEach(sample => {
+    b += `<tr><td><div class="td-sample">${esc(sample)}</div></td>`;
+    metaCols.forEach(col => {
+      const v = metaVals[sample]?.[col.id] ?? '';
+      b += `<td><input class="cell-inp${v ? '' : ' invalid'}" data-sample="${esc(sample)}" data-colid="${col.id}"
+                 value="${esc(v)}" placeholder="enter value" spellcheck="false" /></td>`;
+    });
+    b += '</tr>';
+  });
+  document.getElementById('meta-tbody').innerHTML = b;
+  checkEmptyCells();
+}
+
+// Delegated events for metadata table
+document.getElementById('meta-wrap').addEventListener('input', e => {
+  const t = e.target;
+  if (t.classList.contains('col-name-inp')) {
+    const col = metaCols.find(c => c.id === t.dataset.colid);
+    if (col) col.name = t.value;
+  }
+  if (t.classList.contains('cell-inp')) {
+    const { sample, colid } = t.dataset;
+    if (!metaVals[sample]) metaVals[sample] = {};
+    metaVals[sample][colid] = t.value;
+    t.classList.toggle('invalid', !t.value);
+    checkEmptyCells();
+    refreshExportBtn();
+  }
+});
+document.getElementById('meta-wrap').addEventListener('click', e => {
+  const btn = e.target.closest('[data-delcol]');
+  if (!btn) return;
+  const id = btn.dataset.delcol;
+  metaCols = metaCols.filter(c => c.id !== id);
+  if (matrix) matrix.sampleNames.forEach(s => { if (metaVals[s]) delete metaVals[s][id]; });
+  renderMetaTable();
+  syncExportMeta();
+});
+
+function checkEmptyCells() {
+  const warn = document.getElementById('empty-cells-warn');
+  if (!matrix || metaCols.length === 0) { warn.style.display = 'none'; return; }
+  const hasEmpty = matrix.sampleNames.some(s => metaCols.some(c => !(metaVals[s]?.[c.id] ?? '').trim()));
+  warn.style.display = hasEmpty ? '' : 'none';
+}
+
+function syncExportMeta() {
+  document.getElementById('ei-cols').textContent = metaCols.length;
+  const enable = matrix && metaCols.length > 0;
+  document.getElementById('card3').classList.toggle('disabled', !enable);
+  if (enable) setDots(2);
+  refreshExportBtn();
+}
+
+// ── Import metadata ───────────────────────────────────────────────────────────
+const mInp = document.getElementById('meta-file-inp');
+document.getElementById('import-meta-btn').addEventListener('click', () => mInp.click());
+mInp.addEventListener('change', () => {
+  if (!mInp.files[0]) return;
+  const reader = new FileReader();
+  reader.onload = e => importMeta(e.target.result);
+  reader.readAsText(mInp.files[0]);
+  mInp.value = '';
+});
+
+function importMeta(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return;
+  const sep  = lines[0].includes('\t') ? '\t' : ',';
+  const hdrs = splitLine(lines[0], sep);
+  const importedColNames = hdrs.slice(1);
+
+  // Add missing columns
+  importedColNames.forEach(name => {
+    if (!metaCols.some(c => c.name === name)) {
+      const id = 'col_' + (++colSeq);
+      metaCols.push({ id, name });
+      if (matrix) matrix.sampleNames.forEach(s => { if (!metaVals[s]) metaVals[s] = {}; metaVals[s][id] = ''; });
+    }
+  });
+
+  // Fill values where sample name matches
+  for (let i = 1; i < lines.length; i++) {
+    const row = splitLine(lines[i], sep); if (!row[0]) continue;
+    const sample = row[0];
+    if (!matrix?.sampleNames.includes(sample)) continue;
+    importedColNames.forEach((name, j) => {
+      const col = metaCols.find(c => c.name === name);
+      if (col) { if (!metaVals[sample]) metaVals[sample] = {}; metaVals[sample][col.id] = row[j + 1] ?? ''; }
+    });
+  }
+
+  renderMetaTable();
+  syncExportMeta();
+}
+
+// ── Export / generate RDS ─────────────────────────────────────────────────────
+function refreshExportBtn() {
+  const allFilled = matrix && metaCols.length > 0 &&
+    matrix.sampleNames.every(s => metaCols.every(c => (metaVals[s]?.[c.id] ?? '').trim()));
+  document.getElementById('export-btn').disabled = !(webRReady && allFilled);
+}
+
+document.getElementById('export-btn').addEventListener('click', generateRDS);
+
+async function generateRDS() {
+  if (!webRReady || !matrix) return;
+
+  const progEl = document.getElementById('prog-msg');
+  const progTx = document.getElementById('prog-text');
+  const okEl   = document.getElementById('ok-msg');
+  const errEl  = document.getElementById('err-msg');
+  const btn    = document.getElementById('export-btn');
+
+  btn.disabled = true;
+  progEl.style.display = 'flex';
+  okEl.style.display = 'none';
+  errEl.style.display = 'none';
+
+  try {
+    const enc = new TextEncoder();
+
+    // Build and write counts TSV to WebR VFS
+    progTx.textContent = 'Writing count matrix to WebR filesystem…';
+    let ctbl = 'gene\t' + matrix.sampleNames.join('\t') + '\n';
+    matrix.geneNames.forEach((g, i) => { ctbl += g + '\t' + matrix.rows[i].join('\t') + '\n'; });
+    await webR.FS.writeFile('/tmp/counts.tsv', enc.encode(ctbl));
+
+    // Build and write metadata TSV
+    progTx.textContent = 'Writing metadata…';
+    let mtbl = 'sample\t' + metaCols.map(c => c.name).join('\t') + '\n';
+    matrix.sampleNames.forEach(s => {
+      mtbl += s + '\t' + metaCols.map(c => metaVals[s]?.[c.id] ?? '').join('\t') + '\n';
+    });
+    await webR.FS.writeFile('/tmp/meta.tsv', enc.encode(mtbl));
+
+    // Run R: read tables → build list → saveRDS → readBin
+    progTx.textContent = 'Running R — building and serialising RDS…';
+    const rResult = await webR.evalR(`
+      cm <- as.matrix(read.table(
+        '/tmp/counts.tsv', sep = '\\t', header = TRUE,
+        row.names = 1, check.names = FALSE, comment.char = ''
+      ))
+      mode(cm) <- 'numeric'
+
+      md <- read.table(
+        '/tmp/meta.tsv', sep = '\\t', header = TRUE,
+        row.names = 1, check.names = FALSE, stringsAsFactors = FALSE
+      )
+
+      # Ensure sample order matches between counts and metadata
+      shared <- intersect(colnames(cm), rownames(md))
+      cm <- cm[, shared, drop = FALSE]
+      md <- md[shared, , drop = FALSE]
+
+      saveRDS(list(counts = cm, metadata = md), '/tmp/out.rds')
+      readBin('/tmp/out.rds', 'raw', file.info('/tmp/out.rds')$size)
+    `);
+
+    progTx.textContent = 'Preparing download…';
+    const jsData = await rResult.toJs();
+    const bytes  = new Uint8Array(jsData.values);
+
+    // Trigger download
+    let fname = document.getElementById('fname-inp').value.trim() || 'deseq2_input';
+    if (!fname.endsWith('.rds')) fname += '.rds';
+    const blob = new Blob([bytes], { type: 'application/octet-stream' });
+    const url  = URL.createObjectURL(blob);
+    const a    = Object.assign(document.createElement('a'), { href: url, download: fname });
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    const sizeMB = (bytes.length / 1024 / 1024).toFixed(2);
+    progEl.style.display = 'none';
+    okEl.style.display   = 'flex';
+    document.getElementById('ok-text').textContent =
+      `Downloaded ${fname} · ${sizeMB} MB · ` +
+      `${matrix.geneNames.length.toLocaleString()} genes × ${matrix.sampleNames.length} samples`;
+
+    setDots(3);
+
+  } catch (err) {
+    progEl.style.display = 'none';
+    errEl.style.display  = '';
+    errEl.textContent    = '⚠ ' + (err.message || String(err));
+    console.error('RDS generation error:', err);
+  } finally {
+    btn.disabled = false;
+    refreshExportBtn();
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+function setDots(reachedStep) {
+  for (let i = 1; i <= 3; i++) {
+    const el = document.getElementById('dot' + i);
+    if      (i < reachedStep)  el.className = 'step-item done';
+    else if (i === reachedStep) el.className = 'step-item active';
+    else                        el.className = 'step-item';
+  }
+}
+</script>
+</body>
+</html>
