@@ -338,10 +338,10 @@ export default function SessionGate({ onAuth, onExample }) {
                   </svg>
                 </div>
                 <div>
-                  <div style={{ fontSize: '0.86rem', fontWeight: 600, color: '#a5b4fc', marginBottom: 2 }}>
+                  <div style={{ fontSize: '0.86rem', fontWeight: 600, color: '#7c83f5', marginBottom: 2 }}>
                     Data Prep Tool ↗
                   </div>
-                  <div style={{ fontSize: '0.73rem', color: 'var(--text-3)', lineHeight: 1.45 }}>
+                  <div style={{ fontSize: '0.73rem', color: 'var(--text-2)', lineHeight: 1.45 }}>
                     Build a DESeq2-ready RDS from a count matrix + metadata — runs in your browser
                   </div>
                 </div>
