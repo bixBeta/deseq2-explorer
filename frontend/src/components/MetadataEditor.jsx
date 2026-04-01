@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useRef } from 'react'
 
 export default function MetadataEditor({ parseInfo, metaState, sampleLabels = {}, onConfirm, onBack }) {
   const _cols = parseInfo?.columns
@@ -8,14 +8,10 @@ export default function MetadataEditor({ parseInfo, metaState, sampleLabels = {}
                 : []
   const { geneCount, sampleCount } = parseInfo || {}
 
-  // rows: array of { sample, col1, col2, ... }
   const [rows, setRows]         = useState(metaState?.rows || [])
   const [selected, setSelected] = useState(metaState?.selected || new Set(rows.map(r => r.sample)))
-  // labels: { [originalSample]: displayName }
   const [labels, setLabels]     = useState(sampleLabels)
-  const [editCell, setEditCell] = useState(null)   // { rowIdx, col }
-  const [editVal, setEditVal]   = useState('')
-  const [undoStack, setUndoStack] = useState(null)  // { rows, indices } of last removal
+  const [undoStack, setUndoStack] = useState(null)
   const undoTimerRef = useRef(null)
 
   const allChecked = rows.length > 0 && rows.every(r => selected.has(r.sample))
@@ -35,13 +31,10 @@ export default function MetadataEditor({ parseInfo, metaState, sampleLabels = {}
   }
 
   function removeSelected() {
-    const removed = rows
-      .map((r, i) => ({ row: r, index: i }))
-      .filter(({ row }) => selected.has(row.sample))
+    const removed = rows.map((r, i) => ({ row: r, index: i })).filter(({ row }) => selected.has(row.sample))
     setUndoStack({ removed })
     setRows(prev => prev.filter(r => !selected.has(r.sample)))
     setSelected(new Set())
-    // Auto-clear undo after 8s
     clearTimeout(undoTimerRef.current)
     undoTimerRef.current = setTimeout(() => setUndoStack(null), 8000)
   }
@@ -51,54 +44,54 @@ export default function MetadataEditor({ parseInfo, metaState, sampleLabels = {}
     clearTimeout(undoTimerRef.current)
     setRows(prev => {
       const next = [...prev]
-      // Re-insert removed rows at their original indices
       for (const { row, index } of undoStack.removed) {
-        const clampedIdx = Math.min(index, next.length)
-        next.splice(clampedIdx, 0, row)
+        next.splice(Math.min(index, next.length), 0, row)
       }
       return next
     })
     setUndoStack(null)
   }
 
-  function startEdit(rowIdx, col) {
-    setEditCell({ rowIdx, col })
-    setEditVal(rows[rowIdx][col] ?? '')
-  }
-
-  function commitEdit() {
-    if (!editCell) return
+  function updateCell(rowIdx, col, value) {
     setRows(prev => {
       const next = [...prev]
-      next[editCell.rowIdx] = { ...next[editCell.rowIdx], [editCell.col]: editVal }
+      next[rowIdx] = { ...next[rowIdx], [col]: value }
       return next
     })
-    setEditCell(null)
   }
-
-  const handleKeyDown = useCallback((e) => {
-    if (e.key === 'Enter') commitEdit()
-    if (e.key === 'Escape') setEditCell(null)
-  }, [editCell, editVal])
 
   function confirm() {
     onConfirm({ rows, selected, labels })
   }
 
-  const thStyle = {
-    padding: '8px 10px',
-    textAlign: 'left',
-    fontSize: '0.75rem',
-    fontWeight: 600,
-    color: 'var(--text-3)',
-    borderBottom: '1px solid var(--border)',
-    whiteSpace: 'nowrap',
+  // ── Styles ──────────────────────────────────────────────────────────────────
+  const thBase = {
     background: 'var(--bg-card2)',
-    position: 'sticky', top: 0, zIndex: 1,
+    borderBottom: '1px solid var(--border)',
+    borderRight: '1px solid var(--border)',
+    position: 'sticky', top: 0, zIndex: 2,
+    whiteSpace: 'nowrap',
+  }
+  const thLabel = {
+    padding: '8px 12px',
+    fontSize: '0.72rem', fontWeight: 600,
+    color: 'var(--text-3)',
+    textTransform: 'uppercase', letterSpacing: '0.04em',
+  }
+  const tdBase = {
+    borderBottom: '1px solid var(--border)',
+    borderRight: '1px solid var(--border)',
+    padding: 0,
+  }
+  const cellInp = {
+    width: '100%', background: 'transparent', border: 'none',
+    padding: '6px 10px', color: 'var(--text-1)',
+    fontSize: '0.81rem', outline: 'none', minWidth: 90,
   }
 
   return (
-    <div style={{ width: '100%', maxWidth: 900, display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ width: '100%', maxWidth: 960, display: 'flex', flexDirection: 'column', gap: 16 }}>
+
       {/* Header */}
       <div>
         <h2 className="text-xl font-bold mb-1" style={{ color: 'var(--text-1)' }}>
@@ -114,28 +107,16 @@ export default function MetadataEditor({ parseInfo, metaState, sampleLabels = {}
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
         <button className="btn-ghost" onClick={onBack}>← Back</button>
-        <button
-          className="btn-danger"
-          disabled={nSelected === 0}
-          onClick={removeSelected}>
+        <button className="btn-danger" disabled={nSelected === 0} onClick={removeSelected}>
           ✕ Remove {nSelected > 0 ? nSelected : ''} selected
         </button>
         {undoStack && (
-          <button
-            onClick={undoRemove}
-            style={{
-              padding: '5px 12px',
-              fontSize: '0.78rem',
-              borderRadius: 6,
-              border: '1px solid var(--accent)',
-              background: 'rgba(var(--accent-rgb),0.12)',
-              color: 'var(--accent-text)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 5,
-              animation: 'fadeIn 0.15s ease',
-            }}>
+          <button onClick={undoRemove} style={{
+            padding: '5px 12px', fontSize: '0.78rem', borderRadius: 6,
+            border: '1px solid var(--accent)', background: 'rgba(var(--accent-rgb),0.12)',
+            color: 'var(--accent-text)', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 5,
+          }}>
             ↩ Undo remove ({undoStack.removed.length})
           </button>
         )}
@@ -146,108 +127,91 @@ export default function MetadataEditor({ parseInfo, metaState, sampleLabels = {}
       </div>
 
       {/* Table */}
-      <div className="glass" style={{ overflow: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+      <div className="glass" style={{ overflow: 'auto', maxHeight: 'calc(100vh - 280px)', borderRadius: 10 }}>
+        <table style={{ borderCollapse: 'collapse', minWidth: '100%', fontSize: '0.81rem' }}>
           <thead>
             <tr>
-              <th style={{ ...thStyle, width: 36, textAlign: 'center' }}>
+              {/* Checkbox col */}
+              <th style={{ ...thBase, width: 40, textAlign: 'center', borderRight: '1px solid var(--border)' }}>
                 <input type="checkbox" checked={allChecked} onChange={toggleAll}
-                  style={{ width: 14, padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }} />
+                  style={{ width: 14, cursor: 'pointer', accentColor: 'var(--accent)' }} />
               </th>
-              <th style={thStyle}>Sample</th>
-              <th style={{ ...thStyle, color: 'var(--accent)' }}>Display Name</th>
+              {/* Sample col */}
+              <th style={{ ...thBase }}>
+                <div style={{ ...thLabel }}>Sample</div>
+              </th>
+              {/* Display Name col */}
+              <th style={{ ...thBase }}>
+                <div style={{ ...thLabel, color: 'var(--accent)' }}>Display Name</div>
+              </th>
+              {/* Metadata cols */}
               {columns.map(col => (
-                <th key={col} style={thStyle}>{col}</th>
+                <th key={col} style={{ ...thBase, ...(col === columns[columns.length - 1] ? { borderRight: 'none' } : {}) }}>
+                  <div style={{ ...thLabel }}>{col}</div>
+                </th>
               ))}
             </tr>
           </thead>
           <tbody>
             {rows.map((row, ri) => {
               const isChecked = selected.has(row.sample)
-              const rowBg = !isChecked
-                ? 'rgba(239,68,68,0.04)'
-                : ri % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)'
               return (
-                <tr key={row.sample} style={{ background: rowBg, opacity: isChecked ? 1 : 0.45 }}>
-                  <td style={{ padding: '6px 10px', textAlign: 'center', borderBottom: '1px solid var(--border)' }}>
+                <tr key={row.sample} style={{ opacity: isChecked ? 1 : 0.4 }}>
+
+                  {/* Checkbox */}
+                  <td style={{ ...tdBase, textAlign: 'center', padding: '6px 10px', width: 40 }}>
                     <input type="checkbox" checked={isChecked} onChange={() => toggleRow(row.sample)}
-                      style={{ width: 14, padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }} />
+                      style={{ width: 14, cursor: 'pointer', accentColor: 'var(--accent)' }} />
                   </td>
-                  <td style={{ padding: '6px 10px', fontWeight: 500, color: 'var(--text-2)',
-                               borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
-                    {row.sample}
+
+                  {/* Sample name */}
+                  <td style={{ ...tdBase }}>
+                    <div style={{
+                      padding: '6px 12px', color: 'var(--text-2)',
+                      fontFamily: 'monospace', fontSize: '0.8rem',
+                      whiteSpace: 'nowrap', minWidth: 130,
+                    }}>
+                      {row.sample}
+                    </div>
                   </td>
-                  {/* Editable display name */}
-                  <td style={{ padding: '4px 6px', borderBottom: '1px solid var(--border)', minWidth: 120 }}>
-                    {editCell?.rowIdx === ri && editCell?.col === '__label__' ? (
+
+                  {/* Display Name — editable input */}
+                  <td style={{ ...tdBase }}>
+                    <input
+                      style={{
+                        ...cellInp,
+                        color: labels[row.sample] && labels[row.sample] !== row.sample
+                          ? 'var(--accent-text)' : 'var(--text-1)',
+                        fontStyle: labels[row.sample] && labels[row.sample] !== row.sample
+                          ? 'italic' : 'normal',
+                        cursor: isChecked ? 'text' : 'default',
+                      }}
+                      value={labels[row.sample] ?? row.sample}
+                      disabled={!isChecked}
+                      spellCheck={false}
+                      onChange={e => setLabels(prev => ({ ...prev, [row.sample]: e.target.value || row.sample }))}
+                      onFocus={e => { e.target.style.background = 'rgba(99,102,241,0.08)' }}
+                      onBlur={e => { e.target.style.background = 'transparent' }}
+                    />
+                  </td>
+
+                  {/* Metadata cells — editable inputs */}
+                  {columns.map((col, ci) => (
+                    <td key={col} style={{
+                      ...tdBase,
+                      ...(ci === columns.length - 1 ? { borderRight: 'none' } : {}),
+                    }}>
                       <input
-                        autoFocus
-                        value={editVal}
-                        onChange={e => setEditVal(e.target.value)}
-                        onBlur={() => {
-                          setLabels(prev => ({ ...prev, [row.sample]: editVal || row.sample }))
-                          setEditCell(null)
-                        }}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') {
-                            setLabels(prev => ({ ...prev, [row.sample]: editVal || row.sample }))
-                            setEditCell(null)
-                          }
-                          if (e.key === 'Escape') setEditCell(null)
-                        }}
-                        style={{ padding: '3px 6px', fontSize: '0.78rem', borderRadius: 4, width: '100%' }}
+                        style={{ ...cellInp, cursor: isChecked ? 'text' : 'default' }}
+                        value={row[col] ?? ''}
+                        disabled={!isChecked}
+                        spellCheck={false}
+                        onChange={e => updateCell(ri, col, e.target.value)}
+                        onFocus={e => { e.target.style.background = 'rgba(99,102,241,0.08)' }}
+                        onBlur={e => { e.target.style.background = 'transparent' }}
                       />
-                    ) : (
-                      <span
-                        onClick={() => isChecked && (setEditCell({ rowIdx: ri, col: '__label__' }), setEditVal(labels[row.sample] ?? row.sample))}
-                        style={{
-                          display: 'block', padding: '3px 6px', borderRadius: 4,
-                          color: labels[row.sample] && labels[row.sample] !== row.sample ? 'var(--accent)' : 'var(--text-2)',
-                          cursor: isChecked ? 'text' : 'default',
-                          minHeight: 24, transition: 'background 0.15s',
-                          fontStyle: labels[row.sample] && labels[row.sample] !== row.sample ? 'italic' : 'normal',
-                        }}
-                        onMouseEnter={e => { if (isChecked) e.target.style.background = 'var(--bg-card2)' }}
-                        onMouseLeave={e => { e.target.style.background = 'transparent' }}>
-                        {labels[row.sample] ?? row.sample}
-                      </span>
-                    )}
-                  </td>
-                  {columns.map(col => {
-                    const isEditing = editCell?.rowIdx === ri && editCell?.col === col
-                    return (
-                      <td key={col}
-                        style={{ padding: '4px 6px', borderBottom: '1px solid var(--border)', minWidth: 90 }}>
-                        {isEditing ? (
-                          <input
-                            autoFocus
-                            value={editVal}
-                            onChange={e => setEditVal(e.target.value)}
-                            onBlur={commitEdit}
-                            onKeyDown={handleKeyDown}
-                            style={{ padding: '3px 6px', fontSize: '0.78rem', borderRadius: 4, width: '100%' }}
-                          />
-                        ) : (
-                          <span
-                            onClick={() => isChecked && startEdit(ri, col)}
-                            style={{
-                              display: 'block',
-                              padding: '3px 6px',
-                              borderRadius: 4,
-                              color: 'var(--text-1)',
-                              cursor: isChecked ? 'text' : 'default',
-                              minHeight: 24,
-                              transition: 'background 0.15s',
-                            }}
-                            onMouseEnter={e => { if (isChecked) e.target.style.background = 'var(--bg-card2)' }}
-                            onMouseLeave={e => { e.target.style.background = 'transparent' }}
-                          >
-                            {row[col] ?? ''}
-                          </span>
-                        )}
-                      </td>
-                    )
-                  })}
+                    </td>
+                  ))}
                 </tr>
               )
             })}
@@ -256,7 +220,9 @@ export default function MetadataEditor({ parseInfo, metaState, sampleLabels = {}
       </div>
 
       <p className="text-xs" style={{ color: 'var(--text-3)' }}>
-        Tip: uncheck samples to exclude them · click <span style={{ color: 'var(--accent)' }}>Display Name</span> to rename a sample in all plots · click any metadata cell to edit
+        Tip: uncheck samples to exclude them · click{' '}
+        <span style={{ color: 'var(--accent)' }}>Display Name</span>{' '}
+        to rename a sample in all plots · click any metadata cell to edit
       </p>
     </div>
   )
