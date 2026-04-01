@@ -67,6 +67,12 @@ export default function Results({ results, design, onBack, onEditSamples, sessio
   const countDist  = results?.countDist
   const active     = contrastList[activeIdx] ?? contrastList[0]
 
+  const maDesign = useMemo(() => ({
+    ...design,
+    contrast:  active?.treatment,
+    reference: active?.reference,
+  }), [design, active?.treatment, active?.reference])
+
   const geneIds = useMemo(
     () => (active?.results || []).map(r => r.gene).filter(Boolean),
     [active]
@@ -222,7 +228,7 @@ export default function Results({ results, design, onBack, onEditSamples, sessio
         </div>
         <div style={{ display: vizTab === 'ma' ? 'block' : 'none' }}>
           <MAPlot
-            design={{ ...design, contrast: active?.treatment, reference: active?.reference }}
+            design={maDesign}
             session={session}
             annMap={annMap}
           />

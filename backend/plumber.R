@@ -175,11 +175,18 @@ function(req, res) {
     }
     pca_scores <- saved$pca$scores
     cd_out <- if ("count_dist" %in% names(saved)) saved$count_dist else NULL
+    pca_load_mat <- saved$pca$loadings  # matrix (genes × PCs) or NULL for old sessions
+    pca_loadings_out <- if (!is.null(pca_load_mat)) {
+      lapply(seq_len(nrow(pca_load_mat)), function(i) {
+        row <- as.list(pca_load_mat[i, ]); row$gene <- rownames(pca_load_mat)[i]; row
+      })
+    } else list()
     results_out <- list(
       contrasts  = contrasts_out,
       pca        = list(
         scores   = lapply(seq_len(nrow(pca_scores)), function(i) as.list(pca_scores[i, ])),
-        variance = as.numeric(saved$pca$variance)
+        variance = as.numeric(saved$pca$variance),
+        loadings = pca_loadings_out
       ),
       countDist  = cd_out
     )
@@ -284,11 +291,18 @@ function(req, res) {
     }
     pca_scores <- saved$pca$scores
     cd_out     <- if ("count_dist" %in% names(saved)) saved$count_dist else NULL
+    pca_load_mat <- saved$pca$loadings
+    pca_loadings_out <- if (!is.null(pca_load_mat)) {
+      lapply(seq_len(nrow(pca_load_mat)), function(i) {
+        row <- as.list(pca_load_mat[i, ]); row$gene <- rownames(pca_load_mat)[i]; row
+      })
+    } else list()
     results_out <- list(
       contrasts = contrasts_out,
       pca       = list(
         scores   = lapply(seq_len(nrow(pca_scores)), function(i) as.list(pca_scores[i, ])),
-        variance = as.numeric(saved$pca$variance)
+        variance = as.numeric(saved$pca$variance),
+        loadings = pca_loadings_out
       ),
       countDist = cd_out
     )
@@ -366,6 +380,17 @@ function(req, res) {
     list(geneId = gene_id, gene = display, baseMean = bm, log2FC = lfc, padj = pj)
   })
   points <- Filter(Negate(is.null), points)
+
+  # Downsample NS points to at most 10 000 — keeps payload small; sig points kept whole
+  NS_MAX  <- 10000L
+  is_sig  <- sapply(points, function(p) !is.null(p$padj) && !is.na(p$padj) && p$padj < 0.05)
+  ns_idx  <- which(!is_sig)
+  sig_idx <- which(is_sig)
+  if (length(ns_idx) > NS_MAX) {
+    set.seed(42L)
+    ns_idx <- sample(ns_idx, NS_MAX)
+  }
+  points <- points[sort(c(sig_idx, ns_idx))]
 
   list(points = points, label = ct_label)
 }
@@ -720,7 +745,7 @@ function(req, res) {
   })
 
   saveRDS(list(contrasts   = c(old_kept, new_saved),
-               pca         = list(scores = scores, variance = variance),
+               pca         = list(scores = scores, variance = variance, loadings = sub_rot),
                count_dist  = count_dist,
                column      = column,
                vst_matrix  = vst_mat,

@@ -71,11 +71,11 @@ export default function MAPlot({ design, session, annMap }) {
     const byGroup = { up: [], down: [], ns: [] }
     classified.forEach(p => byGroup[p.group].push(p))
 
-    const makeTrace = (pts, color, name, opacity) => ({
+    const makeTrace = (pts, color, name, opacity, useWebGL = false) => ({
       x: pts.map(p => Math.log10((p.baseMean ?? 0) + 1)),
       y: pts.map(p => p.log2FC ?? 0),
       mode: 'markers',
-      type: 'scatter',
+      type: useWebGL ? 'scattergl' : 'scatter',
       name,
       marker: { color, size, opacity },
       customdata: pts.map(p => [p.geneId, p.gene, p.baseMean, p.log2FC, p.padj]),
@@ -90,10 +90,15 @@ export default function MAPlot({ design, session, annMap }) {
     const down = byGroup.down
     const ns   = byGroup.ns
 
+    const nsTrace = {
+      ...makeTrace(ns, 'darkgray', `Not significant (${ns.length})`, 0.35, true),
+      hoverinfo: 'skip',   // no hit-testing on NS points — significant only are interactive
+    }
+
     const traces = [
-      makeTrace(ns,   'darkgray', `Not significant (${ns.length})`,   0.35),
-      makeTrace(up,   '#B31B21',  `Up (${up.length})`,                0.75),
-      makeTrace(down, '#1465AC',  `Down (${down.length})`,            0.75),
+      nsTrace,
+      makeTrace(up,   '#B31B21', `Up (${up.length})`,   0.75),
+      makeTrace(down, '#1465AC', `Down (${down.length})`, 0.75),
     ]
 
     // Top-N persistent labels — sorted by padj or absolute FC
