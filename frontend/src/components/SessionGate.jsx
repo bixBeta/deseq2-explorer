@@ -314,7 +314,7 @@ export default function SessionGate({ onAuth, onExample }) {
               <p style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginBottom: 8 }}>
                 Need to prepare your data first?
               </p>
-              <a href="/prep/" target="_blank" rel="noopener noreferrer"
+              <a href="/prep/index.html" target="_blank" rel="noopener noreferrer"
                  style={{
                    display: 'flex', alignItems: 'center', gap: 13,
                    padding: '13px 15px', borderRadius: 11,
