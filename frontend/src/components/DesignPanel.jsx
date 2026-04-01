@@ -357,7 +357,7 @@ export default function DesignPanel({
                          onChange={e => setParams(p => ({ ...p, noFilter: e.target.checked }))}
                          style={{ accentColor: 'var(--accent)', width: 14, height: 14, cursor: 'pointer' }} />
                   <label htmlFor="no-filter-chk" className="label-sm" style={{ cursor: 'pointer', userSelect: 'none' }}>
-                    No pre-filtering <span style={{ color: 'var(--text-4)', fontWeight: 400 }}>(use all genes — matches unfiltered R runs)</span>
+                    No pre-filtering <span style={{ color: 'var(--text-4)', fontWeight: 400 }}>(Use all genes — Matches TREx Runs)</span>
                   </label>
                 </div>
 
