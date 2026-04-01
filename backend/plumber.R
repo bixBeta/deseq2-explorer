@@ -521,6 +521,8 @@ function(req, res) {
   no_filter  <- isTRUE(p$noFilter)
   min_count  <- if (!is.null(p$minCount))            as.integer(p$minCount)         else 1L
   min_samp   <- if (!is.null(p$minSamples))          as.integer(p$minSamples)       else 2L
+  ntop_all   <- isTRUE(p$ntopAll)
+  ntop       <- if (!ntop_all && !is.null(p$ntop))   as.integer(p$ntop)             else NULL
   fit_type   <- if (!is.null(p$fitType))             as.character(p$fitType)        else "parametric"
   ind_filt   <- if (!is.null(p$independentFiltering)) isTRUE(p$independentFiltering) else TRUE
   cooks_cut  <- if (!is.null(p$cooksCutoff))         isTRUE(p$cooksCutoff)          else TRUE
@@ -627,10 +629,12 @@ function(req, res) {
 
   # ── PCA using varianceStabilizingTransformation() — all PCs ──────────────────
   # blind=TRUE matches DESeq2::plotPCA() convention for exploratory ordination
+  # ntop: top N most variable genes (NULL = all genes)
   vsd_blind <- varianceStabilizingTransformation(dds, blind = TRUE)
   pca_mat   <- assay(vsd_blind)
   rv        <- rowVars(pca_mat)
-  top500    <- pca_mat[order(rv, decreasing = TRUE)[seq_len(min(500, nrow(pca_mat)))], ]
+  n_top     <- if (is.null(ntop)) nrow(pca_mat) else min(ntop, nrow(pca_mat))
+  top500    <- pca_mat[order(rv, decreasing = TRUE)[seq_len(n_top)], ]
   pca_obj   <- prcomp(t(top500), scale. = FALSE)
   n_pc      <- ncol(pca_obj$x)   # all PCs (= number of samples - 1)
   scores    <- as.data.frame(pca_obj$x[, 1:n_pc, drop = FALSE])

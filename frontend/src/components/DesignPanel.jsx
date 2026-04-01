@@ -9,6 +9,8 @@ const DEFAULT_PARAMS = {
   fitType: 'parametric',
   independentFiltering: true,
   cooksCutoff: true,
+  ntop: 500,
+  ntopAll: false,
 }
 
 function ParamSlider({ label, value, min, max, step, unit = '', onChange }) {
@@ -359,6 +361,24 @@ export default function DesignPanel({
                   <label htmlFor="no-filter-chk" className="label-sm" style={{ cursor: 'pointer', userSelect: 'none' }}>
                     No pre-filtering <span style={{ color: 'var(--text-4)', fontWeight: 400 }}>(Use all genes — Matches TREx Runs)</span>
                   </label>
+                </div>
+
+                {/* ── PCA ── */}
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+                  <p className="label-sm mb-3" style={{ color: 'var(--text-3)', letterSpacing: '0.05em' }}>PCA</p>
+                  <div style={{ opacity: params.ntopAll ? 0.38 : 1, pointerEvents: params.ntopAll ? 'none' : 'auto' }}>
+                    <ParamSlider label="Top N variable genes (ntop)" value={params.ntop}
+                                 min={100} max={5000} step={100}
+                                 onChange={v => setParams(p => ({ ...p, ntop: v }))} />
+                  </div>
+                  <div className="flex items-center gap-2" style={{ marginTop: 10 }}>
+                    <input type="checkbox" id="ntop-all-chk" checked={!!params.ntopAll}
+                           onChange={e => setParams(p => ({ ...p, ntopAll: e.target.checked }))}
+                           style={{ accentColor: 'var(--accent)', width: 14, height: 14, cursor: 'pointer' }} />
+                    <label htmlFor="ntop-all-chk" className="label-sm" style={{ cursor: 'pointer', userSelect: 'none' }}>
+                      Use all variable genes <span style={{ color: 'var(--text-4)', fontWeight: 400 }}>(ignore ntop — use every gene)</span>
+                    </label>
+                  </div>
                 </div>
 
                 <div>
