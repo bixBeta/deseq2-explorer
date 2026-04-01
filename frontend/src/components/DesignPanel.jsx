@@ -5,6 +5,7 @@ const DEFAULT_PARAMS = {
   lfcThreshold: 0,
   minCount: 1,
   minSamples: 2,
+  noFilter: false,
   fitType: 'parametric',
   independentFiltering: true,
   cooksCutoff: true,
@@ -341,10 +342,23 @@ export default function DesignPanel({
                                onChange={v => setParams(p => ({ ...p, alpha: v }))} />
                   <ParamSlider label="LFC Threshold" value={params.lfcThreshold} min={0} max={2} step={0.1}
                                onChange={v => setParams(p => ({ ...p, lfcThreshold: v }))} />
-                  <ParamSlider label="Min count per gene" value={params.minCount} min={1} max={20} step={1}
-                               onChange={v => setParams(p => ({ ...p, minCount: v }))} />
-                  <ParamSlider label="Min samples with count" value={params.minSamples} min={1} max={10} step={1}
-                               onChange={v => setParams(p => ({ ...p, minSamples: v }))} />
+                  <div style={{ opacity: params.noFilter ? 0.38 : 1, pointerEvents: params.noFilter ? 'none' : 'auto' }}>
+                    <ParamSlider label="Min count per gene" value={params.minCount} min={1} max={20} step={1}
+                                 onChange={v => setParams(p => ({ ...p, minCount: v }))} />
+                  </div>
+                  <div style={{ opacity: params.noFilter ? 0.38 : 1, pointerEvents: params.noFilter ? 'none' : 'auto' }}>
+                    <ParamSlider label="Min samples with count" value={params.minSamples} min={1} max={10} step={1}
+                                 onChange={v => setParams(p => ({ ...p, minSamples: v }))} />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2" style={{ marginTop: '-4px' }}>
+                  <input type="checkbox" id="no-filter-chk" checked={!!params.noFilter}
+                         onChange={e => setParams(p => ({ ...p, noFilter: e.target.checked }))}
+                         style={{ accentColor: 'var(--accent)', width: 14, height: 14, cursor: 'pointer' }} />
+                  <label htmlFor="no-filter-chk" className="label-sm" style={{ cursor: 'pointer', userSelect: 'none' }}>
+                    No pre-filtering <span style={{ color: 'var(--text-4)', fontWeight: 400 }}>(use all genes — matches unfiltered R runs)</span>
+                  </label>
                 </div>
 
                 <div>

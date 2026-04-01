@@ -518,6 +518,7 @@ function(req, res) {
   p          <- body$params
   alpha      <- if (!is.null(p$alpha))               as.numeric(p$alpha)            else 0.05
   lfc_thresh <- if (!is.null(p$lfcThreshold))        as.numeric(p$lfcThreshold)     else 0
+  no_filter  <- isTRUE(p$noFilter)
   min_count  <- if (!is.null(p$minCount))            as.integer(p$minCount)         else 1L
   min_samp   <- if (!is.null(p$minSamples))          as.integer(p$minSamples)       else 2L
   fit_type   <- if (!is.null(p$fitType))             as.character(p$fitType)        else "parametric"
@@ -572,7 +573,7 @@ function(req, res) {
     countData = counts, colData = meta,
     design    = as.formula(paste("~", column))
   )
-  dds <- dds[rowSums(counts(dds) >= min_count) >= min_samp, ]
+  if (!no_filter) dds <- dds[rowSums(counts(dds) >= min_count) >= min_samp, ]
   dds <- DESeq(dds, fitType = fit_type, quiet = TRUE)
 
   # ── Per-contrast results() — each contrast has its own treatment + reference ──
