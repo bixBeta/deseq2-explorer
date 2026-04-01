@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Component } from 'react'
 import SessionGate   from './components/SessionGate'
 import SessionPicker from './components/SessionPicker'
 import Uploader      from './components/Uploader'
@@ -7,6 +7,37 @@ import DesignPanel   from './components/DesignPanel'
 import Results       from './components/Results'
 import ThemeToggle   from './components/ThemeToggle'
 import HelpPanel     from './components/HelpPanel'
+
+// ── Error boundary — catches render errors and shows a recovery UI ────────────
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null } }
+  static getDerivedStateFromError(error) { return { error } }
+  componentDidCatch(error, info) { console.error('App render error:', error, info) }
+  render() {
+    if (!this.state.error) return this.props.children
+    return (
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        padding: 48, gap: 16, color: '#f1f5f9', textAlign: 'center',
+      }}>
+        <div style={{ fontSize: '2rem' }}>⚠</div>
+        <div style={{ fontWeight: 600, fontSize: '1rem' }}>Something went wrong</div>
+        <div style={{ fontSize: '0.8rem', color: '#94a3b8', maxWidth: 400, lineHeight: 1.6 }}>
+          {this.state.error?.message || 'An unexpected error occurred.'}
+        </div>
+        <button
+          onClick={() => window.location.reload()}
+          style={{
+            marginTop: 8, padding: '8px 20px', borderRadius: 8, cursor: 'pointer',
+            background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)',
+            color: '#a5b4fc', fontSize: '0.85rem', fontWeight: 500,
+          }}>
+          Reload page
+        </button>
+      </div>
+    )
+  }
+}
 
 // ── App icon variants — change ICON_VARIANT to 'A' | 'B' | 'C' to switch ────
 const ICON_VARIANT = 'C'
@@ -291,9 +322,15 @@ export default function App() {
   /* ── Workflow ── */
   function handleParsed(info) {
     setParseInfo(info)
+    // Normalise metadataRows — R's jsonlite may return a named list as a JSON
+    // object instead of an array; Object.values() handles both cases safely.
+    const rawRows = info.metadataRows
+    const rows = Array.isArray(rawRows) ? rawRows
+                 : rawRows && typeof rawRows === 'object' ? Object.values(rawRows)
+                 : []
     setMetaState({
-      rows:     info.metadataRows || [],
-      selected: new Set((info.metadataRows || []).map(r => r.sample)),
+      rows,
+      selected: new Set(rows.map(r => r.sample).filter(Boolean)),
     })
     setStep('metadata')
   }
@@ -437,6 +474,7 @@ export default function App() {
 
       {/* ── Main (dot-grid background) ── */}
       <main className="flex-1 flex items-start justify-center p-6 pt-10 dot-grid">
+       <ErrorBoundary key={step}>
         {step === 'session' && <SessionGate onAuth={handleAuth} onExample={handleExample} />}
         {step === 'picker'  && (
           <SessionPicker auth={auth} initialSessions={sessions}
@@ -461,6 +499,7 @@ export default function App() {
                    sampleLabels={sampleLabels}
                    onAnnotate={(map, details) => { setAnnMap(map); setAnnDetails(details || null) }} />
         )}
+       </ErrorBoundary>
       </main>
 
       {/* ── Footer ── */}
