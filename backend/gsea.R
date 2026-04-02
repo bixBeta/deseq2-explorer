@@ -156,13 +156,13 @@ gsea_preview <- function(session_id, contrast_label) {
   )
 }
 
-# ── gsea_run: fgsea against a MSigDB collection ────────────────────────────────
+# ── gsea_run: clusterProfiler::GSEA against a MSigDB collection ───────────────
 gsea_run <- function(session_id, contrast_label, rank_method, collection, subcategory,
                      species, min_size, max_size, score_type, n_perm, padj_method,
                      filter_method, filter_value, ann_map) {
-  if (!requireNamespace("fgsea",   quietly = TRUE)) stop("R package 'fgsea' is not installed on the server")
-  if (!requireNamespace("msigdbr", quietly = TRUE)) stop("R package 'msigdbr' is not installed on the server")
-  library(fgsea); library(msigdbr)
+  if (!requireNamespace("clusterProfiler", quietly = TRUE)) stop("R package 'clusterProfiler' is not installed on the server")
+  if (!requireNamespace("msigdbr",         quietly = TRUE)) stop("R package 'msigdbr' is not installed on the server")
+  library(clusterProfiler); library(msigdbr)
 
   stats_vec <- .build_ranked_vec(session_id, contrast_label, rank_method,
                                   filter_method, filter_value, ann_map)
@@ -175,55 +175,61 @@ gsea_run <- function(session_id, contrast_label, rank_method, collection, subcat
   )
   if (nrow(msig) == 0) stop("No gene sets returned for the selected collection/species")
 
-  gene_sets <- if (use_symbols) {
-    split(msig$gene_symbol, msig$gs_name)
+  # TERM2GENE: two-column data frame required by clusterProfiler::GSEA
+  term2gene <- if (use_symbols) {
+    msig[, c("gs_name", "gene_symbol")]
   } else {
     msig_ens <- msig[!is.na(msig$ensembl_gene) & nchar(msig$ensembl_gene) > 0, ]
-    split(msig_ens$ensembl_gene, msig_ens$gs_name)
+    msig_ens[, c("gs_name", "ensembl_gene")]
   }
-  if (length(gene_sets) == 0) stop("No gene sets found for the selected collection")
+  colnames(term2gene) <- c("term", "gene")
+  if (nrow(term2gene) == 0) stop("No gene sets found for the selected collection")
 
-  score_type  <- score_type  %||% "std"
-  n_perm      <- as.integer(n_perm %||% 1000L)
   padj_method <- padj_method %||% "BH"
 
   t0 <- proc.time()["elapsed"]
   set.seed(42L)
-  fgsea_res <- tryCatch(
-    fgsea(
-      pathways    = gene_sets,
-      stats       = stats_vec,
-      minSize     = as.integer(min_size),
-      maxSize     = as.integer(max_size),
-      nPermSimple = n_perm,
-      scoreType   = score_type,
-      eps         = 0
+  gsea_res <- tryCatch(
+    clusterProfiler::GSEA(
+      geneList     = stats_vec,         # named, sorted numeric vector
+      TERM2GENE    = term2gene,
+      minGSSize    = as.integer(min_size),
+      maxGSSize    = as.integer(max_size),
+      pvalueCutoff = 1,                 # return all; we filter client-side
+      pAdjustMethod = padj_method,
+      by           = "fgsea",           # use fgsea backend for speed
+      eps          = 0,
+      seed         = TRUE,
+      verbose      = FALSE
     ),
-    error = function(e) stop("fgsea failed: ", e$message)
+    error = function(e) stop("clusterProfiler::GSEA failed: ", e$message)
   )
   elapsed <- as.numeric(proc.time()["elapsed"] - t0)
 
-  # Apply chosen p-value adjustment method (fgsea always outputs BH internally)
-  if (padj_method != "BH") {
-    fgsea_res$padj <- p.adjust(fgsea_res$pval, method = padj_method)
-  }
+  res_df <- as.data.frame(gsea_res)
 
-  fgsea_res <- fgsea_res[order(fgsea_res$padj, na.last = TRUE), ]
+  # Reconstruct gene_sets list for the curve cache (needed by gsea_curve)
+  gene_sets <- split(term2gene$gene, term2gene$term)
 
-  results_out <- lapply(seq_len(nrow(fgsea_res)), function(i) {
-    r  <- fgsea_res[i, ]
-    le <- paste(unlist(r$leadingEdge), collapse = ",")
+  results_out <- lapply(seq_len(nrow(res_df)), function(i) {
+    r  <- res_df[i, ]
+    le <- as.character(r$core_enrichment %||% "")
+    le_genes <- if (nchar(le) > 0) strsplit(le, "/")[[1]] else character(0)
     list(
-      pathway      = r$pathway,
+      pathway      = as.character(r$ID),
       NES          = round(as.numeric(r$NES), 3),
-      pvalue       = signif(as.numeric(r$pval), 3),
-      padj         = signif(as.numeric(r$padj), 3),
-      size         = as.integer(r$size),
-      ES           = round(as.numeric(r$ES), 3),
-      leadingEdge  = le,
-      leadingEdgeN = length(unlist(r$leadingEdge))
+      pvalue       = signif(as.numeric(r$pvalue), 3),
+      padj         = signif(as.numeric(r$p.adjust), 3),
+      size         = as.integer(r$setSize),
+      ES           = round(as.numeric(r$enrichmentScore), 3),
+      leadingEdge  = paste(le_genes, collapse = ","),
+      leadingEdgeN = length(le_genes)
     )
   })
+
+  # Sort by padj
+  ord         <- order(sapply(results_out, `[[`, "padj"), na.last = TRUE)
+  results_out <- results_out[ord]
 
   ranked_out <- lapply(seq_along(stats_vec), function(i) {
     list(gene = names(stats_vec)[i], score = round(as.numeric(stats_vec[i]), 4))
@@ -241,7 +247,7 @@ gsea_run <- function(session_id, contrast_label, rank_method, collection, subcat
     rankedList = ranked_out,
     meta = list(
       n_genes_ranked = length(stats_vec),
-      n_pathways     = nrow(fgsea_res),
+      n_pathways     = nrow(res_df),
       collection     = collection,
       species        = species,
       contrastLabel  = contrast_label,
