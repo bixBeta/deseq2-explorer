@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import methodsMd from '../../public/methods.md?raw'
 
 // ── Simple markdown → JSX renderer ───────────────────────────────────────────
 function renderMd(md) {
@@ -234,17 +235,8 @@ ${mdToHtml(md)}
 
 // ── Main ConsoleModal ─────────────────────────────────────────────────────────
 export default function ConsoleModal({ onClose, session, design, results, parseInfo }) {
-  const [md,      setMd]      = useState('')
-  const [tab,     setTab]     = useState('methods')
-  const [loading, setLoading] = useState(true)
+  const [tab, setTab] = useState('methods')
   const scrollRef = useRef(null)
-
-  useEffect(() => {
-    fetch('/methods.md')
-      .then(r => r.text())
-      .then(text => { setMd(text); setLoading(false) })
-      .catch(() => { setMd('# Error\n\nCould not load methods.md'); setLoading(false) })
-  }, [])
 
   // Close on Escape
   useEffect(() => {
@@ -269,7 +261,7 @@ export default function ConsoleModal({ onClose, session, design, results, parseI
   ]
 
   function handleExport() {
-    const html = buildHtmlExport(md, sessionParams)
+    const html = buildHtmlExport(methodsMd, sessionParams)
     const blob = new Blob([html], { type: 'text/html' })
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a')
@@ -336,9 +328,7 @@ export default function ConsoleModal({ onClose, session, design, results, parseI
         {/* Content */}
         <div ref={scrollRef} style={{ flex:1, overflowY:'auto', padding:'20px 28px' }}>
           {tab === 'methods' && (
-            loading
-              ? <div style={{ color:'var(--text-3)', fontSize:'0.82rem', padding:40, textAlign:'center' }}>Loading…</div>
-              : <div>{renderMd(md)}</div>
+            <div>{renderMd(methodsMd)}</div>
           )}
 
           {tab === 'params' && (
