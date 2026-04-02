@@ -1846,3 +1846,69 @@ function(req, res) {
     run_id         = body$runId
   )
 }
+
+#* Compare leading-edge gene sets across GSEA runs via UpSet plot
+#* @post /api/gsea/compare
+function(req, res) {
+  body <- tryCatch(jsonlite::fromJSON(req$postBody, simplifyVector = FALSE), error = function(e) list())
+
+  sets_raw    <- body$sets        %||% list()   # [{ label, genes: [] }]
+  order_by    <- body$orderBy     %||% "freq"
+  font_size   <- as.numeric(body$fontSize   %||% 14)
+  width       <- as.numeric(body$width      %||% 900)
+  height      <- as.numeric(body$height     %||% 500)
+  min_size    <- as.integer(body$minSize    %||% 1L)
+  nsets       <- as.integer(body$nsets      %||% 40L)
+  nintersects <- as.integer(body$nintersects %||% 40L)
+
+  if (length(sets_raw) < 2) {
+    res$status <- 400
+    return(list(error = "Need at least 2 sets to compare"))
+  }
+
+  gene_sets <- lapply(sets_raw, function(s) unique(as.character(unlist(s$genes))))
+  # Sanitize names: keep alphanumeric, spaces, hyphens, colons; collapse whitespace
+  raw_names <- vapply(sets_raw, function(s) as.character(s$label %||% "?"), character(1))
+  clean_names <- gsub("[^A-Za-z0-9 :_-]", "", raw_names)
+  clean_names <- trimws(gsub("\\s+", " ", clean_names))
+  # Ensure unique names
+  clean_names <- make.unique(clean_names, sep = "_")
+  names(gene_sets) <- clean_names
+
+  gene_sets <- gene_sets[lengths(gene_sets) >= min_size]
+  if (length(gene_sets) < 2) {
+    res$status <- 400
+    return(list(error = "Fewer than 2 sets remain after min-size filter"))
+  }
+
+  tmp <- tempfile(fileext = ".png")
+  on.exit(unlink(tmp), add = TRUE)
+
+  upset_result <- tryCatch({
+    png(tmp, width = width, height = height, res = 120)
+    print(UpSetR::upset(
+      UpSetR::fromList(gene_sets),
+      nsets       = min(nsets, length(gene_sets)),
+      nintersects = nintersects,
+      order.by    = order_by,
+      text.scale  = font_size / 7,
+      point.size  = 2.8,
+      line.size   = 0.7,
+      mb.ratio    = c(0.6, 0.4)
+    ))
+    dev.off()
+    NULL
+  }, error = function(e) {
+    tryCatch(dev.off(), error = function(x) NULL)
+    conditionMessage(e)
+  })
+
+  if (!is.null(upset_result)) {
+    res$status <- 500
+    return(list(error = upset_result))
+  }
+
+  img_bytes <- readBin(tmp, "raw", file.info(tmp)$size)
+  b64       <- jsonlite::base64_enc(img_bytes)
+  list(image = b64)
+}

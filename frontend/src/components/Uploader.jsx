@@ -74,7 +74,24 @@ export default function Uploader({ session, onParsed }) {
           </>
         ) : (
           <>
-            <div className="text-4xl">📦</div>
+            <svg width="52" height="52" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+              {/* Document shape */}
+              <rect x="6" y="4" width="32" height="40" rx="4" fill="#1e3a5f" opacity="0.85"/>
+              <path d="M30 4 L38 12 L30 12 Z" fill="#0d2240" opacity="0.9"/>
+              <rect x="30" y="4" width="8" height="8" rx="1" fill="#2a4f7c" opacity="0.7"/>
+              {/* R circle badge */}
+              <circle cx="36" cy="36" r="14" fill="#2166ac"/>
+              <circle cx="36" cy="36" r="13" fill="url(#rgrad)"/>
+              <defs>
+                <radialGradient id="rgrad" cx="40%" cy="35%" r="60%">
+                  <stop offset="0%" stopColor="#4a90d9"/>
+                  <stop offset="100%" stopColor="#1a5a9a"/>
+                </radialGradient>
+              </defs>
+              {/* R letter */}
+              <text x="36" y="42" textAnchor="middle" fontFamily="'Georgia',serif" fontWeight="bold"
+                    fontSize="17" fill="white" letterSpacing="-0.5">R</text>
+            </svg>
             <p className="font-medium" style={{ color: 'var(--text-1)' }}>
               {dragging ? 'Drop it!' : 'Drag & drop your RDS file here'}
             </p>

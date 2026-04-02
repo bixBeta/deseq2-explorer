@@ -6,6 +6,7 @@ import ResultsTable    from './ResultsTable'
 import AnnotationPanel from './AnnotationPanel'
 import ComparePanel    from './ComparePanel'
 import GSEAExplorer    from './GSEAExplorer'
+import GSEACompare     from './GSEACompare'
 
 const STORAGE_KEY = 'deseq2_tab_icons'
 
@@ -16,7 +17,8 @@ const DEFAULT_TABS = [
   { key: 'pca',      label: 'PCA',         icon: '●●' },
   { key: 'table',    label: 'DE Results',  icon: '▤'  },
   { key: 'compare',  label: 'Compare',     icon: '⊕'  },
-  { key: 'gsea',     label: 'GSEA',        icon: '⟳', navy: true },
+  { key: 'gsea',         label: 'GSEA',         icon: '⟳', navy: true },
+  { key: 'gsea_compare', label: 'GSEA Compare',  icon: '⊗', navy: true },
 ]
 
 function loadIcons() {
@@ -262,6 +264,12 @@ export default function Results({ results, design, onBack, onEditSamples, sessio
             annMap={annMap}
             onRunsChange={onGseaRunsChange}
             initialRuns={initialGseaRuns}
+          />
+        </div>
+        <div style={{ display: vizTab === 'gsea_compare' ? 'block' : 'none' }}>
+          <GSEACompare
+            session={session}
+            gseaRuns={initialGseaRuns}
           />
         </div>
       </div>
