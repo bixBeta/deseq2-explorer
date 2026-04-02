@@ -343,18 +343,35 @@ gsea_plots <- function(session_id, contrast_label, collection, subcategory, spec
       },
 
       "ridgeplot" = {
-        # core_enrichment=TRUE triggers a scoping bug in some enrichplot versions — omit it
+        # ridgeplot sets its own fill scale internally — don't add scale_fill_gradient
         ridgeplot(gsea_result, showCategory = n_show) +
-          scale_fill_gradient(low = color_neg, high = color_pos) +
           theme_bw(base_size = font_size) +
           ggtitle("GSEA Ridge Plot — Leading Edge Expression")
       },
 
       "upsetplot" = {
-        # upsetplot dispatches differently for gseaResult — use showCategory not n
-        enrichplot::upsetplot(gsea_result, showCategory = min(n_show, 15L)) +
-          theme_bw(base_size = font_size) +
-          ggtitle("GSEA UpSet Plot — Leading Edge Overlap")
+        # enrichplot::upsetplot for gseaResult returns a UpSetR object, not ggplot2
+        # Must use png()/print()/dev.off() and return directly
+        n_up   <- min(n_show, 15L)
+        res_df <- as.data.frame(gsea_result)
+        sel    <- head(res_df$ID[order(res_df$p.adjust)], n_up)
+        core   <- res_df$core_enrichment[match(sel, res_df$ID)]
+        gene_sets <- setNames(
+          lapply(core, function(x) strsplit(x, "/")[[1]]),
+          substr(sel, 1, 40)
+        )
+        if (!requireNamespace("UpSetR", quietly = TRUE)) stop("UpSetR not installed")
+        png(tmp, width = round(w * 150), height = round(h * 150), res = 150)
+        tryCatch(
+          print(UpSetR::upset(UpSetR::fromList(gene_sets), nsets = length(gene_sets),
+                              sets.bar.color = color_pos, main.bar.color = color_neg,
+                              text.scale = font_size / 11, order.by = "freq")),
+          error = function(e) { dev.off(); stop(e$message) }
+        )
+        dev.off()
+        b64_up <- paste0("data:image/png;base64,",
+                         base64enc::base64encode(readBin(tmp, "raw", file.info(tmp)$size)))
+        return(list(image = b64_up, plotType = plot_type))
       },
 
       "heatplot" = {
