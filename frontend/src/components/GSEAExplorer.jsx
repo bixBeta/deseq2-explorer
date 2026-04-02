@@ -414,7 +414,7 @@ const PLOT_TYPES = [
   { key:'upsetplot', label:'UpSet Plot',        icon:'⊞', desc:'Leading-edge gene overlaps across pathways' },
   { key:'emapplot',  label:'Enrichment Map',    icon:'◎', desc:'Network of pathway similarity by shared genes' },
   { key:'cnetplot',  label:'Concept Network',   icon:'◈', desc:'Gene-pathway concept network (cnetplot)' },
-  { key:'gsea_plot', label:'GSEA Plot',         icon:'⟳', desc:'plotthis::GSEAPlot — enrichment curve(s)' },
+  { key:'gsea_plot', label:'GSEA Plot',         icon:'⟳', desc:'Enrichment score curve(s) per pathway' },
 ]
 
 function PlotsPanel({ run, session, contrastLabel }) {
@@ -425,13 +425,17 @@ function PlotsPanel({ run, session, contrastLabel }) {
   const [height,     setHeight]     = useState(7)
   const [colorPos,   setColorPos]   = useState('#e63946')
   const [colorNeg,   setColorNeg]   = useState('#457b9d')
-  const [pathwayInput, setPathwayInput] = useState('')
+  const [selPathways,  setSelPathways]  = useState([])
   const [loading,    setLoading]    = useState(false)
   const [imgSrc,     setImgSrc]     = useState(null)
   const [error,      setError]      = useState(null)
 
   const pathwaysForPlot = plotType === 'heatplot' || plotType === 'cnetplot' || plotType === 'gsea_plot'
-  const pathwayList = pathwayInput.split('\n').map(s=>s.trim()).filter(Boolean)
+  const availablePathways = useMemo(() => (run?.results ?? []).map(r => r.pathway).filter(Boolean), [run])
+  const pathwayList = selPathways
+
+  // Clear selection when run changes
+  useEffect(() => { setSelPathways([]) }, [run])
 
   const handleGenerate = async () => {
     if (!run || !session?.sessionId) return
@@ -511,9 +515,25 @@ function PlotsPanel({ run, session, contrastLabel }) {
 
           {pathwaysForPlot && (
             <div>
-              <div style={{ fontSize:'0.66rem', color:'var(--text-3)', marginBottom:2 }}>Pathways (one per line; blank = top 5 by padj)</div>
-              <textarea value={pathwayInput} onChange={e=>setPathwayInput(e.target.value)} rows={4} placeholder="HALLMARK_HYPOXIA&#10;HALLMARK_MYC_TARGETS_V1"
-                style={{ width:'100%', padding:'4px 8px', fontSize:'0.68rem', fontFamily:'monospace', background:'rgba(255,255,255,0.05)', border:CB, borderRadius:6, color:'var(--text-1)', resize:'vertical' }} />
+              <div style={{ fontSize:'0.66rem', color:'var(--text-3)', marginBottom:4 }}>
+                Pathways <span style={{ opacity:0.6 }}>(blank = top 5 by padj)</span>
+              </div>
+              <select multiple value={selPathways}
+                onChange={e => setSelPathways(Array.from(e.target.selectedOptions, o => o.value))}
+                size={Math.min(availablePathways.length, 7)}
+                style={{ width:'100%', padding:'2px 4px', fontSize:'0.65rem', fontFamily:'monospace',
+                  background:'rgba(255,255,255,0.05)', border:CB, borderRadius:6,
+                  color:'var(--text-1)', outline:'none' }}>
+                {availablePathways.map(p => (
+                  <option key={p} value={p} style={{ padding:'2px 4px' }}>{p}</option>
+                ))}
+              </select>
+              {selPathways.length > 0 && (
+                <button onClick={() => setSelPathways([])}
+                  style={{ marginTop:4, fontSize:'0.62rem', color:V.text, background:'none', border:'none', cursor:'pointer', padding:0 }}>
+                  ✕ clear selection
+                </button>
+              )}
             </div>
           )}
 
