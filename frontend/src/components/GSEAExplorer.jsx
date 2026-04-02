@@ -74,64 +74,52 @@ function SectionLabel({ children }) {
   )
 }
 
-// ── Per-sample ridge plot (KDE stacked vertically) ───────────────────────────
+// ── Per-sample overlapping KDE chart ─────────────────────────────────────────
 function SampleDensityChart({ histData, cutoffLog }) {
   const ref = useRef(null)
   useEffect(() => {
     if (!histData?.kdes || !ref.current) return
     const { kdes } = histData
+    const showLegend = kdes.length <= 24
 
-    const maxY    = Math.max(...kdes.map(k => Math.max(...k.y)), 1e-9)
-    const spacing = 1.0
-    const yScale  = spacing * 0.85 / maxY
-
-    const traces = []
-    kdes.forEach((kde, i) => {
-      const color   = SAMPLE_COLORS[i % SAMPLE_COLORS.length]
-      const yOff    = i * spacing
-      const yShifted = kde.y.map(v => v * yScale + yOff)
-
-      // invisible baseline so fill:'tonexty' works
-      traces.push({
-        x: [kde.x[0], kde.x[kde.x.length - 1]],
-        y: [yOff, yOff],
-        type:'scatter', mode:'lines',
-        line:{ color:'transparent', width:0 },
-        showlegend:false, hoverinfo:'skip',
-      })
-      traces.push({
-        x: kde.x, y: yShifted,
-        type:'scatter', mode:'lines',
-        fill:'tonexty',
-        fillcolor: color + '38',   // ~22% opacity — underlying ridges visible
-        line:{ color, width:1.5, shape:'spline' },
-        name: kde.sample, showlegend:false,
-        hovertemplate:`<b>${kde.sample}</b><br>log₁p(norm count): %{x:.2f}<extra></extra>`,
-      })
-    })
+    const traces = kdes.map((kde, i) => ({
+      x: kde.x, y: kde.y,
+      type:'scatter', mode:'lines',
+      name: kde.sample,
+      line:{ color:SAMPLE_COLORS[i%SAMPLE_COLORS.length], width:1.6, shape:'spline' },
+      opacity:0.72, showlegend:showLegend,
+      hovertemplate:`<b>${kde.sample}</b><br>log₁p(norm count): %{x:.2f}<extra></extra>`,
+    }))
 
     const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-3').trim()||'#94a3b8'
-    const chartH    = Math.min(Math.max(kdes.length * 32 + 60, 220), 680)
+    const isLight   = document.body.classList.contains('light')
+    const gridColor = isLight ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.12)'
 
     const layout = {
-      height: chartH,
-      margin:{ t:10, r:14, b:44, l:130 },
-      xaxis:{ title:{ text:'log₁p(normalised count)', font:{size:10} }, color:textColor,
-              zeroline:false, tickfont:{size:9}, autorange:true },
-      yaxis:{ tickvals: kdes.map((_,i)=>i*spacing), ticktext: kdes.map(k=>k.sample),
-              tickfont:{size:9}, color:textColor, zeroline:false, showgrid:false, autorange:true },
+      height: 380,
+      margin:{ t:10, r:showLegend?130:14, b:44, l:52 },
+      xaxis:{ title:{ text:'log₁p(normalised count)', font:{size:10} }, color:textColor, gridcolor:gridColor, showgrid:true, zeroline:false, tickfont:{size:9}, autorange:true },
+      yaxis:{ title:{ text:'Density', font:{size:10} }, color:textColor, gridcolor:gridColor, showgrid:true, zeroline:false, tickfont:{size:9}, autorange:true },
       plot_bgcolor:'transparent', paper_bgcolor:'transparent',
-      hovermode:'closest',
+      legend:{ font:{size:9,color:textColor}, bgcolor:'transparent', x:1.01, y:1, xanchor:'left' },
+      hovermode:'x',
       shapes:[{
         type:'line', x0:cutoffLog, x1:cutoffLog, y0:0, y1:1, yref:'paper',
         line:{ color:'#f43f5e', width:2, dash:'dash' },
       }],
       annotations:[{
-        x:cutoffLog, y:0.99, yref:'paper', xanchor:'left',
-        text:' cutoff', font:{size:9,color:'#f87171'}, showarrow:false,
+        x:cutoffLog, y:0.97, yref:'paper', xanchor:'left',
+        text:' filter cutoff', font:{size:9,color:'#f87171'}, showarrow:false,
       }],
     }
-    Plotly.react(ref.current, traces, layout, { displayModeBar:false, responsive:true })
+    const modebarBg    = isLight ? 'rgba(255,255,255,0.85)' : 'rgba(15,23,42,0.85)'
+    const modebarColor = isLight ? '#444444' : '#94a3b8'
+    layout.modebar = { bgcolor:modebarBg, color:modebarColor, activecolor:isLight?'#000':'#fff' }
+    Plotly.react(ref.current, traces, layout, {
+      responsive:true, displaylogo:false,
+      modeBarButtonsToRemove:['select2d','lasso2d'],
+      toImageButtonOptions:{ filename:'count_distributions', scale:2, format:'png' },
+    })
   }, [histData, cutoffLog])
   return <div ref={ref} style={{ width:'100%' }} />
 }
@@ -149,7 +137,7 @@ function DistributionModal({ histData, cutoffLog, cutoffOrig, filterMethod, filt
           <div>
             <div style={{ fontSize:'1rem', fontWeight:700, color:V.text, marginBottom:3 }}>Count Distribution — All Samples</div>
             <div style={{ fontSize:'0.73rem', color:'var(--text-3)' }}>
-              Each curve = one sample (log₁p raw counts) · Red dashed line = row-median filter cutoff
+              Each curve = one sample (log₁p normalised counts) · Red dashed line = row-median filter cutoff
               {histData && ` · ${histData.n_samples} samples · ${histData.n_genes?.toLocaleString()} genes`}
             </div>
           </div>
@@ -274,7 +262,8 @@ function ResultsTable({ run, onPathwayClick, selectedPathway }) {
   const [query,     setQuery]     = useState('')
   const [page,      setPage]      = useState(0)
   const PER = 30
-  const results = run?.results ?? []
+  const padjCutoff = run?.padjCutoff ?? 1
+  const results = (run?.results ?? []).filter(r => (r.padj ?? 1) <= padjCutoff)
   const maxAbs  = useMemo(()=>Math.max(...results.map(r=>Math.abs(r.NES||0)),1),[results])
   const filtered = useMemo(()=>{
     let r=results
@@ -394,7 +383,7 @@ function RankedListPanel({ run }) {
               return (
                 <tr key={rank} style={{ background:i%2===0?'transparent':'rgba(255,255,255,0.015)' }}>
                   <td style={{ padding:'5px 10px', color:'var(--text-4)', fontFamily:'monospace', fontSize:'0.7rem', border:CB }}>{rank}</td>
-                  <td style={{ padding:'5px 10px', fontFamily:'monospace', fontWeight:600, color:pos?V.up:V.down, border:CB }}>{r.gene}</td>
+                  <td style={{ padding:'5px 10px', fontFamily:'monospace', fontWeight:600, color:'var(--text-1)', border:CB }}>{r.gene}</td>
                   <td style={{ padding:'5px 10px', fontFamily:'monospace', fontSize:'0.72rem', color:pos?V.up:V.down, border:CB }}>{r.score>0?'+':''}{r.score.toFixed(4)}</td>
                   <td style={{ padding:'5px 10px', border:CB }}>
                     <div style={{ width:Math.round((Math.abs(r.score)/maxAbs)*80), height:8, background:pos?'rgba(16,185,129,0.45)':'rgba(244,63,94,0.45)', borderRadius:3 }} />
@@ -436,7 +425,7 @@ function MountainModal({ pathway, result, curveData, curveLoading, onClose }) {
       { x, y, type:'scatter', mode:'lines', fill:'tozeroy', fillcolor:colorFade, line:{ color, width:2.5 }, name:'Running ES', hovertemplate:'Rank: %{x:.4f}<br>ES: %{y:.4f}<extra></extra>' },
       { x:hits, y:Array(hits.length).fill(-0.08), customdata:hitGenes??[],
         type:'scatter', mode:'markers',
-        marker:{ symbol:'line-ns-open', size:12, color:'rgba(14,116,144,0.5)', line:{ width:1.5, color } },
+        marker:{ symbol:'line-ns-open', size:12, color, line:{ width:1.5, color } },
         name:'Pathway genes',
         hovertemplate:hitGenes?.length?'<b>%{customdata}</b><br>Rank: %{x:.4f}<extra></extra>':'Rank: %{x:.4f}<extra></extra>' },
     ], {
@@ -446,6 +435,7 @@ function MountainModal({ pathway, result, curveData, curveLoading, onClose }) {
       yaxis:{ title:'Running enrichment score', autorange:true, color:'var(--text-3)', gridcolor:gridColor, zeroline:true, zerolinecolor:'var(--text-3)', zerolinewidth:1, tickfont:{size:10} },
       plot_bgcolor:'transparent', paper_bgcolor:'transparent',
       legend:{ font:{size:10,color:'var(--text-3)'}, x:0.01, y:0.99 },
+      modebar:{ bgcolor:'rgba(255,255,255,0.85)', color:'#444444', activecolor:'#000000' },
       annotations:[{ x:0.99, y:0.97, xref:'paper', yref:'paper', xanchor:'right', yanchor:'top',
         text:`NES: <b>${(nes>0?'+':'')+nes.toFixed(3)}</b>  padj: <b>${fmtPval(result?.padj)}</b>  hits: ${nHits}/${result?.size}`,
         showarrow:false, font:{size:11,color:'#000000'}, bgcolor:'rgba(255,255,255,0.82)', borderpad:5, bordercolor:'rgba(0,0,0,0.12)', borderwidth:1 }],
@@ -455,7 +445,6 @@ function MountainModal({ pathway, result, curveData, curveLoading, onClose }) {
         { type:'line', x0:0, x1:1, xref:'paper', y0:-0.055, y1:-0.055, line:{ color:'var(--border)', width:0.8 } },
       ],
     }, { responsive:true, displaylogo:false, modeBarButtonsToRemove:['select2d','lasso2d'],
-         modebar:{ bgcolor:'rgba(255,255,255,0.75)', color:'#444', activecolor:'#000' },
          toImageButtonOptions:{ filename:'enrichment_'+pathway, scale:2, format:'png' } })
   },[curveData,pathway,result])
 
@@ -497,6 +486,10 @@ export default function GSEAExplorer({ session, contrastLabel, annMap }) {
   const [species,      setSpecies]      = useState('Homo sapiens')
   const [minSize,      setMinSize]      = useState(15)
   const [maxSize,      setMaxSize]      = useState(500)
+  const [scoreType,    setScoreType]    = useState('std')
+  const [nPerm,        setNPerm]        = useState(1000)
+  const [pAdjMethod,   setPAdjMethod]   = useState('BH')
+  const [padjCutoff,   setPadjCutoff]   = useState(0.25)
   const [filterMethod, setFilterMethod] = useState('quantile')
   const [filterValue,  setFilterValue]  = useState(0.25)
 
@@ -510,7 +503,10 @@ export default function GSEAExplorer({ session, contrastLabel, annMap }) {
 
   const [runs,        setRuns]        = useState([])
   const [activeRunId, setActiveRunId] = useState(null)
-  const activeRun = runs.find(r=>r.id===activeRunId) ?? runs[runs.length-1] ?? null
+
+  // Only show runs belonging to the current contrast
+  const contrastRuns = useMemo(()=>runs.filter(r=>r.contrastLabel===contrastLabel),[runs,contrastLabel])
+  const activeRun    = contrastRuns.find(r=>r.id===activeRunId) ?? contrastRuns[contrastRuns.length-1] ?? null
 
   const [contentTab,   setContentTab]  = useState('results')
   const [selPathway,   setSelPathway]   = useState(null)
@@ -518,6 +514,12 @@ export default function GSEAExplorer({ session, contrastLabel, annMap }) {
   const [curveLoading, setCurveLoading] = useState(false)
   const curveCacheRef  = useRef({})
   const runCtrlRef     = useRef(null)
+
+  // Reset per-contrast state when contrast changes
+  useEffect(()=>{
+    setActiveRunId(null); setSelPathway(null); setCurveData(null)
+    curveCacheRef.current = {}
+  },[contrastLabel])
 
   // Fetch preview when contrast changes
   useEffect(()=>{
@@ -558,13 +560,15 @@ export default function GSEAExplorer({ session, contrastLabel, annMap }) {
       const r=await fetch('/api/gsea/run',{ method:'POST', headers:{'Content-Type':'application/json'},
         body:JSON.stringify({ sessionId:session.sessionId, contrastLabel, rankMethod,
           collection:collection.id, subcategory:collection.sub, species,
-          minSize, maxSize, filterMethod, filterValue, annMap:annMap||null }), signal:ctrl.signal })
+          minSize, maxSize, scoreType, nPerm, pAdjMethod, padjCutoff,
+          filterMethod, filterValue, annMap:annMap||null }), signal:ctrl.signal })
       const data=await r.json()
       if(data.error) throw new Error(data.error)
       const rm=RANK_METHODS.find(m=>m.value===rankMethod)
       const newRun={ id:Date.now(), collectionLabel:collection.label, collectionKey:collection.key,
         collectionId:collection.id, collectionSub:collection.sub,
         rankMethod, rankShort:rm?.short??rankMethod, filterMethod, filterValue, species,
+        scoreType, nPerm, pAdjMethod, padjCutoff,
         results:data.results, rankedList:data.rankedList, meta:data.meta,
         timestamp:new Date().toLocaleTimeString(), contrastLabel }
       setRuns(prev=>[...prev,newRun])
@@ -573,7 +577,7 @@ export default function GSEAExplorer({ session, contrastLabel, annMap }) {
       setSelPathway(null); setCurveData(null)
     } catch(e){ if(e.name!=='AbortError') setRunError(e.message) }
     finally{ clearInterval(timer); setElapsed(0); setRunning(false) }
-  },[session,contrastLabel,rankMethod,collection,species,minSize,maxSize,filterMethod,filterValue,annMap])
+  },[session,contrastLabel,rankMethod,collection,species,minSize,maxSize,scoreType,nPerm,pAdjMethod,padjCutoff,filterMethod,filterValue,annMap])
 
   // Curve on pathway click
   const handlePathwayClick=useCallback(async(result)=>{
@@ -626,15 +630,10 @@ export default function GSEAExplorer({ session, contrastLabel, annMap }) {
           {/* Rank method */}
           <div>
             <SectionLabel>Rank method</SectionLabel>
-            <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
-              {RANK_METHODS.map(m=>(
-                <button key={m.value} onClick={()=>setRankMethod(m.value)}
-                  style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, padding:'6px 10px', borderRadius:7, cursor:'pointer', textAlign:'left', background:rankMethod===m.value?V.muted:'transparent', border:`1px solid ${rankMethod===m.value?V.border:'transparent'}`, transition:'all 0.12s', width:'100%' }}>
-                  <span style={{ fontSize:'0.78rem', color:'var(--text-1)', fontWeight:rankMethod===m.value?700:400 }}>{m.label}</span>
-                  <span style={{ fontSize:'0.62rem', color:'var(--text-3)', whiteSpace:'nowrap' }}>{m.hint}</span>
-                </button>
-              ))}
-            </div>
+            <select value={rankMethod} onChange={e=>setRankMethod(e.target.value)}
+              style={{ width:'100%', padding:'6px 10px', fontSize:'0.78rem', background:'rgba(255,255,255,0.05)', border:`1px solid ${V.border}`, borderRadius:7, color:'var(--text-1)' }}>
+              {RANK_METHODS.map(m=><option key={m.value} value={m.value}>{m.label} — {m.hint}</option>)}
+            </select>
           </div>
 
           {/* Pre-filter — compact, opens modal */}
@@ -706,10 +705,37 @@ export default function GSEAExplorer({ session, contrastLabel, annMap }) {
             </select>
           </div>
 
+          {/* Run options */}
+          <div>
+            <SectionLabel>Run options</SectionLabel>
+
+            {/* padj method */}
+            <div style={{ marginBottom:9 }}>
+              <div style={{ fontSize:'0.66rem', color:'var(--text-3)', marginBottom:3 }}>p-value adjustment</div>
+              <select value={pAdjMethod} onChange={e=>setPAdjMethod(e.target.value)}
+                style={{ width:'100%', padding:'5px 8px', fontSize:'0.75rem', background:'rgba(255,255,255,0.05)', border:`1px solid ${V.border}`, borderRadius:7, color:'var(--text-1)' }}>
+                {[['BH','Benjamini-Hochberg (BH)'],['bonferroni','Bonferroni'],['holm','Holm'],['BY','Benjamini-Yekutieli (BY)'],['none','None (raw p-values)']].map(([v,l])=>(
+                  <option key={v} value={v}>{l}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* padj cutoff */}
+            <div>
+              <div style={{ fontSize:'0.66rem', color:'var(--text-3)', marginBottom:3 }}>padj cutoff</div>
+              <div style={{ display:'flex', gap:3 }}>
+                {[0.05, 0.1, 0.25, 0.5, 1].map(v=>(
+                  <button key={v} onClick={()=>setPadjCutoff(v)}
+                    style={{ flex:1, padding:'4px 0', fontSize:'0.68rem', fontWeight:600, borderRadius:6, cursor:'pointer', border:'none', background:padjCutoff===v?V.accent:'rgba(255,255,255,0.06)', color:padjCutoff===v?'#fff':'var(--text-2)', transition:'all 0.12s' }}>{v}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+
           {/* Run */}
           <button onClick={handleRun} disabled={running}
             style={{ padding:'11px 0', borderRadius:10, border:'none', cursor:running?'wait':'pointer', background:running?`rgba(14,116,144,0.35)`:`linear-gradient(135deg,${V.accent},${V.accent2})`, color:'#fff', fontWeight:700, fontSize:'0.88rem', boxShadow:running?'none':`0 4px 16px rgba(14,116,144,0.45)`, transition:'all 0.15s', marginTop:4 }}>
-            {running?`Running… ${elapsed}s`:runs.length?'↺ New Run':'▶ Run GSEA'}
+            {running?`Running… ${elapsed}s`:contrastRuns.length?'↺ New Run':'▶ Run GSEA'}
           </button>
           {runError && <div style={{ padding:'8px 12px', borderRadius:8, fontSize:'0.75rem', background:'rgba(248,113,113,0.08)', color:'#f87171', border:'1px solid rgba(248,113,113,0.2)', lineHeight:1.5 }}>⚠ {runError}</div>}
           {!annMap && <div style={{ padding:'7px 10px', borderRadius:8, fontSize:'0.68rem', background:'rgba(251,191,36,0.07)', color:'#fbbf24', border:'1px solid rgba(251,191,36,0.18)', lineHeight:1.5 }}>⚠ No annotation loaded — run <b>Annotate</b> first for best gene ID matching.</div>}
@@ -717,7 +743,7 @@ export default function GSEAExplorer({ session, contrastLabel, annMap }) {
 
         {/* ── RIGHT CONTENT ──────────────────────────────────────────────── */}
         <div style={{ flex:1, minWidth:0, display:'flex', flexDirection:'column', gap:12 }}>
-          {!runs.length && !running && (
+          {!contrastRuns.length && !running && (
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:400, gap:16, color:'var(--text-3)' }}>
               <div style={{ fontSize:'3rem', opacity:0.2 }}>⟳</div>
               <div style={{ fontSize:'0.9rem', fontWeight:600, color:'var(--text-2)' }}>Configure parameters and click Run GSEA</div>
@@ -734,9 +760,9 @@ export default function GSEAExplorer({ session, contrastLabel, annMap }) {
               <div style={{ fontSize:'0.75rem', color:'var(--text-3)', textAlign:'center', maxWidth:300, lineHeight:1.6 }}>{collection.label} · {species}<br />Large collections (GO:BP) may take 60+ seconds</div>
             </div>
           )}
-          {runs.length>0 && !running && (
+          {contrastRuns.length>0 && !running && (
             <>
-              <RunChips runs={runs} activeRunId={activeRunId} onSelect={id=>{ setActiveRunId(id); setSelPathway(null); setCurveData(null) }} onRemove={removeRun} />
+              <RunChips runs={contrastRuns} activeRunId={activeRunId} onSelect={id=>{ setActiveRunId(id); setSelPathway(null); setCurveData(null) }} onRemove={removeRun} />
               <div style={{ display:'flex', gap:2, borderBottom:`1px solid ${V.border}` }}>
                 {[['results',`◉ Pathways${activeRun?.results?.length?` (${activeRun.results.length})`:''}`],['ranked',`≡ Ranked List${activeRun?.rankedList?.length?` (${activeRun.rankedList.length.toLocaleString()})`:''}`]].map(([k,l])=>(
                   <button key={k} onClick={()=>setContentTab(k)}

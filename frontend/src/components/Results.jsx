@@ -15,8 +15,8 @@ const DEFAULT_TABS = [
   { key: 'ma',       label: 'MA Plot',     icon: '╱╲' },
   { key: 'pca',      label: 'PCA',         icon: '●●' },
   { key: 'table',    label: 'DE Results',  icon: '▤'  },
-  { key: 'gsea',     label: 'GSEA',        icon: '⟳', emerald: true },
   { key: 'compare',  label: 'Compare',     icon: '⊕'  },
+  { key: 'gsea',     label: 'GSEA',        icon: '⟳', navy: true },
 ]
 
 function loadIcons() {
@@ -172,9 +172,9 @@ export default function Results({ results, design, onBack, onEditSamples, sessio
                       style={{
                         display: 'flex', alignItems: 'center', gap: 6,
                         padding: '7px 14px', cursor: 'pointer',
-                        background:   active ? (t.emerald ? 'rgba(5,150,105,0.1)' : 'var(--bg-card2)') : 'transparent',
-                        color:        active ? (t.emerald ? '#34d399' : 'var(--text-1)') : isCompare && !compareReady ? 'var(--text-3)' : t.emerald ? 'rgba(16,185,129,0.6)' : 'var(--text-3)',
-                        borderBottom: active ? `2px solid ${t.emerald ? '#059669' : 'var(--accent)'}` : compareReady && !active ? '2px solid rgba(var(--accent-rgb),0.3)' : '2px solid transparent',
+                        background:   active ? (t.navy ? 'rgba(30,64,175,0.1)' : 'var(--bg-card2)') : 'transparent',
+                        color:        active ? (t.navy ? '#60a5fa' : 'var(--text-1)') : isCompare && !compareReady ? 'var(--text-3)' : t.navy ? 'rgba(96,165,250,0.6)' : 'var(--text-3)',
+                        borderBottom: active ? `2px solid ${t.navy ? '#3b82f6' : 'var(--accent)'}` : compareReady && !active ? '2px solid rgba(var(--accent-rgb),0.3)' : '2px solid transparent',
                         fontWeight:   active ? 600 : 400,
                         fontSize: '0.82rem', borderTop: 'none', borderLeft: 'none', borderRight: 'none',
                         borderRadius: '6px 6px 0 0', whiteSpace: 'nowrap',

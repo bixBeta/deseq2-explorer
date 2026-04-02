@@ -1791,6 +1791,9 @@ function(req, res) {
     species        = body$species       %||% "Homo sapiens",
     min_size       = body$minSize       %||% 15L,
     max_size       = body$maxSize       %||% 500L,
+    score_type     = body$scoreType     %||% "std",
+    n_perm         = body$nPerm         %||% 1000L,
+    padj_method    = body$pAdjMethod    %||% "BH",
     filter_method  = body$filterMethod  %||% "quantile",
     filter_value   = body$filterValue   %||% 0.25,
     ann_map        = body$annMap

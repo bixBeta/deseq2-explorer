@@ -158,7 +158,8 @@ gsea_preview <- function(session_id, contrast_label) {
 
 # ── gsea_run: fgsea against a MSigDB collection ────────────────────────────────
 gsea_run <- function(session_id, contrast_label, rank_method, collection, subcategory,
-                     species, min_size, max_size, filter_method, filter_value, ann_map) {
+                     species, min_size, max_size, score_type, n_perm, padj_method,
+                     filter_method, filter_value, ann_map) {
   if (!requireNamespace("fgsea",   quietly = TRUE)) stop("R package 'fgsea' is not installed on the server")
   if (!requireNamespace("msigdbr", quietly = TRUE)) stop("R package 'msigdbr' is not installed on the server")
   library(fgsea); library(msigdbr)
@@ -182,6 +183,10 @@ gsea_run <- function(session_id, contrast_label, rank_method, collection, subcat
   }
   if (length(gene_sets) == 0) stop("No gene sets found for the selected collection")
 
+  score_type  <- score_type  %||% "std"
+  n_perm      <- as.integer(n_perm %||% 1000L)
+  padj_method <- padj_method %||% "BH"
+
   t0 <- proc.time()["elapsed"]
   set.seed(42L)
   fgsea_res <- tryCatch(
@@ -190,12 +195,18 @@ gsea_run <- function(session_id, contrast_label, rank_method, collection, subcat
       stats       = stats_vec,
       minSize     = as.integer(min_size),
       maxSize     = as.integer(max_size),
-      nPermSimple = 1000L,
+      nPermSimple = n_perm,
+      scoreType   = score_type,
       eps         = 0
     ),
     error = function(e) stop("fgsea failed: ", e$message)
   )
   elapsed <- as.numeric(proc.time()["elapsed"] - t0)
+
+  # Apply chosen p-value adjustment method (fgsea always outputs BH internally)
+  if (padj_method != "BH") {
+    fgsea_res$padj <- p.adjust(fgsea_res$pval, method = padj_method)
+  }
 
   fgsea_res <- fgsea_res[order(fgsea_res$padj, na.last = TRUE), ]
 
