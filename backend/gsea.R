@@ -424,7 +424,9 @@ gsea_plots <- function(session_id, contrast_label, collection, subcategory, spec
           pathway_sel <- head(res_df$ID[order(res_df$p.adjust)], 3L)
         }
         # gseaplot2 returns a cowplot composite — cannot use + operator on it
-        colors <- rep(color_pos, length(pathway_sel))
+        # Generate distinct colors per pathway interpolating between pos and neg
+        n_paths <- length(pathway_sel)
+        colors  <- if (n_paths == 1) color_pos else colorRampPalette(c(color_pos, color_neg))(n_paths)
         enrichplot::gseaplot2(gsea_result, geneSetID = pathway_sel,
                               color = colors, base_size = font_size,
                               pvalue_table = TRUE)
