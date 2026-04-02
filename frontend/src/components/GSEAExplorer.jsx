@@ -642,7 +642,7 @@ function PlotsPanel({ run, session, contrastLabel }) {
       </div>
 
       {/* Image area */}
-      <div style={{ flex:1, minWidth:0, borderRadius:10, border:CB, background:'var(--bg-card)', minHeight:420,
+      <div style={{ flex:1, minWidth:0, borderRadius:10, border:CB, background: imgSrc && !loading ? '#ffffff' : 'var(--bg-card)', minHeight:420,
         display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', position:'relative' }}>
         {loading && (
           <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:12 }}>
@@ -702,7 +702,7 @@ function PlotsPanel({ run, session, contrastLabel }) {
                 </button>
               </div>
             </div>
-            <div style={{ padding:16, overflow:'auto', maxHeight:'calc(95vh - 52px)', maxWidth:'95vw' }}>
+            <div style={{ padding:16, overflow:'auto', maxHeight:'calc(95vh - 52px)', maxWidth:'95vw', background:'#ffffff' }}>
               <img src={imgSrc} alt={plotType} style={{ display:'block', maxHeight:'calc(95vh - 84px)' }} />
             </div>
           </div>

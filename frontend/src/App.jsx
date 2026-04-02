@@ -385,7 +385,7 @@ export default function App() {
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--bg-app)' }}>
 
       {/* ── Header (frosted glass, like PCA explorer) ── */}
-      <header className="flex items-center justify-between px-6 py-3 sticky top-0 z-50"
+      <header className="flex items-center justify-between px-6 py-3 sticky top-0 z-[300]"
               style={{
                 background: 'var(--bg-header)',
                 borderBottom: '1px solid var(--border)',
