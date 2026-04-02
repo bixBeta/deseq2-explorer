@@ -38,8 +38,14 @@
 
   library(matrixStats)
   saved  <- readRDS(results_path)
-  upload <- readRDS(upload_path)
-  counts <- as.matrix(upload$counts)
+
+  # Use DESeq2 normalised counts for the row-median filter (consistent with preview)
+  counts <- if (!is.null(saved$norm_matrix)) {
+    as.matrix(saved$norm_matrix)
+  } else {
+    if (!file.exists(upload_path)) stop("Upload not found")
+    as.matrix(readRDS(upload_path)$counts)
+  }
 
   # Row medians for pre-filtering
   row_meds        <- rowMedians(counts)
@@ -92,18 +98,25 @@
 
 # ── gsea_preview: per-sample KDE distributions + row-median filter stats ────────
 gsea_preview <- function(session_id, contrast_label) {
-  upload_path  <- file.path(.upload_dir(),  paste0(session_id, ".rds"))
   results_path <- file.path(.results_dir(), paste0(session_id, "_results.rds"))
-  if (!file.exists(upload_path))  stop("Upload not found")
   if (!file.exists(results_path)) stop("Results not found — please run DESeq2 first")
 
   library(matrixStats)
-  upload   <- readRDS(upload_path)
-  counts   <- as.matrix(upload$counts)
+  saved  <- readRDS(results_path)
+
+  # Prefer DESeq2-normalised counts; fall back to raw if not yet available
+  counts <- if (!is.null(saved$norm_matrix)) {
+    as.matrix(saved$norm_matrix)
+  } else {
+    upload_path <- file.path(.upload_dir(), paste0(session_id, ".rds"))
+    if (!file.exists(upload_path)) stop("Upload not found")
+    as.matrix(readRDS(upload_path)$counts)
+  }
+
   n_genes  <- nrow(counts)
   n_samp   <- ncol(counts)
 
-  # Per-sample KDE of log1p counts (for distribution display)
+  # Per-sample KDE of log1p(normalised counts)
   kdes <- lapply(seq_len(n_samp), function(j) {
     vals <- log1p(counts[, j])
     dens <- density(vals, bw = "nrd0", n = 256, from = 0)
@@ -114,7 +127,7 @@ gsea_preview <- function(session_id, contrast_label) {
     )
   })
 
-  # Row medians — used for the filter cutoff
+  # Row medians of normalised counts — used for the filter cutoff
   row_meds        <- rowMedians(counts)
   names(row_meds) <- rownames(counts)
 
