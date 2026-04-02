@@ -335,10 +335,11 @@ gsea_plots <- function(session_id, contrast_label, collection, subcategory, spec
     switch(plot_type,
 
       "dotplot" = {
+        # dotplot maps p.adjust to fill (not color) — must use scale_fill_gradient
         suppressWarnings(
           dotplot(gsea_result, showCategory = n_show, font.size = font_size,
                   label_format = 40, x = "NES", color = "p.adjust") +
-            scale_color_gradient(low = color_pos, high = color_neg) +
+            scale_fill_gradient(low = color_pos, high = color_neg) +
             theme_bw(base_size = font_size) +
             ggtitle("GSEA Dot Plot")
         )
