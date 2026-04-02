@@ -373,7 +373,7 @@ gsea_plots <- function(session_id, contrast_label, collection, subcategory, spec
         tryCatch(
           print(UpSetR::upset(UpSetR::fromList(gene_sets), nsets = length(gene_sets),
                               sets.bar.color = color_pos, main.bar.color = color_neg,
-                              text.scale = font_size / 11, order.by = "freq")),
+                              text.scale = font_size / 7, order.by = "freq")),
           error = function(e) { dev.off(); stop(e$message) }
         )
         dev.off()
