@@ -350,7 +350,7 @@ gsea_plots <- function(session_id, contrast_label, collection, subcategory, spec
       },
 
       "upsetplot" = {
-        upsetplot(gsea_result, n = min(n_show, 15L)) +
+        enrichplot::upsetplot(gsea_result, n = min(n_show, 15L)) +
           theme_bw(base_size = font_size) +
           ggtitle("GSEA UpSet Plot — Leading Edge Overlap")
       },
@@ -397,10 +397,11 @@ gsea_plots <- function(session_id, contrast_label, collection, subcategory, spec
           res_df      <- as.data.frame(gsea_result)
           pathway_sel <- head(res_df$ID[order(res_df$p.adjust)], 3L)
         }
+        # gseaplot2 returns a cowplot composite — cannot use + operator on it
+        colors <- rep(color_pos, length(pathway_sel))
         enrichplot::gseaplot2(gsea_result, geneSetID = pathway_sel,
-                              color = color_pos, base_size = font_size,
-                              pvalue_table = TRUE) +
-          ggplot2::ggtitle("GSEA Enrichment Plot")
+                              color = colors, base_size = font_size,
+                              pvalue_table = TRUE)
       },
 
       stop(paste0("Unknown plot type: ", plot_type))
