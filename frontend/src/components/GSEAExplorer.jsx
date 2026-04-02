@@ -822,7 +822,7 @@ function MountainModal({ pathway, result, curveData, curveLoading, onClose }) {
 }
 
 // ── Main GSEAExplorer ─────────────────────────────────────────────────────────
-export default function GSEAExplorer({ session, contrastLabel, annMap }) {
+export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsChange }) {
   const [rankMethod,   setRankMethod]   = useState('log2FC')
   const [collection,   setCollection]   = useState(COLLECTIONS[0])
   const [species,      setSpecies]      = useState('Homo sapiens')
@@ -849,6 +849,9 @@ export default function GSEAExplorer({ session, contrastLabel, annMap }) {
   // Only show runs belonging to the current contrast
   const contrastRuns = useMemo(()=>runs.filter(r=>r.contrastLabel===contrastLabel),[runs,contrastLabel])
   const activeRun    = contrastRuns.find(r=>r.id===activeRunId) ?? contrastRuns[contrastRuns.length-1] ?? null
+
+  // Bubble all runs up to App for the Console
+  useEffect(() => { onRunsChange?.(runs) }, [runs, onRunsChange])
 
   const [contentTab,   setContentTab]  = useState('results')
   const [selPathway,   setSelPathway]   = useState(null)

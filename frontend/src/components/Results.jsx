@@ -26,7 +26,7 @@ function saveIcons(icons) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(icons)) } catch {}
 }
 
-export default function Results({ results, design, onBack, onEditSamples, session, annMap, annDetails, sampleLabels = {}, onAnnotate }) {
+export default function Results({ results, design, onBack, onEditSamples, session, annMap, annDetails, sampleLabels = {}, onAnnotate, onGseaRunsChange }) {
   const [activeIdx,   setActiveIdx]   = useState(0)
   const [vizTab,      setVizTab]      = useState('counts')
   const [customIcons, setCustomIcons] = useState(loadIcons)   // { key: icon }
@@ -260,6 +260,7 @@ export default function Results({ results, design, onBack, onEditSamples, sessio
             session={session}
             contrastLabel={active?.label}
             annMap={annMap}
+            onRunsChange={onGseaRunsChange}
           />
         </div>
       </div>

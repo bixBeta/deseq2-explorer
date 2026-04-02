@@ -159,6 +159,7 @@ export default function App() {
   const [copied,      setCopied]      = useState(false)
   const [showHelp,    setShowHelp]    = useState(false)
   const [showConsole, setShowConsole] = useState(false)
+  const [gseaRuns,    setGseaRuns]    = useState([])
 
   /* ── Theme ── */
   useEffect(() => {
@@ -529,7 +530,8 @@ export default function App() {
                    onEditSamples={metaState ? handleEditSamples : null}
                    session={session} annMap={annMap} annDetails={annDetails}
                    sampleLabels={sampleLabels}
-                   onAnnotate={(map, details) => { setAnnMap(map); setAnnDetails(details || null) }} />
+                   onAnnotate={(map, details) => { setAnnMap(map); setAnnDetails(details || null) }}
+                   onGseaRunsChange={setGseaRuns} />
         )}
        </ErrorBoundary>
       </main>
@@ -554,6 +556,7 @@ export default function App() {
           design={design}
           results={results}
           parseInfo={parseInfo}
+          gseaRuns={gseaRuns}
         />
       )}
     </div>

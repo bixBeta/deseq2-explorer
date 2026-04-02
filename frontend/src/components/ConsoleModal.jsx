@@ -233,40 +233,72 @@ ${mdToHtml(md)}
 </html>`
 }
 
+// ── Section heading helper ────────────────────────────────────────────────────
+function SH({ children }) {
+  return (
+    <h2 style={{ fontSize:'0.88rem', fontWeight:700, color:'var(--accent)',
+      margin:'1.5rem 0 0.6rem', paddingBottom:5, borderBottom:'1px solid var(--border)' }}>
+      {children}
+    </h2>
+  )
+}
+
+function ParamTable({ rows }) {
+  return (
+    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.79rem', marginBottom:'0.5rem' }}>
+      <tbody>
+        {rows.map(([k,v]) => v !== undefined && (
+          <tr key={k} style={{ borderBottom:'1px solid var(--border)' }}>
+            <td style={{ padding:'6px 12px', color:'var(--text-3)', width:'45%', fontWeight:500 }}>{k}</td>
+            <td style={{ padding:'6px 12px', color:'var(--text-1)', fontFamily:'monospace', fontSize:'0.74rem' }}>
+              {String(v ?? '—')}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
 // ── Main ConsoleModal ─────────────────────────────────────────────────────────
-export default function ConsoleModal({ onClose, session, design, results, parseInfo }) {
+export default function ConsoleModal({ onClose, session, design, results, parseInfo, gseaRuns }) {
   const [tab, setTab] = useState('methods')
   const scrollRef = useRef(null)
 
-  // Close on Escape
   useEffect(() => {
     const h = e => { if (e.key === 'Escape') onClose() }
     document.addEventListener('keydown', h)
     return () => document.removeEventListener('keydown', h)
   }, [onClose])
 
-  // Build session params table
-  const sessionParams = [
-    ['Session ID',       session?.sessionId],
-    ['Email',            session?.email],
-    ['Genes (total)',    parseInfo?.n_genes],
-    ['Samples',          parseInfo?.n_samples],
-    ['Design column',    design?.column],
-    ['Reference group',  design?.reference],
-    ['Fit type',         design?.fitType ?? 'parametric'],
-    ['Min count filter', design?.minCount ?? 1],
-    ['Min samples',      design?.minSamples ?? 2],
-    ['Alpha (FDR)',       design?.alpha ?? 0.05],
-    ['Contrasts run',    results ? Object.keys(results).length : 0],
+  // Derived values with correct data shapes
+  const contrasts   = results?.contrasts ?? []
+  const params      = design?.params ?? {}
+  const nSamples    = parseInfo?.metadataRows?.length
+  const nGenes      = contrasts[0]?.results?.length
+  const alpha       = params.alpha ?? 0.05
+
+  const sessionRows = [
+    ['Session ID',        session?.sessionId],
+    ['Email',             session?.email],
+    ['Genes tested',      nGenes != null ? nGenes.toLocaleString() : undefined],
+    ['Samples',           nSamples != null ? nSamples : undefined],
+    ['Design column',     design?.column],
+    ['Fit type',          params.fitType ?? 'parametric'],
+    ['Alpha (FDR)',        alpha],
+    ['LFC threshold',     params.lfcThreshold ?? 0],
+    ['Ind. filtering',    String(params.independentFiltering ?? true)],
+    ['Cooks cutoff',      String(params.cooksCutoff ?? true)],
+    ['Contrasts run',     contrasts.length || undefined],
   ]
 
   function handleExport() {
-    const html = buildHtmlExport(methodsMd, sessionParams)
+    const html = buildHtmlExport(methodsMd, sessionRows)
     const blob = new Blob([html], { type: 'text/html' })
-    const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    a.href = url; a.download = 'deseq2-explorer-methods.html'
-    a.click(); URL.revokeObjectURL(url)
+    const a    = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(blob), download: 'deseq2-explorer-methods.html'
+    })
+    a.click(); URL.revokeObjectURL(a.href)
   }
 
   const TABS = [
@@ -311,7 +343,7 @@ export default function ConsoleModal({ onClose, session, design, results, parseI
         </div>
 
         {/* Tabs */}
-        <div style={{ display:'flex', gap:0, borderBottom:'1px solid var(--border)', flexShrink:0,
+        <div style={{ display:'flex', borderBottom:'1px solid var(--border)', flexShrink:0,
           padding:'0 18px', background:'rgba(0,0,0,0.05)' }}>
           {TABS.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
@@ -327,63 +359,82 @@ export default function ConsoleModal({ onClose, session, design, results, parseI
 
         {/* Content */}
         <div ref={scrollRef} style={{ flex:1, overflowY:'auto', padding:'20px 28px' }}>
-          {tab === 'methods' && (
-            <div>{renderMd(methodsMd)}</div>
-          )}
+          {tab === 'methods' && <div>{renderMd(methodsMd)}</div>}
 
           {tab === 'params' && (
             <div>
-              <h2 style={{ fontSize:'1rem', fontWeight:700, color:'var(--accent)', marginBottom:'1rem',
-                paddingBottom:6, borderBottom:'1px solid var(--border)' }}>Session Parameters</h2>
-              {session ? (
-                <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.8rem' }}>
-                  <tbody>
-                    {sessionParams.map(([k,v]) => (
-                      <tr key={k} style={{ borderBottom:'1px solid var(--border)' }}>
-                        <td style={{ padding:'7px 12px', color:'var(--text-3)', width:'45%', fontWeight:500 }}>{k}</td>
-                        <td style={{ padding:'7px 12px', color:'var(--text-1)', fontFamily:'monospace', fontSize:'0.75rem' }}>
-                          {String(v ?? '—')}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              {!session ? (
+                <p style={{ color:'var(--text-3)', fontSize:'0.82rem', padding:'2rem 0' }}>
+                  No active session — load data to see parameters.
+                </p>
               ) : (
-                <p style={{ color:'var(--text-3)', fontSize:'0.82rem' }}>No active session — load data to see parameters.</p>
-              )}
-
-              {results && Object.keys(results).length > 0 && (
                 <>
-                  <h2 style={{ fontSize:'1rem', fontWeight:700, color:'var(--accent)', margin:'1.5rem 0 0.75rem',
-                    paddingBottom:6, borderBottom:'1px solid var(--border)' }}>Contrasts</h2>
-                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.8rem' }}>
-                    <thead>
-                      <tr style={{ background:'rgba(var(--accent-rgb),0.07)' }}>
-                        {['Contrast','Total genes','Significant (padj<0.05)','Up','Down'].map(h=>(
-                          <th key={h} style={{ padding:'7px 12px', textAlign:'left', color:'var(--accent)',
-                            fontWeight:600, borderBottom:'2px solid var(--border)' }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {Object.entries(results).map(([label, ct], i) => {
-                        const genes = ct.results ?? []
-                        const sig   = genes.filter(g => g.padj != null && g.padj < 0.05)
-                        const up    = sig.filter(g => g.log2FC > 0).length
-                        const dn    = sig.filter(g => g.log2FC < 0).length
-                        return (
-                          <tr key={label} style={{ background: i%2===0?'transparent':'rgba(255,255,255,0.02)',
-                            borderBottom:'1px solid var(--border)' }}>
-                            <td style={{ padding:'6px 12px', fontFamily:'monospace', fontSize:'0.74rem', color:'var(--text-1)' }}>{label}</td>
-                            <td style={{ padding:'6px 12px', color:'var(--text-2)' }}>{genes.length.toLocaleString()}</td>
-                            <td style={{ padding:'6px 12px', color:'var(--text-2)' }}>{sig.length.toLocaleString()}</td>
-                            <td style={{ padding:'6px 12px', color:'#10b981' }}>↑ {up.toLocaleString()}</td>
-                            <td style={{ padding:'6px 12px', color:'#f43f5e' }}>↓ {dn.toLocaleString()}</td>
+                  <SH>Session</SH>
+                  <ParamTable rows={sessionRows} />
+
+                  {contrasts.length > 0 && (
+                    <>
+                      <SH>DESeq2 Contrasts</SH>
+                      <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.79rem' }}>
+                        <thead>
+                          <tr style={{ background:'rgba(var(--accent-rgb),0.07)' }}>
+                            {['Contrast','Genes tested','Sig. (padj<α)','Up','Down'].map(h=>(
+                              <th key={h} style={{ padding:'6px 10px', textAlign:'left', color:'var(--accent)',
+                                fontWeight:600, borderBottom:'2px solid var(--border)', whiteSpace:'nowrap' }}>{h}</th>
+                            ))}
                           </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                        </thead>
+                        <tbody>
+                          {contrasts.map((ct, i) => {
+                            const genes = ct.results ?? []
+                            const sig   = genes.filter(g => g.padj != null && g.padj < alpha)
+                            const up    = sig.filter(g => g.log2FC > 0).length
+                            const dn    = sig.length - up
+                            return (
+                              <tr key={ct.label ?? i} style={{ background: i%2===0?'transparent':'rgba(255,255,255,0.02)',
+                                borderBottom:'1px solid var(--border)' }}>
+                                <td style={{ padding:'5px 10px', fontFamily:'monospace', fontSize:'0.73rem', color:'var(--text-1)' }}>{ct.label}</td>
+                                <td style={{ padding:'5px 10px', color:'var(--text-2)' }}>{genes.length.toLocaleString()}</td>
+                                <td style={{ padding:'5px 10px', color:'var(--text-2)' }}>{sig.length.toLocaleString()}</td>
+                                <td style={{ padding:'5px 10px', color:'#10b981' }}>↑ {up.toLocaleString()}</td>
+                                <td style={{ padding:'5px 10px', color:'#f43f5e' }}>↓ {dn.toLocaleString()}</td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </>
+                  )}
+
+                  {gseaRuns?.length > 0 && (
+                    <>
+                      <SH>GSEA Runs ({gseaRuns.length})</SH>
+                      <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.79rem' }}>
+                        <thead>
+                          <tr style={{ background:'rgba(var(--accent-rgb),0.07)' }}>
+                            {['Contrast','Collection','Rank method','padj method','padj cutoff','Pathways','Time'].map(h=>(
+                              <th key={h} style={{ padding:'6px 10px', textAlign:'left', color:'var(--accent)',
+                                fontWeight:600, borderBottom:'2px solid var(--border)', whiteSpace:'nowrap' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {gseaRuns.map((r, i) => (
+                            <tr key={r.id} style={{ background: i%2===0?'transparent':'rgba(255,255,255,0.02)',
+                              borderBottom:'1px solid var(--border)' }}>
+                              <td style={{ padding:'5px 10px', fontSize:'0.73rem', color:'var(--text-1)', fontFamily:'monospace' }}>{r.contrastLabel}</td>
+                              <td style={{ padding:'5px 10px', color:'var(--text-2)' }}>{r.collectionLabel}{r.collectionSub ? ` / ${r.collectionSub}` : ''}</td>
+                              <td style={{ padding:'5px 10px', color:'var(--text-2)' }}>{r.rankMethod}</td>
+                              <td style={{ padding:'5px 10px', color:'var(--text-2)' }}>{r.pAdjMethod}</td>
+                              <td style={{ padding:'5px 10px', color:'var(--text-2)' }}>{r.padjCutoff}</td>
+                              <td style={{ padding:'5px 10px', color:'var(--text-2)' }}>{r.meta?.n_pathways ?? '—'}</td>
+                              <td style={{ padding:'5px 10px', color:'var(--text-3)', fontSize:'0.71rem' }}>{r.timestamp}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </>
+                  )}
                 </>
               )}
             </div>
