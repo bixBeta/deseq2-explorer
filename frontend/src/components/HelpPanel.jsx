@@ -10,6 +10,7 @@ const SECTIONS = [
   { id: 'pca',           icon: '✦', label: 'PCA Explorer'      },
   { id: 'compare',       icon: '▦', label: 'Compare Panel'     },
   { id: 'annotation',    icon: '⊕', label: 'Annotation'        },
+  { id: 'gsea',          icon: '〜', label: 'GSEA Explorer'     },
   { id: 'tips',          icon: '★', label: 'Tips & Shortcuts'  },
 ]
 
@@ -445,6 +446,80 @@ function SectionTips() {
   )
 }
 
+function SectionGSEA() {
+  return (
+    <>
+      <H2>〜 GSEA Explorer</H2>
+      <P>
+        The GSEA tab runs Gene Set Enrichment Analysis using <strong>clusterProfiler::GSEA()</strong> against
+        curated gene sets from MSigDB, accessed via the <Badge>msigdbr</Badge> R package.
+        Results are displayed interactively with enrichment curves, ranked gene lists, and publication-quality plots.
+      </P>
+
+      <H3>Workflow</H3>
+      <StepRow n={1}>Select a <strong>contrast</strong> from the dropdown — this defines the gene ranking.</StepRow>
+      <StepRow n={2}>Choose a <strong>MSigDB collection</strong> (e.g. Hallmarks, KEGG, Reactome, GO).</StepRow>
+      <StepRow n={3}>Configure <strong>rank method</strong>, filters, and GSEA parameters in the sidebar.</StepRow>
+      <StepRow n={4}>Click <Badge>▶ Run GSEA</Badge>. Multiple runs can be stored per contrast.</StepRow>
+      <StepRow n={5}>Click any pathway row to view its enrichment curve (mountain plot).</StepRow>
+      <StepRow n={6}>Switch to the <Badge>◈ Plots</Badge> tab for clusterProfiler visualisations.</StepRow>
+
+      <H3>Rank Methods</H3>
+      <Ul items={[
+        'log₂FC — simple fold change ranking, most interpretable',
+        'Wald statistic — accounts for LFC uncertainty (recommended for noisy data)',
+        'sign(FC) × −log₁₀(padj) — significance-weighted ranking',
+        'Shrunk LFC — apeglm/ashr-shrunk estimates (if available)',
+      ]} />
+
+      <H3>Pre-filter</H3>
+      <P>
+        Low-expression genes are removed before ranking using row medians of DESeq2-normalised counts.
+        Use the density plot in the filter modal to choose an appropriate cutoff.
+        The <Badge>Quantile</Badge> mode removes genes below the Nth percentile; <Badge>Abs count</Badge> removes genes with median below N counts.
+      </P>
+
+      <H3>Run Parameters</H3>
+      <Card>
+        <Ul items={[
+          'padj method — multiple testing correction (BH, BY, bonferroni, fdr, none)',
+          'padj cutoff — display threshold; higher values return more pathways but increase run time',
+          'Min / Max gene set size — filters gene sets by member count (default: 15–500)',
+          'Species — used for MSigDB gene symbol matching',
+        ]} />
+      </Card>
+
+      <H3>Plots Tab</H3>
+      <P>Seven plot types are available for each GSEA run:</P>
+      <Ul items={[
+        'Dot Plot — top pathways by NES & padj, sized by gene count',
+        'Ridge Plot — leading-edge expression distributions per pathway',
+        'Heat Plot — leading-edge genes × pathway heatmap (gene symbols as x-axis)',
+        'UpSet Plot — leading-edge gene overlaps across pathways',
+        'Enrichment Map — pathway similarity network (shared genes)',
+        'Concept Network — gene–pathway concept network (cnetplot)',
+        'GSEA Plot — running enrichment score curve(s); select pathways from the picker',
+      ]} />
+      <P>All plots are rendered in R via <Badge>enrichplot</Badge> and returned as PNG. Use <Badge>⛶ Expand</Badge> for a fullscreen view or <Badge>↓ Download</Badge> to save.</P>
+
+      <H3>Multiple Runs</H3>
+      <P>
+        Each run is isolated — re-running with different parameters does not overwrite previous results.
+        Switch between runs using the pill chips at the top of the results area.
+        Hover over a chip to see all parameters used for that run.
+      </P>
+
+      <H3>Tips</H3>
+      <Ul items={[
+        'Use the pathway picker (checkbox dropdown) to select specific pathways for Heat, Concept Network, and GSEA plots',
+        'GSEA plot defaults to top 3 pathways — more than 5 curves become unreadable',
+        'Run GSEA with padj cutoff = 1 to see all pathways, then re-run with a tighter cutoff if needed',
+        'Switch contrasts to compare enrichment patterns across experimental conditions',
+      ]} />
+    </>
+  )
+}
+
 const SECTION_CONTENT = {
   overview:   SectionOverview,
   upload:     SectionUpload,
@@ -454,6 +529,7 @@ const SECTION_CONTENT = {
   pca:        SectionPCA,
   compare:    SectionCompare,
   annotation: SectionAnnotation,
+  gsea:       SectionGSEA,
   tips:       SectionTips,
 }
 

@@ -7,6 +7,7 @@ import DesignPanel   from './components/DesignPanel'
 import Results       from './components/Results'
 import ThemeToggle   from './components/ThemeToggle'
 import HelpPanel     from './components/HelpPanel'
+import ConsoleModal  from './components/ConsoleModal'
 
 // ── Error boundary — catches render errors and shows a recovery UI ────────────
 class ErrorBoundary extends Component {
@@ -157,6 +158,7 @@ export default function App() {
   const [saveStatus,  setSaveStatus]  = useState('idle')   // 'idle' | 'saving' | 'saved'
   const [copied,      setCopied]      = useState(false)
   const [showHelp,    setShowHelp]    = useState(false)
+  const [showConsole, setShowConsole] = useState(false)
 
   /* ── Theme ── */
   useEffect(() => {
@@ -476,6 +478,17 @@ export default function App() {
               Logout
             </button>
           )}
+          <button onClick={() => setShowConsole(true)}
+                  title="Console — Methods & Session Parameters"
+                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)',
+                           borderRadius: 8, height: 30, padding: '0 10px', cursor: 'pointer',
+                           fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-2)',
+                           display: 'flex', alignItems: 'center', gap: 5,
+                           fontFamily: 'monospace', transition: 'all 0.15s' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(var(--accent-rgb),0.12)'; e.currentTarget.style.color = 'var(--accent)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'var(--text-2)' }}>
+            <span style={{ fontSize:'0.8rem' }}>{'>'}</span> console
+          </button>
           <button onClick={() => setShowHelp(true)}
                   title="Help & Documentation"
                   style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)',
@@ -534,6 +547,15 @@ export default function App() {
       </footer>
 
       {showHelp && <HelpPanel onClose={() => setShowHelp(false)} />}
+      {showConsole && (
+        <ConsoleModal
+          onClose={() => setShowConsole(false)}
+          session={session}
+          design={design}
+          results={results}
+          parseInfo={parseInfo}
+        />
+      )}
     </div>
   )
 }
