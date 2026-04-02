@@ -607,7 +607,7 @@ export default function GSEAExplorer({ session, contrastLabel, annMap }) {
       <div style={{ background:`linear-gradient(135deg,rgba(14,116,144,0.12),rgba(8,145,178,0.04))`, border:`1px solid ${V.border}`, borderRadius:12, padding:'14px 20px', marginBottom:16, display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
         <div>
           <div style={{ fontSize:'1.05rem', fontWeight:700, color:'var(--text-1)', letterSpacing:'-0.01em' }}>⟳ GSEA Explorer</div>
-          <div style={{ fontSize:'0.72rem', color:'var(--text-3)', marginTop:2 }}>fgsea · MSigDB · Ranked gene set enrichment</div>
+          <div style={{ fontSize:'0.72rem', color:'var(--text-3)', marginTop:2 }}>GSEA · MSigDB · Ranked gene set enrichment</div>
         </div>
         {contrastLabel && <div style={{ padding:'4px 12px', borderRadius:20, background:V.muted, border:`1px solid ${V.border}`, fontSize:'0.72rem', color:'var(--text-1)', fontWeight:600 }}>{contrastLabel}</div>}
         {activeRun?.meta && (
@@ -756,7 +756,7 @@ export default function GSEAExplorer({ session, contrastLabel, annMap }) {
                 <div style={{ width:'100%', height:'100%', borderRadius:'50%', border:`3px solid ${V.muted}`, borderTopColor:V.accent, animation:'gsea-spin 0.8s linear infinite' }} />
                 <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'0.72rem', fontWeight:700, color:V.text }}>{elapsed}s</div>
               </div>
-              <div style={{ fontSize:'0.9rem', color:'var(--text-2)', fontWeight:600 }}>Running fgsea…</div>
+              <div style={{ fontSize:'0.9rem', color:'var(--text-2)', fontWeight:600 }}>Running GSEA…</div>
               <div style={{ fontSize:'0.75rem', color:'var(--text-3)', textAlign:'center', maxWidth:300, lineHeight:1.6 }}>{collection.label} · {species}<br />Large collections (GO:BP) may take 60+ seconds</div>
             </div>
           )}

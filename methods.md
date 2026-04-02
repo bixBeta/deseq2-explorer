@@ -275,7 +275,7 @@ NCBI gene IDs or RefSeq accessions are annotated using the NCBI E-summary API (`
 
 ## Gene Set Enrichment Analysis (GSEA)
 
-GSEA is performed using the [`fgsea`](https://bioconductor.org/packages/fgsea/) package (Korotkevich *et al.*) against gene sets from the [MSigDB](https://www.gsea-msigdb.org/gsea/msigdb/) database, accessed via the [`msigdbr`](https://cran.r-project.org/package=msigdbr) R package.
+GSEA is performed using [`clusterProfiler::GSEA()`](https://bioconductor.org/packages/clusterProfiler/) (Yu *et al.*, 2012) with the fgsea permutation backend, against gene sets from the [MSigDB](https://www.gsea-msigdb.org/gsea/msigdb/) database, accessed via the [`msigdbr`](https://cran.r-project.org/package=msigdbr) R package.
 
 ### Pre-filter: low-count gene removal
 
@@ -327,26 +327,25 @@ msig      <- msigdbr(species = species, category = collection, subcategory = sub
 gene_sets <- split(msig$gene_symbol, msig$gs_name)   # if annotation available
 ```
 
-### fgsea run
+### GSEA run
 
 ```r
 set.seed(42L)
-fgsea_res <- fgsea(
-  pathways    = gene_sets,
-  stats       = stats_vec,
-  minSize     = min_size,    # default: 15
-  maxSize     = max_size,    # default: 500
-  nPermSimple = n_perm,      # default: 1000
-  scoreType   = score_type,  # "std" | "pos" | "neg"
-  eps         = 0            # exact p-values via adaptive permutation
+gsea_res <- clusterProfiler::GSEA(
+  geneList      = stats_vec,       # named sorted numeric vector
+  TERM2GENE     = term2gene,       # two-column data frame: term, gene
+  minGSSize     = min_size,        # default: 15
+  maxGSSize     = max_size,        # default: 500
+  pvalueCutoff  = 1,               # return all; filtered client-side
+  pAdjustMethod = padj_method,     # default: "BH"
+  by            = "fgsea",         # fgsea permutation backend
+  eps           = 0,               # exact p-values via adaptive permutation
+  seed          = TRUE,
+  verbose       = FALSE
 )
 ```
 
-p-values are adjusted using the method selected by the user (default: Benjamini–Hochberg). Results are filtered to pathways with padj ≤ the user-defined cutoff (default: 0.25) before display.
-
-```r
-fgsea_res$padj <- p.adjust(fgsea_res$pval, method = padj_method)
-```
+p-values are adjusted using the method selected by the user (default: Benjamini–Hochberg), passed directly to `GSEA()`. Results are filtered to pathways with padj ≤ the user-defined cutoff (default: 0.25) before display.
 
 ### Enrichment curve (mountain plot)
 

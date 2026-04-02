@@ -1775,7 +1775,7 @@ function(req, res) {
   gsea_preview(session_id, label)
 }
 
-# ── GSEA: run fgsea against a MSigDB collection ────────────────────────────────
+# ── GSEA: run clusterProfiler::GSEA against a MSigDB collection ───────────────
 #* @post /api/gsea/run
 #* @serializer unboxedJSON
 function(req, res) {
