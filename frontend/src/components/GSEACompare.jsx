@@ -439,7 +439,8 @@ export default function GSEACompare({ session, gseaRuns }) {
                 <span style={{ fontSize: '0.63rem', color: 'var(--text-3)' }}>Width px</span>
                 <input type="number" min={400} max={3000} step={50} value={plotWidth}
                        onChange={e => {
-                         const w = Math.min(3000, Math.max(400, +e.target.value))
+                         const w = +e.target.value
+                         if (!w || w < 1) return
                          setPlotWidth(w)
                          setPlotHeight(Math.round(w * (1080 / 1920)))
                        }}
@@ -448,10 +449,13 @@ export default function GSEACompare({ session, gseaRuns }) {
 
               {/* Height — drives width via 16:9 */}
               <label style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                <span style={{ fontSize: '0.63rem', color: 'var(--text-3)' }}>Height px <span style={{ opacity: 0.5 }}>(16:9)</span></span>
+                <span style={{ fontSize: '0.63rem', color: 'var(--text-3)' }}>
+                  Height px <span style={{ opacity: 0.5 }}>(16:9)</span>
+                </span>
                 <input type="number" min={200} max={3000} step={50} value={plotHeight}
                        onChange={e => {
-                         const h = Math.min(3000, Math.max(200, +e.target.value))
+                         const h = +e.target.value
+                         if (!h || h < 1) return
                          setPlotHeight(h)
                          setPlotWidth(Math.round(h * (1920 / 1080)))
                        }}
@@ -513,6 +517,7 @@ export default function GSEACompare({ session, gseaRuns }) {
               <div>
                 <img src={`data:image/png;base64,${imgB64}`} alt="GSEA UpSet comparison"
                      style={{ display: 'block', width: plotWidth, height: plotHeight,
+                              maxWidth: 'none',
                               borderRadius: 6, boxShadow: '0 2px 16px rgba(0,0,0,0.3)', cursor: 'zoom-in' }}
                      onClick={() => setExpanded(true)} />
               </div>
