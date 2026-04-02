@@ -242,8 +242,8 @@ export default function GSEACompare({ session, gseaRuns }) {
 
   const [orderBy,     setOrderBy]     = useState('freq')
   const [fontSize,    setFontSize]    = useState(14)
-  const [plotWidth,   setPlotWidth]   = useState(1920)
-  const [plotHeight,  setPlotHeight]  = useState(1080)
+  const [plotWidth,   setPlotWidth]   = useState(800)
+  const [plotHeight,  setPlotHeight]  = useState(450)
   const [minSize,     setMinSize]     = useState(1)
   const [nintersects, setNintersects] = useState(40)
 
