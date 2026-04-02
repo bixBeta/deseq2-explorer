@@ -343,8 +343,8 @@ gsea_plots <- function(session_id, contrast_label, collection, subcategory, spec
       },
 
       "ridgeplot" = {
-        # ridgeplot sets its own fill scale internally — don't add scale_fill_gradient
-        ridgeplot(gsea_result, showCategory = n_show) +
+        # showCategory must be numeric (double), not integer — inherits(n, "numeric") is FALSE for integers
+        ridgeplot(gsea_result, showCategory = as.numeric(n_show)) +
           theme_bw(base_size = font_size) +
           ggtitle("GSEA Ridge Plot — Leading Edge Expression")
       },
