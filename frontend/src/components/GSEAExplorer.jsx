@@ -474,7 +474,7 @@ function PathwayPicker({ options, selected, onChange, accent }) {
           padding:'5px 8px', fontSize:'0.72rem', background:'rgba(255,255,255,0.05)',
           border:CB2, borderRadius:6, color:'var(--text-1)', cursor:'pointer', textAlign:'left' }}>
         <span style={{ opacity: selected.length ? 1 : 0.45 }}>
-          {selected.length === 0 ? 'default (top N by padj)' : `${selected.length} pathway${selected.length>1?'s':''} selected`}
+          {selected.length === 0 ? 'default (top 3 by padj)' : `${selected.length} pathway${selected.length>1?'s':''} selected`}
         </span>
         <span style={{ fontSize:'0.6rem', opacity:0.5 }}>{open ? '▲' : '▼'}</span>
       </button>
