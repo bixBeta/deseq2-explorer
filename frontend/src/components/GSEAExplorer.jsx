@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import Plotly from 'plotly.js-dist-min'
 
-// ── Violet/purple palette — green/red preserved for ±NES ─────────────────────
+// ── Ocean palette — green/red preserved for ±NES ─────────────────────────────
 const V = {
-  accent:  '#7c3aed',
-  accent2: '#8b5cf6',
-  text:    '#c4b5fd',
-  muted:   'rgba(124,58,237,0.10)',
-  border:  'rgba(139,92,246,0.25)',
-  card:    'rgba(124,58,237,0.06)',
+  accent:  '#0e7490',
+  accent2: '#0891b2',
+  text:    '#0891b2',
+  muted:   'rgba(14,116,144,0.12)',
+  border:  'rgba(14,116,144,0.35)',
+  card:    'rgba(14,116,144,0.06)',
   up:      '#10b981',
   down:    '#f43f5e',
 }
@@ -577,10 +577,10 @@ export default function GSEAExplorer({ session, contrastLabel, annMap }) {
   if(!session?.sessionId) return <div style={{ padding:60, textAlign:'center', color:'var(--text-3)' }}>No session available.</div>
 
   return (
-    <div data-accent="violet" style={{ display:'flex', flexDirection:'column', gap:0 }}>
+    <div data-accent="ocean" style={{ display:'flex', flexDirection:'column', gap:0 }}>
 
       {/* Header */}
-      <div style={{ background:`linear-gradient(135deg,rgba(124,58,237,0.12),rgba(139,92,246,0.04))`, border:`1px solid ${V.border}`, borderRadius:12, padding:'14px 20px', marginBottom:16, display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
+      <div style={{ background:`linear-gradient(135deg,rgba(14,116,144,0.12),rgba(8,145,178,0.04))`, border:`1px solid ${V.border}`, borderRadius:12, padding:'14px 20px', marginBottom:16, display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
         <div>
           <div style={{ fontSize:'1.05rem', fontWeight:700, color:'var(--text-1)', letterSpacing:'-0.01em' }}>⟳ GSEA Explorer</div>
           <div style={{ fontSize:'0.72rem', color:'var(--text-3)', marginTop:2 }}>fgsea · MSigDB · Ranked gene set enrichment</div>
