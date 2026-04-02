@@ -417,6 +417,79 @@ const PLOT_TYPES = [
   { key:'gsea_plot', label:'GSEA Plot',         icon:'⟳', desc:'Enrichment score curve(s) per pathway' },
 ]
 
+function PathwayPicker({ options, selected, onChange, accent }) {
+  const [open,   setOpen]   = useState(false)
+  const [filter, setFilter] = useState('')
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const handler = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const filtered = options.filter(p => p.toLowerCase().includes(filter.toLowerCase()))
+  const toggle = p => onChange(selected.includes(p) ? selected.filter(x => x !== p) : [...selected, p])
+  const CB2 = `1px solid ${accent}40`
+
+  return (
+    <div ref={ref} style={{ position:'relative' }}>
+      <button onClick={() => setOpen(o => !o)}
+        style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between',
+          padding:'5px 8px', fontSize:'0.72rem', background:'rgba(255,255,255,0.05)',
+          border:CB2, borderRadius:6, color:'var(--text-1)', cursor:'pointer', textAlign:'left' }}>
+        <span style={{ opacity: selected.length ? 1 : 0.45 }}>
+          {selected.length === 0 ? 'default (top 3 by padj)' : `${selected.length} pathway${selected.length>1?'s':''} selected`}
+        </span>
+        <span style={{ fontSize:'0.6rem', opacity:0.5 }}>{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && (
+        <div style={{ position:'absolute', zIndex:200, top:'calc(100% + 4px)', left:0, right:0,
+          background:'var(--bg-card, #0f1623)', border:CB2, borderRadius:8,
+          boxShadow:'0 8px 24px rgba(0,0,0,0.4)', overflow:'hidden' }}>
+          <div style={{ padding:'6px 8px', borderBottom:CB2 }}>
+            <input autoFocus value={filter} onChange={e => setFilter(e.target.value)}
+              placeholder="Filter pathways…"
+              style={{ width:'100%', padding:'3px 6px', fontSize:'0.7rem', background:'rgba(255,255,255,0.07)',
+                border:CB2, borderRadius:4, color:'var(--text-1)', outline:'none', boxSizing:'border-box' }} />
+          </div>
+          <div style={{ maxHeight:220, overflowY:'auto' }}>
+            {filtered.length === 0 && (
+              <div style={{ padding:'8px 10px', fontSize:'0.68rem', opacity:0.45 }}>No pathways match</div>
+            )}
+            {filtered.map(p => {
+              const checked = selected.includes(p)
+              return (
+                <div key={p} onClick={() => toggle(p)}
+                  style={{ display:'flex', alignItems:'center', gap:7, padding:'5px 10px', cursor:'pointer',
+                    background: checked ? `${accent}18` : 'transparent',
+                    borderLeft: `2px solid ${checked ? accent : 'transparent'}` }}>
+                  <div style={{ width:13, height:13, borderRadius:3, border:`1.5px solid ${checked ? accent : 'rgba(255,255,255,0.25)'}`,
+                    background: checked ? accent : 'transparent', flexShrink:0,
+                    display:'flex', alignItems:'center', justifyContent:'center' }}>
+                    {checked && <span style={{ fontSize:'0.55rem', color:'#fff', lineHeight:1 }}>✓</span>}
+                  </div>
+                  <span style={{ fontSize:'0.67rem', fontFamily:'monospace', color:'var(--text-1)',
+                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p}</span>
+                </div>
+              )
+            })}
+          </div>
+          {selected.length > 0 && (
+            <div style={{ padding:'5px 10px', borderTop:CB2 }}>
+              <button onClick={() => { onChange([]); setOpen(false) }}
+                style={{ fontSize:'0.63rem', color: accent, background:'none', border:'none', cursor:'pointer', padding:0 }}>
+                ✕ clear all
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function PlotsPanel({ run, session, contrastLabel }) {
   const [plotType,   setPlotType]   = useState('dotplot')
   const [nShow,      setNShow]      = useState(20)
@@ -515,25 +588,9 @@ function PlotsPanel({ run, session, contrastLabel }) {
 
           {pathwaysForPlot && (
             <div>
-              <div style={{ fontSize:'0.66rem', color:'var(--text-3)', marginBottom:4 }}>
-                Pathways <span style={{ opacity:0.6 }}>(blank = top 5 by padj)</span>
-              </div>
-              <select multiple value={selPathways}
-                onChange={e => setSelPathways(Array.from(e.target.selectedOptions, o => o.value))}
-                size={Math.min(availablePathways.length, 7)}
-                style={{ width:'100%', padding:'2px 4px', fontSize:'0.65rem', fontFamily:'monospace',
-                  background:'rgba(255,255,255,0.05)', border:CB, borderRadius:6,
-                  color:'var(--text-1)', outline:'none' }}>
-                {availablePathways.map(p => (
-                  <option key={p} value={p} style={{ padding:'2px 4px' }}>{p}</option>
-                ))}
-              </select>
-              {selPathways.length > 0 && (
-                <button onClick={() => setSelPathways([])}
-                  style={{ marginTop:4, fontSize:'0.62rem', color:V.text, background:'none', border:'none', cursor:'pointer', padding:0 }}>
-                  ✕ clear selection
-                </button>
-              )}
+              <div style={{ fontSize:'0.66rem', color:'var(--text-3)', marginBottom:4 }}>Pathways</div>
+              <PathwayPicker options={availablePathways} selected={selPathways}
+                onChange={setSelPathways} accent={V.accent} />
             </div>
           )}
 
