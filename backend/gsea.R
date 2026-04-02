@@ -388,10 +388,13 @@ gsea_plots <- function(session_id, contrast_label, collection, subcategory, spec
           res_df      <- as.data.frame(gsea_result)
           pathway_sel <- head(res_df$ID[order(res_df$p.adjust)], min(n_show, 10L))
         }
-        heatplot(gsea_result, foldChange = stats_vec, showCategory = pathway_sel) +
-          scale_fill_gradient2(low = color_neg, mid = "white", high = color_pos, midpoint = 0) +
-          theme_bw(base_size = font_size) +
-          ggtitle("GSEA Heat Plot — Leading Edge Genes")
+        suppressWarnings(
+          heatplot(gsea_result, foldChange = stats_vec, showCategory = pathway_sel) +
+            scale_fill_gradient2(low = color_neg, mid = "white", high = color_pos, midpoint = 0) +
+            theme_bw(base_size = font_size) +
+            theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+            ggtitle("GSEA Heat Plot — Leading Edge Genes")
+        )
       },
 
       "emapplot" = {
