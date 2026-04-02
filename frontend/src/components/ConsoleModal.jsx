@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import methodsMd  from '../methods.md?raw'
-import faviconSvg from '../../public/favicon.svg?raw'
+import methodsMd from '../methods.md?raw'
 
 // ── Simple markdown → JSX renderer ───────────────────────────────────────────
 function renderMd(md) {
@@ -358,7 +357,7 @@ function buildHtmlExport(md, sessionRows, contrasts, gseaRuns, alpha) {
   .doc-header { display: flex; align-items: center; justify-content: space-between; padding-bottom: 16px; margin-bottom: 8px; border-bottom: 2px solid #e2e8f0; }
   .doc-header-text h1 { border-bottom: none; padding-bottom: 0; margin: 0 0 2px; font-size: 1.5rem; }
   .doc-header-text p { margin: 0; font-size: 0.82rem; color: #64748b; }
-  .doc-logo { width: 44px; height: 44px; flex-shrink: 0; }
+  .doc-logo { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -367,7 +366,30 @@ function buildHtmlExport(md, sessionRows, contrasts, gseaRuns, alpha) {
     <h1>DESeq2 ExploreR</h1>
     <p>Methods &amp; Session Report — ${new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })}</p>
   </div>
-  <div class="doc-logo">${faviconSvg}</div>
+  <div class="doc-logo">
+    <svg width="34" height="34" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="exp-hg" x1="3" y1="5" x2="37" y2="35" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stop-color="#4f46e5"/><stop offset="100%" stop-color="#7c3aed"/>
+        </linearGradient>
+        <filter id="exp-hf" x="-15%" y="-15%" width="130%" height="130%">
+          <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#4f46e5" flood-opacity="0.4"/>
+        </filter>
+      </defs>
+      <path d="M 37,20 L 28.5,34.7 L 11.5,34.7 L 3,20 L 11.5,5.3 L 28.5,5.3 Z" fill="url(#exp-hg)" filter="url(#exp-hf)"/>
+      <text x="20" y="25" text-anchor="middle" fill="white" font-family="Inter,system-ui,sans-serif" font-weight="800" font-size="15">D</text>
+    </svg>
+    <svg width="34" height="34" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="exp-trex" x1="3" y1="5" x2="37" y2="35" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stop-color="#1e1b4b"/><stop offset="100%" stop-color="#312e81"/>
+        </linearGradient>
+      </defs>
+      <path d="M 37,20 L 28.5,34.7 L 11.5,34.7 L 3,20 L 11.5,5.3 L 28.5,5.3 Z" fill="url(#exp-trex)" stroke="#6d28d9" stroke-width="1"/>
+      <text x="20" y="17" text-anchor="middle" fill="#c4b5fd" font-family="Inter,system-ui,sans-serif" font-weight="700" font-size="10">TR</text>
+      <text x="20" y="29" text-anchor="middle" fill="#c4b5fd" font-family="Inter,system-ui,sans-serif" font-weight="700" font-size="10">Ex</text>
+    </svg>
+  </div>
 </div>
 ${hasParams ? `${sessionHtml}${contrastsHtml}${gseaHtml}<hr>` : ''}
 ${mdToHtml(md)}
