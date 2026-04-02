@@ -423,11 +423,18 @@ gsea_plots <- function(session_id, contrast_label, collection, subcategory, spec
           res_df      <- as.data.frame(gsea_result)
           pathway_sel <- head(res_df$ID[order(res_df$p.adjust)], 3L)
         }
+        # Shorten Description labels: strip leading collection prefix (e.g. HALLMARK_, KEGG_)
+        # and truncate to avoid overlapping curve labels
+        gsea_tmp <- gsea_result
+        idx <- match(pathway_sel, gsea_tmp@result$ID)
+        gsea_tmp@result$Description[idx] <- substr(
+          gsub("^[A-Z0-9]+_", "", gsea_tmp@result$Description[idx]), 1, 30
+        )
         # gseaplot2 returns a cowplot composite — cannot use + operator on it
         # Generate distinct colors per pathway interpolating between pos and neg
         n_paths <- length(pathway_sel)
         colors  <- if (n_paths == 1) color_pos else colorRampPalette(c(color_pos, color_neg))(n_paths)
-        enrichplot::gseaplot2(gsea_result, geneSetID = pathway_sel,
+        enrichplot::gseaplot2(gsea_tmp, geneSetID = pathway_sel,
                               color = colors, base_size = font_size,
                               pvalue_table = TRUE)
       },

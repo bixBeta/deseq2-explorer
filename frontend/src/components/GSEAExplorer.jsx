@@ -502,6 +502,7 @@ function PlotsPanel({ run, session, contrastLabel }) {
   const [loading,    setLoading]    = useState(false)
   const [imgSrc,     setImgSrc]     = useState(null)
   const [error,      setError]      = useState(null)
+  const [fullscreen, setFullscreen] = useState(false)
 
   const pathwaysForPlot = plotType === 'heatplot' || plotType === 'cnetplot' || plotType === 'gsea_plot'
   const availablePathways = useMemo(() => (run?.results ?? []).map(r => r.pathway).filter(Boolean), [run])
@@ -509,6 +510,13 @@ function PlotsPanel({ run, session, contrastLabel }) {
 
   // Clear selection when run changes
   useEffect(() => { setSelPathways([]) }, [run])
+
+  // Escape key closes fullscreen
+  useEffect(() => {
+    const handler = e => { if (e.key === 'Escape') setFullscreen(false) }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [])
 
   const handleGenerate = async () => {
     if (!run || !session?.sessionId) return
@@ -634,7 +642,8 @@ function PlotsPanel({ run, session, contrastLabel }) {
       </div>
 
       {/* Image area */}
-      <div style={{ flex:1, minWidth:0, borderRadius:10, border:CB, background:'var(--bg-card)', minHeight:420, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden' }}>
+      <div style={{ flex:1, minWidth:0, borderRadius:10, border:CB, background:'var(--bg-card)', minHeight:420,
+        display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', position:'relative' }}>
         {loading && (
           <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:12 }}>
             <div style={{ width:36, height:36, borderRadius:'50%', border:`3px solid ${V.muted}`, borderTopColor:V.accent, animation:'gsea-spin 0.8s linear infinite' }} />
@@ -648,7 +657,16 @@ function PlotsPanel({ run, session, contrastLabel }) {
           </div>
         )}
         {imgSrc && !loading && (
-          <img src={imgSrc} alt={plotType} style={{ maxWidth:'100%', maxHeight:'80vh', objectFit:'contain' }} />
+          <>
+            <img src={imgSrc} alt={plotType} style={{ maxWidth:'100%', maxHeight:'80vh', objectFit:'contain' }} />
+            <button onClick={() => setFullscreen(true)}
+              title="View fullscreen"
+              style={{ position:'absolute', top:10, right:10, padding:'4px 8px', borderRadius:6,
+                border:`1px solid ${V.border}`, background:V.muted, color:'var(--text-1)',
+                fontSize:'0.72rem', cursor:'pointer', backdropFilter:'blur(4px)' }}>
+              ⛶ Expand
+            </button>
+          </>
         )}
         {!imgSrc && !loading && !error && (
           <div style={{ textAlign:'center', color:'var(--text-3)', padding:40 }}>
@@ -657,6 +675,39 @@ function PlotsPanel({ run, session, contrastLabel }) {
           </div>
         )}
       </div>
+
+      {/* Fullscreen modal */}
+      {fullscreen && imgSrc && (
+        <div onClick={() => setFullscreen(false)}
+          style={{ position:'fixed', inset:0, zIndex:1000, background:'rgba(0,0,0,0.85)',
+            display:'flex', alignItems:'center', justifyContent:'center', backdropFilter:'blur(6px)' }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ position:'relative', maxWidth:'95vw', maxHeight:'95vh', borderRadius:12,
+              border:CB, background:'var(--bg-card)', overflow:'hidden', boxShadow:'0 24px 80px rgba(0,0,0,0.6)' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+              padding:'8px 14px', borderBottom:CB, background:'rgba(0,0,0,0.2)' }}>
+              <span style={{ fontSize:'0.78rem', color:'var(--text-2)', fontWeight:600 }}>
+                {PLOT_TYPES.find(p => p.key === plotType)?.label}
+              </span>
+              <div style={{ display:'flex', gap:8 }}>
+                <button onClick={downloadPng}
+                  style={{ fontSize:'0.7rem', padding:'3px 10px', borderRadius:5, border:`1px solid ${V.border}`,
+                    background:V.muted, color:'var(--text-1)', cursor:'pointer' }}>
+                  ↓ Download
+                </button>
+                <button onClick={() => setFullscreen(false)}
+                  style={{ fontSize:'0.8rem', padding:'3px 8px', borderRadius:5, border:`1px solid ${V.border}`,
+                    background:'rgba(255,255,255,0.07)', color:'var(--text-1)', cursor:'pointer' }}>
+                  ✕
+                </button>
+              </div>
+            </div>
+            <div style={{ padding:16, overflow:'auto', maxHeight:'calc(95vh - 52px)' }}>
+              <img src={imgSrc} alt={plotType} style={{ maxWidth:'100%', display:'block' }} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
