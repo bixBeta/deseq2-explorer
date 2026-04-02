@@ -303,7 +303,7 @@ gsea_curve <- function(session_id, contrast_label, pathway,
   )
 }
 
-# ── gsea_plots: render clusterProfiler / plotthis visualisations ──────────────
+# ── gsea_plots: render clusterProfiler / enrichplot visualisations ──────────────
 gsea_plots <- function(session_id, contrast_label, collection, subcategory, species,
                        plot_type, params) {
   cache_path <- .gsea_cache_path(session_id, contrast_label, collection, subcategory, species)
@@ -331,23 +331,10 @@ gsea_plots <- function(session_id, contrast_label, collection, subcategory, spec
   tmp <- tempfile(fileext = ".png")
   on.exit(unlink(tmp), add = TRUE)
 
-  # upsetplot returns a UpSetR/grid object — must use png()/print()/dev.off()
-  if (plot_type == "upsetplot") {
-    tryCatch({
-      png(tmp, width = w * 150, height = h * 150, res = 150, bg = "white")
-      print(upsetplot(gsea_result, n = min(n_show, 15L)))
-      dev.off()
-    }, error = function(e) { try(dev.off(), silent=TRUE); stop("Plot generation failed: ", e$message) })
-    b64 <- paste0("data:image/png;base64,",
-                  base64enc::base64encode(readBin(tmp, "raw", file.info(tmp)$size)))
-    return(list(image = b64, plotType = plot_type))
-  }
-
   p <- tryCatch({
     switch(plot_type,
 
       "dotplot" = {
-        # Build with NES as x-axis, color by p.adjust, then apply user colors
         dotplot(gsea_result, showCategory = n_show, font.size = font_size,
                 label_format = 40, x = "NES", color = "p.adjust") +
           scale_color_gradient(low = color_pos, high = color_neg) +
@@ -356,11 +343,16 @@ gsea_plots <- function(session_id, contrast_label, collection, subcategory, spec
       },
 
       "ridgeplot" = {
-        ridgeplot(gsea_result, showCategory = n_show, core_enrichment = TRUE,
-                  orderBy = "NES", decreasing = TRUE) +
+        ridgeplot(gsea_result, showCategory = n_show, core_enrichment = TRUE) +
           scale_fill_gradient(low = color_neg, high = color_pos) +
           theme_bw(base_size = font_size) +
           ggtitle("GSEA Ridge Plot — Leading Edge Expression")
+      },
+
+      "upsetplot" = {
+        upsetplot(gsea_result, n = min(n_show, 15L)) +
+          theme_bw(base_size = font_size) +
+          ggtitle("GSEA UpSet Plot — Leading Edge Overlap")
       },
 
       "heatplot" = {
@@ -400,21 +392,15 @@ gsea_plots <- function(session_id, contrast_label, collection, subcategory, spec
       },
 
       "gsea_plot" = {
-        if (!requireNamespace("plotthis", quietly = TRUE)) stop("plotthis not installed")
-        library(plotthis)
         pathway_sel <- as.character(params$pathways %||% character(0))
         if (length(pathway_sel) == 0) {
           res_df      <- as.data.frame(gsea_result)
           pathway_sel <- head(res_df$ID[order(res_df$p.adjust)], 3L)
         }
-        plotthis::GSEAPlot(
-          data            = gsea_result,
-          gene_ranks      = stats_vec,
-          term            = pathway_sel,
-          color_pos       = color_pos,
-          color_neg       = color_neg,
-          base_size       = font_size
-        )
+        enrichplot::gseaplot2(gsea_result, geneSetID = pathway_sel,
+                              color = color_pos, base_size = font_size,
+                              pvalue_table = TRUE) +
+          ggplot2::ggtitle("GSEA Enrichment Plot")
       },
 
       stop(paste0("Unknown plot type: ", plot_type))
