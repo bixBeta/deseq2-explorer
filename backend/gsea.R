@@ -103,14 +103,15 @@ gsea_preview <- function(session_id, contrast_label) {
   row_meds <- rowMedians(counts)
   names(row_meds) <- rownames(counts)
 
-  brk     <- hist(log1p(row_meds), breaks = 100, plot = FALSE)
+  # KDE of log1p(row medians) — smoother than histogram
+  dens    <- density(log1p(row_meds), bw = "nrd0", n = 512, from = 0)
   q_probs <- seq(0, 1, by = 0.01)   # 101 points for smooth slider interpolation
   q_vals  <- quantile(row_meds, q_probs, na.rm = TRUE)
 
   list(
-    hist = list(
-      x = round(as.numeric(brk$mids),   4),
-      y = as.integer(brk$counts)
+    kde = list(
+      x = round(as.numeric(dens$x), 4),
+      y = round(as.numeric(dens$y), 8)
     ),
     quantileValues = round(as.numeric(q_vals), 2),   # 101 values at 0%..100%
     quartiles = list(
@@ -238,14 +239,17 @@ gsea_curve <- function(session_id, contrast_label, pathway,
   x_ds <- seq(0, 1, length.out = n + 1L)[idx]
   y_ds <- es[idx]
 
-  # Normalised positions of all pathway genes in the ranked list (for rug plot)
-  hit_pos <- which(in_path) / n
+  # Normalised positions + gene names for rug plot hover
+  hit_indices <- which(in_path)
+  hit_pos     <- hit_indices / n
+  hit_genes   <- names(stats_vec)[hit_indices]
 
   list(
-    x    = round(x_ds,   5),
-    y    = round(y_ds,   5),
-    hits = round(hit_pos, 5),
-    n    = n,
-    nHits = n_path
+    x        = round(x_ds,   5),
+    y        = round(y_ds,   5),
+    hits     = round(hit_pos, 5),
+    hitGenes = hit_genes,
+    n        = n,
+    nHits    = n_path
   )
 }
