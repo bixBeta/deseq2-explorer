@@ -582,15 +582,15 @@ export default function GSEAExplorer({ session, contrastLabel, annMap }) {
       {/* Header */}
       <div style={{ background:`linear-gradient(135deg,rgba(124,58,237,0.12),rgba(139,92,246,0.04))`, border:`1px solid ${V.border}`, borderRadius:12, padding:'14px 20px', marginBottom:16, display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
         <div>
-          <div style={{ fontSize:'1.05rem', fontWeight:700, color:V.text, letterSpacing:'-0.01em' }}>⟳ GSEA Explorer</div>
+          <div style={{ fontSize:'1.05rem', fontWeight:700, color:'var(--text-1)', letterSpacing:'-0.01em' }}>⟳ GSEA Explorer</div>
           <div style={{ fontSize:'0.72rem', color:'var(--text-3)', marginTop:2 }}>fgsea · MSigDB · Ranked gene set enrichment</div>
         </div>
-        {contrastLabel && <div style={{ padding:'4px 12px', borderRadius:20, background:V.muted, border:`1px solid ${V.border}`, fontSize:'0.72rem', color:V.text, fontWeight:600 }}>{contrastLabel}</div>}
+        {contrastLabel && <div style={{ padding:'4px 12px', borderRadius:20, background:V.muted, border:`1px solid ${V.border}`, fontSize:'0.72rem', color:'var(--text-1)', fontWeight:600 }}>{contrastLabel}</div>}
         {activeRun?.meta && (
           <div style={{ marginLeft:'auto', display:'flex', gap:16, flexWrap:'wrap' }}>
             {[[activeRun.meta.n_pathways,'pathways'],[activeRun.meta.n_genes_ranked,'genes ranked'],[`${activeRun.meta.elapsedSecs}s`,'runtime']].map(([v,l])=>(
               <div key={l} style={{ textAlign:'center' }}>
-                <div style={{ fontSize:'0.95rem', fontWeight:700, color:V.text }}>{typeof v==='number'?v.toLocaleString():v}</div>
+                <div style={{ fontSize:'0.95rem', fontWeight:700, color:'var(--text-1)' }}>{typeof v==='number'?v.toLocaleString():v}</div>
                 <div style={{ fontSize:'0.62rem', color:'var(--text-3)', textTransform:'uppercase', letterSpacing:'0.05em' }}>{l}</div>
               </div>
             ))}
