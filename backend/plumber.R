@@ -5,6 +5,7 @@ library(uuid)
 
 source("db.R")
 source("email.R")
+source("gsea.R")
 
 UPLOAD_DIR    <- Sys.getenv("UPLOAD_DIR",  file.path(dirname(getwd()), "data", "uploads"))
 RESULTS_DIR   <- Sys.getenv("RESULTS_DIR", file.path(dirname(getwd()), "data", "results"))
@@ -1761,4 +1762,54 @@ function(req, res) {
   }
 
   list(annotations = annotations, total = length(annotations), hasCoords = FALSE)
+}
+
+# ── GSEA: row-median distribution for filter density plot ─────────────────────
+#* @post /api/gsea/preview
+#* @serializer unboxedJSON
+function(req, res) {
+  body       <- fromJSON(rawToChar(req$bodyRaw))
+  session_id <- body$sessionId
+  label      <- body$contrastLabel
+  if (is.null(session_id) || session_id == "") stop("sessionId is required")
+  gsea_preview(session_id, label)
+}
+
+# ── GSEA: run fgsea against a MSigDB collection ────────────────────────────────
+#* @post /api/gsea/run
+#* @serializer unboxedJSON
+function(req, res) {
+  body       <- fromJSON(rawToChar(req$bodyRaw))
+  session_id <- body$sessionId
+  if (is.null(session_id) || session_id == "") stop("sessionId is required")
+  gsea_run(
+    session_id     = session_id,
+    contrast_label = body$contrastLabel,
+    rank_method    = body$rankMethod    %||% "log2FC",
+    collection     = body$collection    %||% "H",
+    subcategory    = body$subcategory,
+    species        = body$species       %||% "Homo sapiens",
+    min_size       = body$minSize       %||% 15L,
+    max_size       = body$maxSize       %||% 500L,
+    filter_method  = body$filterMethod  %||% "quantile",
+    filter_value   = body$filterValue   %||% 0.25,
+    ann_map        = body$annMap
+  )
+}
+
+# ── GSEA: enrichment curve for one pathway (mountain plot data) ────────────────
+#* @post /api/gsea/curve
+#* @serializer unboxedJSON
+function(req, res) {
+  body       <- fromJSON(rawToChar(req$bodyRaw))
+  session_id <- body$sessionId
+  if (is.null(session_id) || session_id == "") stop("sessionId is required")
+  gsea_curve(
+    session_id     = session_id,
+    contrast_label = body$contrastLabel,
+    pathway        = body$pathway,
+    collection     = body$collection    %||% "H",
+    subcategory    = body$subcategory,
+    species        = body$species       %||% "Homo sapiens"
+  )
 }

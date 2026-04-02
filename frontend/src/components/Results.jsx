@@ -5,16 +5,18 @@ import CountsPlot      from './CountsPlot'
 import ResultsTable    from './ResultsTable'
 import AnnotationPanel from './AnnotationPanel'
 import ComparePanel    from './ComparePanel'
+import GSEAExplorer    from './GSEAExplorer'
 
 const STORAGE_KEY = 'deseq2_tab_icons'
 
 const DEFAULT_TABS = [
-  { key: 'counts',   label: 'Counts',   icon: '▦' },
-  { key: 'annotate', label: 'Annotate', icon: '◈' },
-  { key: 'ma',       label: 'MA Plot',  icon: '╱╲' },
-  { key: 'pca',      label: 'PCA',      icon: '●●' },
-  { key: 'table',    label: 'DE Results', icon: '▤'  },
-  { key: 'compare',  label: 'Compare',  icon: '⊕'  },
+  { key: 'counts',   label: 'Counts',      icon: '▦'  },
+  { key: 'annotate', label: 'Annotate',    icon: '◈'  },
+  { key: 'ma',       label: 'MA Plot',     icon: '╱╲' },
+  { key: 'pca',      label: 'PCA',         icon: '●●' },
+  { key: 'table',    label: 'DE Results',  icon: '▤'  },
+  { key: 'gsea',     label: 'GSEA',        icon: '⟳', emerald: true },
+  { key: 'compare',  label: 'Compare',     icon: '⊕'  },
 ]
 
 function loadIcons() {
@@ -170,9 +172,9 @@ export default function Results({ results, design, onBack, onEditSamples, sessio
                       style={{
                         display: 'flex', alignItems: 'center', gap: 6,
                         padding: '7px 14px', cursor: 'pointer',
-                        background:   active ? 'var(--bg-card2)' : 'transparent',
-                        color:        active ? 'var(--text-1)' : isCompare && !compareReady ? 'var(--text-3)' : 'var(--text-3)',
-                        borderBottom: active ? '2px solid var(--accent)' : compareReady && !active ? '2px solid rgba(var(--accent-rgb),0.3)' : '2px solid transparent',
+                        background:   active ? (t.emerald ? 'rgba(5,150,105,0.1)' : 'var(--bg-card2)') : 'transparent',
+                        color:        active ? (t.emerald ? '#34d399' : 'var(--text-1)') : isCompare && !compareReady ? 'var(--text-3)' : t.emerald ? 'rgba(16,185,129,0.6)' : 'var(--text-3)',
+                        borderBottom: active ? `2px solid ${t.emerald ? '#059669' : 'var(--accent)'}` : compareReady && !active ? '2px solid rgba(var(--accent-rgb),0.3)' : '2px solid transparent',
                         fontWeight:   active ? 600 : 400,
                         fontSize: '0.82rem', borderTop: 'none', borderLeft: 'none', borderRight: 'none',
                         borderRadius: '6px 6px 0 0', whiteSpace: 'nowrap',
@@ -252,6 +254,14 @@ export default function Results({ results, design, onBack, onEditSamples, sessio
         </div>
         <div style={{ display: vizTab === 'compare' ? 'block' : 'none' }}>
           <ComparePanel session={session} contrasts={contrastList} annMap={annMap} annDetails={annDetails} pca={pca} sampleLabels={sampleLabels} />
+        </div>
+        <div style={{ display: vizTab === 'gsea' ? 'block' : 'none' }}>
+          <GSEAExplorer
+            key={active?.label}
+            session={session}
+            contrastLabel={active?.label}
+            annMap={annMap}
+          />
         </div>
       </div>
     </div>
