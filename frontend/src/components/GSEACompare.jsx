@@ -425,8 +425,6 @@ export default function GSEACompare({ session, gseaRuns }) {
                 { label: 'Font size',     val: fontSize,    set: setFontSize,    min: 6,   max: 28,   step: 1,  w: 64 },
                 { label: 'Min genes',     val: minSize,     set: setMinSize,     min: 1,   max: 100,  step: 1,  w: 64 },
                 { label: 'Max intersect', val: nintersects, set: setNintersects, min: 1,   max: 200,  step: 1,  w: 72 },
-                { label: 'Width px',      val: plotWidth,   set: setPlotWidth,   min: 400, max: 3000, step: 50, w: 80 },
-                { label: 'Height px',     val: plotHeight,  set: setPlotHeight,  min: 200, max: 3000, step: 50, w: 80 },
               ].map(({ label, val, set, min, max, step, w }) => (
                 <label key={label} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                   <span style={{ fontSize: '0.63rem', color: 'var(--text-3)' }}>{label}</span>
@@ -435,6 +433,30 @@ export default function GSEACompare({ session, gseaRuns }) {
                          style={{ ...inputStyle, width: w }} />
                 </label>
               ))}
+
+              {/* Width — drives height via 16:9 */}
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <span style={{ fontSize: '0.63rem', color: 'var(--text-3)' }}>Width px</span>
+                <input type="number" min={400} max={3000} step={50} value={plotWidth}
+                       onChange={e => {
+                         const w = Math.min(3000, Math.max(400, +e.target.value))
+                         setPlotWidth(w)
+                         setPlotHeight(Math.round(w * (1080 / 1920)))
+                       }}
+                       style={{ ...inputStyle, width: 80 }} />
+              </label>
+
+              {/* Height — drives width via 16:9 */}
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <span style={{ fontSize: '0.63rem', color: 'var(--text-3)' }}>Height px <span style={{ opacity: 0.5 }}>(16:9)</span></span>
+                <input type="number" min={200} max={3000} step={50} value={plotHeight}
+                       onChange={e => {
+                         const h = Math.min(3000, Math.max(200, +e.target.value))
+                         setPlotHeight(h)
+                         setPlotWidth(Math.round(h * (1920 / 1080)))
+                       }}
+                       style={{ ...inputStyle, width: 80 }} />
+              </label>
               <button onClick={runPlot} disabled={loading || selectedSets.length < 2}
                       style={{
                         alignSelf: 'flex-end', padding: '6px 20px', borderRadius: 8,
@@ -470,7 +492,7 @@ export default function GSEACompare({ session, gseaRuns }) {
             </div>
 
             {/* scrollable plot area */}
-            <div style={{ overflow: 'auto', maxHeight: 600, padding: imgB64 ? 12 : 0 }}>
+            <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 600, padding: imgB64 ? 12 : 0 }}>
             {loading && (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 320 }}>
                 <div style={{ textAlign: 'center', color: 'var(--text-3)' }}>
