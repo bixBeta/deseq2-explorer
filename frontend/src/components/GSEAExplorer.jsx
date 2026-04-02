@@ -201,9 +201,9 @@ function CollectionGrid({ selected, onChange }) {
         const active = selected.key===c.key
         return (
           <button key={c.key} onClick={()=>onChange(c)} title={c.desc}
-            style={{ padding:'6px 8px', borderRadius:8, cursor:'pointer', textAlign:'left', background:active?V.muted:'var(--bg-card2)', border:`1px solid ${active?V.border:'var(--border)'}`, color:active?V.text:'var(--text-2)', boxShadow:active?`0 0 0 1.5px ${V.accent}55`:'none', transition:'all 0.12s' }}>
+            style={{ padding:'6px 8px', borderRadius:8, cursor:'pointer', textAlign:'left', background:active?V.muted:'var(--bg-card2)', border:`1px solid ${active?V.border:'var(--border)'}`, color:active?'var(--text-1)':'var(--text-2)', boxShadow:active?`0 0 0 1.5px ${V.accent}55`:'none', transition:'all 0.12s' }}>
             <div style={{ fontSize:'0.8rem', marginBottom:2 }}>{c.icon} {c.label}</div>
-            <div style={{ fontSize:'0.62rem', color:active?'rgba(196,181,253,0.65)':'var(--text-3)', lineHeight:1.3 }}>{c.desc.split('(')[0].trim()}</div>
+            <div style={{ fontSize:'0.62rem', color:'var(--text-3)', lineHeight:1.3 }}>{c.desc.split('(')[0].trim()}</div>
           </button>
         )
       })}
@@ -236,7 +236,7 @@ function RunChips({ runs, activeRunId, onSelect, onRemove }) {
         return (
           <div key={r.id} onClick={()=>onSelect(r.id)}
             style={{ display:'flex', alignItems:'center', gap:5, padding:'3px 10px', borderRadius:20, cursor:'pointer', userSelect:'none', background:active?V.muted:'var(--bg-card2)', border:`1px solid ${active?V.border:'var(--border)'}`, transition:'all 0.12s' }}>
-            <span style={{ fontSize:'0.7rem', fontWeight:700, color:active?V.text:'var(--text-2)' }}>{r.collectionLabel}</span>
+            <span style={{ fontSize:'0.7rem', fontWeight:700, color:active?'var(--text-1)':'var(--text-2)' }}>{r.collectionLabel}</span>
             <span style={{ fontSize:'0.64rem', color:'var(--text-3)' }}>·{r.rankShort}</span>
             <span style={{ fontSize:'0.62rem', color:active?'rgba(196,181,253,0.6)':'var(--text-4)', fontFamily:'monospace' }}>{r.meta?.n_pathways}↗</span>
             <button onClick={e=>{ e.stopPropagation(); onRemove(r.id) }}
@@ -316,10 +316,10 @@ function ResultsTable({ run, onPathwayClick, selectedPathway }) {
                     <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={r.pathway}>{name}</div>
                   </td>
                   <td style={{ padding:'7px 10px', border:CB }}><NESBar nes={r.NES??0} maxAbs={maxAbs} /></td>
-                  <td style={{ padding:'7px 10px', fontFamily:'monospace', fontSize:'0.72rem', color:r.padj<0.05?V.text:r.padj<0.25?'var(--text-2)':'var(--text-3)', border:CB }}>{fmtPval(r.padj)}</td>
+                  <td style={{ padding:'7px 10px', fontFamily:'monospace', fontSize:'0.72rem', color:r.padj<0.05?V.accent:r.padj<0.25?'var(--text-2)':'var(--text-3)', border:CB }}>{fmtPval(r.padj)}</td>
                   <td style={{ padding:'7px 10px', color:'var(--text-2)', fontFamily:'monospace', fontSize:'0.72rem', border:CB }}>{r.size}</td>
                   <td style={{ padding:'7px 10px', fontSize:'0.7rem', maxWidth:220, border:CB }}>
-                    <span style={{ fontFamily:'monospace', color:V.text, fontWeight:600 }}>{r.leadingEdgeN} </span>
+                    <span style={{ fontFamily:'monospace', color:V.accent, fontWeight:600 }}>{r.leadingEdgeN} </span>
                     <span style={{ color:'var(--text-3)' }}>{(r.leadingEdge||'').split(',').slice(0,4).join(', ')}{r.leadingEdgeN>4?` +${r.leadingEdgeN-4}`:''}</span>
                   </td>
                 </tr>
@@ -430,7 +430,7 @@ function MountainModal({ pathway, result, curveData, curveLoading, onClose }) {
       legend:{ font:{size:10,color:'var(--text-3)'}, x:0.01, y:0.99 },
       annotations:[{ x:0.99, y:0.97, xref:'paper', yref:'paper', xanchor:'right', yanchor:'top',
         text:`NES: <b>${(nes>0?'+':'')+nes.toFixed(3)}</b>  padj: <b>${fmtPval(result?.padj)}</b>  hits: ${nHits}/${result?.size}`,
-        showarrow:false, font:{size:11,color:textColor}, bgcolor:'rgba(0,0,0,0.3)', borderpad:5 }],
+        showarrow:false, font:{size:11,color:'#000000'}, bgcolor:'rgba(255,255,255,0.82)', borderpad:5, bordercolor:'rgba(0,0,0,0.12)', borderwidth:1 }],
       shapes:[
         { type:'line', x0:0, x1:1, y0:0, y1:0, xref:'paper', line:{ color:'var(--border)', width:1 } },
         { type:'line', x0:peakX, x1:peakX, y0:0, y1:1, yref:'paper', line:{ color, width:1.2, dash:'dot' } },
@@ -458,7 +458,7 @@ function MountainModal({ pathway, result, curveData, curveLoading, onClose }) {
           <>
             <div ref={ref} style={{ width:'100%' }} />
             <div style={{ marginTop:8, fontSize:'0.72rem', color:'var(--text-3)', lineHeight:1.6 }}>
-              <b style={{ color:V.text }}>Leading edge ({result?.leadingEdgeN}):</b>{' '}
+              <b style={{ color:'var(--text-1)' }}>Leading edge ({result?.leadingEdgeN}):</b>{' '}
               {(result?.leadingEdge||'').split(',').slice(0,15).join(', ')}
               {result?.leadingEdgeN>15?` … +${result.leadingEdgeN-15} more`:''}
             </div>
@@ -610,7 +610,7 @@ export default function GSEAExplorer({ session, contrastLabel, annMap }) {
               <label key={m.value} style={{ display:'flex', alignItems:'flex-start', gap:8, cursor:'pointer', padding:'7px 10px', borderRadius:8, marginBottom:5, background:rankMethod===m.value?V.muted:'rgba(255,255,255,0.03)', border:`1px solid ${rankMethod===m.value?V.border:'rgba(255,255,255,0.06)'}`, transition:'all 0.12s' }}>
                 <input type="radio" checked={rankMethod===m.value} onChange={()=>setRankMethod(m.value)} style={{ marginTop:2, accentColor:V.accent }} />
                 <div>
-                  <div style={{ fontSize:'0.78rem', color:rankMethod===m.value?V.text:'var(--text-1)', fontWeight:600 }}>{m.label}</div>
+                  <div style={{ fontSize:'0.78rem', color:'var(--text-1)', fontWeight:600 }}>{m.label}</div>
                   <div style={{ fontSize:'0.65rem', color:'var(--text-3)' }}>{m.hint}</div>
                 </div>
               </label>
@@ -720,7 +720,7 @@ export default function GSEAExplorer({ session, contrastLabel, annMap }) {
               <div style={{ display:'flex', gap:2, borderBottom:`1px solid ${V.border}` }}>
                 {[['results',`◉ Pathways${activeRun?.results?.length?` (${activeRun.results.length})`:''}`],['ranked',`≡ Ranked List${activeRun?.rankedList?.length?` (${activeRun.rankedList.length.toLocaleString()})`:''}`]].map(([k,l])=>(
                   <button key={k} onClick={()=>setContentTab(k)}
-                    style={{ padding:'6px 14px', border:'none', borderRadius:'6px 6px 0 0', cursor:'pointer', fontSize:'0.8rem', fontWeight:contentTab===k?700:400, background:contentTab===k?V.muted:'transparent', color:contentTab===k?V.text:'var(--text-3)', borderBottom:`2px solid ${contentTab===k?V.accent:'transparent'}`, transition:'all 0.12s' }}>{l}</button>
+                    style={{ padding:'6px 14px', border:'none', borderRadius:'6px 6px 0 0', cursor:'pointer', fontSize:'0.8rem', fontWeight:contentTab===k?700:400, background:contentTab===k?V.muted:'transparent', color:contentTab===k?'var(--text-1)':'var(--text-3)', borderBottom:`2px solid ${contentTab===k?V.accent:'transparent'}`, transition:'all 0.12s' }}>{l}</button>
                 ))}
               </div>
               <div style={{ paddingTop:4 }}>
