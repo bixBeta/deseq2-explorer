@@ -326,22 +326,39 @@ gsea_plots <- function(session_id, contrast_label, collection, subcategory, spec
   color_neg  <- as.character(params$color_neg %||% "#457b9d")
   label_fmt  <- as.character(params$label_fmt %||% "p.adjust")
 
+  w   <- as.numeric(params$width  %||% 9)
+  h   <- as.numeric(params$height %||% 7)
+  tmp <- tempfile(fileext = ".png")
+  on.exit(unlink(tmp), add = TRUE)
+
+  # upsetplot returns a UpSetR/grid object — must use png()/print()/dev.off()
+  if (plot_type == "upsetplot") {
+    tryCatch({
+      png(tmp, width = w * 150, height = h * 150, res = 150, bg = "white")
+      print(upsetplot(gsea_result, n = min(n_show, 15L)))
+      dev.off()
+    }, error = function(e) { try(dev.off(), silent=TRUE); stop("Plot generation failed: ", e$message) })
+    b64 <- paste0("data:image/png;base64,",
+                  base64enc::base64encode(readBin(tmp, "raw", file.info(tmp)$size)))
+    return(list(image = b64, plotType = plot_type))
+  }
+
   p <- tryCatch({
     switch(plot_type,
 
       "dotplot" = {
+        # Build with NES as x-axis, color by p.adjust, then apply user colors
         dotplot(gsea_result, showCategory = n_show, font.size = font_size,
-                label_format = 40, split = ".sign") +
-          facet_grid(. ~ .sign) +
-          scale_color_gradient(low = color_neg, high = color_pos) +
+                label_format = 40, x = "NES", color = "p.adjust") +
+          scale_color_gradient(low = color_pos, high = color_neg) +
           theme_bw(base_size = font_size) +
           ggtitle("GSEA Dot Plot")
       },
 
       "ridgeplot" = {
-        ridgeplot(gsea_result, showCategory = n_show, fill = "p.adjust",
-                  core_enrichment = TRUE) +
-          scale_fill_gradient(low = color_pos, high = color_neg) +
+        ridgeplot(gsea_result, showCategory = n_show, core_enrichment = TRUE,
+                  orderBy = "NES", decreasing = TRUE) +
+          scale_fill_gradient(low = color_neg, high = color_pos) +
           theme_bw(base_size = font_size) +
           ggtitle("GSEA Ridge Plot — Leading Edge Expression")
       },
@@ -358,17 +375,11 @@ gsea_plots <- function(session_id, contrast_label, collection, subcategory, spec
           ggtitle("GSEA Heat Plot — Leading Edge Genes")
       },
 
-      "upsetplot" = {
-        upsetplot(gsea_result, n = min(n_show, 15L)) +
-          theme_bw(base_size = font_size) +
-          ggtitle("GSEA UpSet Plot — Leading Edge Overlap")
-      },
-
       "emapplot" = {
         gsea_result2 <- pairwise_termsim(gsea_result)
         emapplot(gsea_result2, showCategory = n_show,
-                 color = label_fmt, layout = "kk") +
-          scale_color_gradient(low = color_neg, high = color_pos) +
+                 color = "p.adjust", layout = "kk") +
+          scale_color_gradient(low = color_pos, high = color_neg) +
           theme_void(base_size = font_size) +
           ggtitle("Enrichment Map")
       },
@@ -389,7 +400,6 @@ gsea_plots <- function(session_id, contrast_label, collection, subcategory, spec
       },
 
       "gsea_plot" = {
-        # plotthis::GSEAPlot — single or multi-pathway enrichment curve
         if (!requireNamespace("plotthis", quietly = TRUE)) stop("plotthis not installed")
         library(plotthis)
         pathway_sel <- as.character(params$pathways %||% character(0))
@@ -398,12 +408,12 @@ gsea_plots <- function(session_id, contrast_label, collection, subcategory, spec
           pathway_sel <- head(res_df$ID[order(res_df$p.adjust)], 3L)
         }
         plotthis::GSEAPlot(
-          gsea_result,
-          term           = pathway_sel,
-          stats          = stats_vec,
-          color_pos      = color_pos,
-          color_neg      = color_neg,
-          base_size      = font_size
+          data            = gsea_result,
+          gene_ranks      = stats_vec,
+          term            = pathway_sel,
+          color_pos       = color_pos,
+          color_neg       = color_neg,
+          base_size       = font_size
         )
       },
 
@@ -411,11 +421,6 @@ gsea_plots <- function(session_id, contrast_label, collection, subcategory, spec
     )
   }, error = function(e) stop("Plot generation failed: ", e$message))
 
-  # Render to PNG and encode as base64
-  w <- as.numeric(params$width  %||% 9)
-  h <- as.numeric(params$height %||% 7)
-  tmp <- tempfile(fileext = ".png")
-  on.exit(unlink(tmp), add = TRUE)
   ggplot2::ggsave(tmp, p, width = w, height = h, dpi = 150, bg = "white")
   b64 <- paste0("data:image/png;base64,",
                 base64enc::base64encode(readBin(tmp, "raw", file.info(tmp)$size)))
