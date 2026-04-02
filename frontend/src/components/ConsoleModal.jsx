@@ -367,7 +367,7 @@ function buildHtmlExport(md, sessionRows, contrasts, gseaRuns, alpha) {
     <p>Methods &amp; Session Report — ${new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })}</p>
   </div>
   <div class="doc-logo">
-    <svg width="39" height="39" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg width="50" height="50" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="exp-hg" x1="3" y1="5" x2="37" y2="35" gradientUnits="userSpaceOnUse">
           <stop offset="0%" stop-color="#4f46e5"/><stop offset="100%" stop-color="#7c3aed"/>
@@ -379,7 +379,7 @@ function buildHtmlExport(md, sessionRows, contrasts, gseaRuns, alpha) {
       <path d="M 37,20 L 28.5,34.7 L 11.5,34.7 L 3,20 L 11.5,5.3 L 28.5,5.3 Z" fill="url(#exp-hg)" filter="url(#exp-hf)"/>
       <text x="20" y="25" text-anchor="middle" fill="white" font-family="Inter,system-ui,sans-serif" font-weight="800" font-size="15">D</text>
     </svg>
-    <svg width="39" height="39" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg width="50" height="50" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="exp-trex" x1="3" y1="5" x2="37" y2="35" gradientUnits="userSpaceOnUse">
           <stop offset="0%" stop-color="#1e1b4b"/><stop offset="100%" stop-color="#312e81"/>
