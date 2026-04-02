@@ -74,47 +74,65 @@ function SectionLabel({ children }) {
   )
 }
 
-// ── Per-sample KDE Plotly chart (reused in modal) ─────────────────────────────
-function SampleDensityChart({ histData, cutoffLog, height=420 }) {
+// ── Per-sample ridge plot (KDE stacked vertically) ───────────────────────────
+function SampleDensityChart({ histData, cutoffLog }) {
   const ref = useRef(null)
   useEffect(() => {
     if (!histData?.kdes || !ref.current) return
     const { kdes } = histData
-    const showLegend = kdes.length <= 24
 
-    const traces = kdes.map((kde,i) => ({
-      x: kde.x, y: kde.y,
-      type:'scatter', mode:'lines',
-      name: kde.sample,
-      line:{ color:SAMPLE_COLORS[i%SAMPLE_COLORS.length], width:1.6, shape:'spline' },
-      opacity:0.72, showlegend:showLegend,
-      hovertemplate:`<b>${kde.sample}</b><br>log₁p(count): %{x:.2f}<extra></extra>`,
-    }))
+    const maxY    = Math.max(...kdes.map(k => Math.max(...k.y)), 1e-9)
+    const spacing = 1.0
+    const yScale  = spacing * 0.85 / maxY
 
-    const gridColor = getComputedStyle(document.documentElement).getPropertyValue('--border').trim()||'#334155'
+    const traces = []
+    kdes.forEach((kde, i) => {
+      const color   = SAMPLE_COLORS[i % SAMPLE_COLORS.length]
+      const yOff    = i * spacing
+      const yShifted = kde.y.map(v => v * yScale + yOff)
+
+      // invisible baseline so fill:'tonexty' works
+      traces.push({
+        x: [kde.x[0], kde.x[kde.x.length - 1]],
+        y: [yOff, yOff],
+        type:'scatter', mode:'lines',
+        line:{ color:'transparent', width:0 },
+        showlegend:false, hoverinfo:'skip',
+      })
+      traces.push({
+        x: kde.x, y: yShifted,
+        type:'scatter', mode:'lines',
+        fill:'tonexty',
+        fillcolor: color + '38',   // ~22% opacity — underlying ridges visible
+        line:{ color, width:1.5, shape:'spline' },
+        name: kde.sample, showlegend:false,
+        hovertemplate:`<b>${kde.sample}</b><br>log₁p(norm count): %{x:.2f}<extra></extra>`,
+      })
+    })
+
     const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-3').trim()||'#94a3b8'
+    const chartH    = Math.min(Math.max(kdes.length * 32 + 60, 220), 680)
 
     const layout = {
-      height,
-      margin:{ t:10, r:showLegend?130:14, b:44, l:52 },
-      xaxis:{ title:{ text:'log₁p(raw count)', font:{size:10} }, color:textColor, gridcolor:gridColor, zeroline:false, tickfont:{size:9}, autorange:true },
-      yaxis:{ title:{ text:'Density', font:{size:10} }, color:textColor, gridcolor:gridColor, zeroline:false, tickfont:{size:9}, autorange:true },
+      height: chartH,
+      margin:{ t:10, r:14, b:44, l:130 },
+      xaxis:{ title:{ text:'log₁p(normalised count)', font:{size:10} }, color:textColor,
+              zeroline:false, tickfont:{size:9}, autorange:true },
+      yaxis:{ tickvals: kdes.map((_,i)=>i*spacing), ticktext: kdes.map(k=>k.sample),
+              tickfont:{size:9}, color:textColor, zeroline:false, showgrid:false, autorange:true },
       plot_bgcolor:'transparent', paper_bgcolor:'transparent',
-      legend:{ font:{size:9,color:textColor}, bgcolor:'transparent', x:1.01, y:1, xanchor:'left' },
-      hovermode:'x',
+      hovermode:'closest',
       shapes:[{
         type:'line', x0:cutoffLog, x1:cutoffLog, y0:0, y1:1, yref:'paper',
         line:{ color:'#f43f5e', width:2, dash:'dash' },
       }],
       annotations:[{
-        x:cutoffLog, y:0.97, yref:'paper', xanchor:'left',
-        text:' filter cutoff', font:{size:9,color:'#f87171'}, showarrow:false,
+        x:cutoffLog, y:0.99, yref:'paper', xanchor:'left',
+        text:' cutoff', font:{size:9,color:'#f87171'}, showarrow:false,
       }],
     }
-    Plotly.react(ref.current, traces, layout, {
-      displayModeBar:false, responsive:true,
-    })
-  }, [histData, cutoffLog, height])
+    Plotly.react(ref.current, traces, layout, { displayModeBar:false, responsive:true })
+  }, [histData, cutoffLog])
   return <div ref={ref} style={{ width:'100%' }} />
 }
 
@@ -140,7 +158,7 @@ function DistributionModal({ histData, cutoffLog, cutoffOrig, filterMethod, filt
 
         {/* Density chart */}
         {histData
-          ? <SampleDensityChart histData={histData} cutoffLog={cutoffLog} height={380} />
+          ? <SampleDensityChart histData={histData} cutoffLog={cutoffLog} />
           : <div style={{ height:380, display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text-3)' }}>Loading…</div>
         }
 
@@ -436,7 +454,9 @@ function MountainModal({ pathway, result, curveData, curveLoading, onClose }) {
         { type:'line', x0:peakX, x1:peakX, y0:0, y1:1, yref:'paper', line:{ color, width:1.2, dash:'dot' } },
         { type:'line', x0:0, x1:1, xref:'paper', y0:-0.055, y1:-0.055, line:{ color:'var(--border)', width:0.8 } },
       ],
-    }, { responsive:true, displaylogo:false, modeBarButtonsToRemove:['select2d','lasso2d'], toImageButtonOptions:{ filename:'enrichment_'+pathway, scale:2, format:'png' } })
+    }, { responsive:true, displaylogo:false, modeBarButtonsToRemove:['select2d','lasso2d'],
+         modebar:{ bgcolor:'rgba(255,255,255,0.75)', color:'#444', activecolor:'#000' },
+         toImageButtonOptions:{ filename:'enrichment_'+pathway, scale:2, format:'png' } })
   },[curveData,pathway,result])
 
   return (
