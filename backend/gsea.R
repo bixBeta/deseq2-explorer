@@ -8,11 +8,12 @@
 .results_dir <- function() Sys.getenv("RESULTS_DIR", file.path(dirname(getwd()), "data", "results"))
 
 # ── Internal: derive cache file path ──────────────────────────────────────────
-.gsea_cache_path <- function(session_id, contrast_label, collection, subcategory, species) {
+.gsea_cache_path <- function(session_id, contrast_label, collection, subcategory, species, run_id = NULL) {
   key <- paste0(
     session_id, "_gsea_",
     gsub("[^A-Za-z0-9]", "_", paste0(collection, "_", subcategory %||% "none")),
-    "_", gsub("[^A-Za-z0-9]", "_", contrast_label %||% "default")
+    "_", gsub("[^A-Za-z0-9]", "_", contrast_label %||% "default"),
+    if (!is.null(run_id)) paste0("_", run_id) else ""
   )
   file.path(.results_dir(), paste0(key, ".rds"))
 }
@@ -159,7 +160,7 @@ gsea_preview <- function(session_id, contrast_label) {
 # ── gsea_run: clusterProfiler::GSEA against a MSigDB collection ───────────────
 gsea_run <- function(session_id, contrast_label, rank_method, collection, subcategory,
                      species, min_size, max_size, score_type, n_perm, padj_method,
-                     filter_method, filter_value, ann_map) {
+                     filter_method, filter_value, ann_map, run_id = NULL) {
   if (!requireNamespace("clusterProfiler", quietly = TRUE)) stop("R package 'clusterProfiler' is not installed on the server")
   if (!requireNamespace("msigdbr",         quietly = TRUE)) stop("R package 'msigdbr' is not installed on the server")
   library(clusterProfiler); library(msigdbr)
@@ -236,7 +237,7 @@ gsea_run <- function(session_id, contrast_label, rank_method, collection, subcat
   })
 
   # Cache stats_vec + gene_sets + gseaResult for curve + plots endpoints
-  cache_path <- .gsea_cache_path(session_id, contrast_label, collection, subcategory, species)
+  cache_path <- .gsea_cache_path(session_id, contrast_label, collection, subcategory, species, run_id)
   tryCatch(
     saveRDS(list(stats_vec = stats_vec, gene_sets = gene_sets, gsea_result = gsea_res), cache_path),
     error = function(e) message("[gsea] Cache save failed: ", e$message)
@@ -258,8 +259,8 @@ gsea_run <- function(session_id, contrast_label, rank_method, collection, subcat
 
 # ── gsea_curve: weighted running enrichment score for one pathway ──────────────
 gsea_curve <- function(session_id, contrast_label, pathway,
-                        collection, subcategory, species) {
-  cache_path <- .gsea_cache_path(session_id, contrast_label, collection, subcategory, species)
+                        collection, subcategory, species, run_id = NULL) {
+  cache_path <- .gsea_cache_path(session_id, contrast_label, collection, subcategory, species, run_id)
   if (!file.exists(cache_path)) stop("GSEA cache not found — please run GSEA first")
 
   cache     <- readRDS(cache_path)
@@ -305,8 +306,8 @@ gsea_curve <- function(session_id, contrast_label, pathway,
 
 # ── gsea_plots: render clusterProfiler / enrichplot visualisations ──────────────
 gsea_plots <- function(session_id, contrast_label, collection, subcategory, species,
-                       plot_type, params) {
-  cache_path <- .gsea_cache_path(session_id, contrast_label, collection, subcategory, species)
+                       plot_type, params, run_id = NULL) {
+  cache_path <- .gsea_cache_path(session_id, contrast_label, collection, subcategory, species, run_id)
   if (!file.exists(cache_path)) stop("GSEA cache not found — please run GSEA first")
 
   cache       <- readRDS(cache_path)

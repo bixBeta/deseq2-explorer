@@ -232,24 +232,59 @@ function NESBar({ nes, maxAbs }) {
 }
 
 // ── Run chips ─────────────────────────────────────────────────────────────────
+function RunChip({ r, active, onSelect, onRemove }) {
+  const [hover, setHover] = useState(false)
+  const p = r.params ?? {}
+  const RANK_LABELS = { log2FC:'LFC', stat:'Wald stat', shrunkLFC:'Shrunk LFC', signedNegLog10p:'−log₁₀p' }
+  const FILTER_LABELS = { quantile:'Quantile', abs_lfc:'|LFC|', pvalue:'p-value', padj:'padj' }
+  return (
+    <div style={{ position:'relative' }}
+      onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}>
+      <div onClick={()=>onSelect(r.id)}
+        style={{ display:'flex', alignItems:'center', gap:5, padding:'3px 10px', borderRadius:20,
+          cursor:'pointer', userSelect:'none', background:active?V.muted:'var(--bg-card2)',
+          border:`1px solid ${active?V.border:'var(--border)'}`, transition:'all 0.12s' }}>
+        <span style={{ fontSize:'0.7rem', fontWeight:700, color:active?'var(--text-1)':'var(--text-2)' }}>{r.collectionLabel}</span>
+        <span style={{ fontSize:'0.64rem', color:'var(--text-3)' }}>·{r.rankShort}</span>
+        <span style={{ fontSize:'0.62rem', color:active?V.text:'var(--text-4)', fontFamily:'monospace' }}>{r.meta?.n_pathways}↗</span>
+        <span style={{ fontSize:'0.6rem', color:'var(--text-4)' }}>{r.timestamp}</span>
+        <button onClick={e=>{ e.stopPropagation(); onRemove(r.id) }}
+          style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text-4)', fontSize:'0.82rem', lineHeight:1, padding:'0 1px', marginLeft:1 }}>×</button>
+      </div>
+      {hover && (
+        <div style={{ position:'absolute', top:'calc(100% + 6px)', left:0, zIndex:400, minWidth:240,
+          background:'var(--bg-panel)', border:`1px solid ${V.border}`, borderRadius:8,
+          padding:'10px 12px', boxShadow:'0 8px 24px rgba(0,0,0,0.35)', pointerEvents:'none' }}>
+          <div style={{ fontSize:'0.65rem', fontWeight:700, color:V.text, marginBottom:6, textTransform:'uppercase', letterSpacing:'0.05em' }}>Run Parameters</div>
+          {[
+            ['Collection', r.collectionLabel + (r.collectionSub ? ` / ${r.collectionSub}` : '')],
+            ['Rank by',    RANK_LABELS[p.rankMethod] ?? p.rankMethod],
+            ['padj method',p.pAdjMethod],
+            ['padj cutoff',p.padjCutoff],
+            ['Filter',     `${FILTER_LABELS[p.filterMethod] ?? p.filterMethod} > ${p.filterValue}`],
+            ['Gene set size', `${p.minSize}–${p.maxSize}`],
+            ['Species',    p.species],
+            ['Time',       r.timestamp],
+          ].map(([k,v])=>(
+            <div key={k} style={{ display:'flex', justifyContent:'space-between', gap:12, marginBottom:3 }}>
+              <span style={{ fontSize:'0.65rem', color:'var(--text-3)', whiteSpace:'nowrap' }}>{k}</span>
+              <span style={{ fontSize:'0.65rem', color:'var(--text-1)', fontFamily:'monospace', textAlign:'right' }}>{v}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function RunChips({ runs, activeRunId, onSelect, onRemove }) {
   if (!runs.length) return null
   return (
-    <div style={{ display:'flex', gap:6, flexWrap:'wrap', paddingBottom:10, borderBottom:`1px solid ${V.border}`, marginBottom:10 }}>
+    <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center', paddingBottom:10, borderBottom:`1px solid ${V.border}`, marginBottom:10 }}>
       <span style={{ fontSize:'0.65rem', color:'var(--text-4)', alignSelf:'center', whiteSpace:'nowrap', textTransform:'uppercase', letterSpacing:'0.05em' }}>Runs:</span>
-      {runs.map(r => {
-        const active = r.id===activeRunId
-        return (
-          <div key={r.id} onClick={()=>onSelect(r.id)}
-            style={{ display:'flex', alignItems:'center', gap:5, padding:'3px 10px', borderRadius:20, cursor:'pointer', userSelect:'none', background:active?V.muted:'var(--bg-card2)', border:`1px solid ${active?V.border:'var(--border)'}`, transition:'all 0.12s' }}>
-            <span style={{ fontSize:'0.7rem', fontWeight:700, color:active?'var(--text-1)':'var(--text-2)' }}>{r.collectionLabel}</span>
-            <span style={{ fontSize:'0.64rem', color:'var(--text-3)' }}>·{r.rankShort}</span>
-            <span style={{ fontSize:'0.62rem', color:active?'rgba(196,181,253,0.6)':'var(--text-4)', fontFamily:'monospace' }}>{r.meta?.n_pathways}↗</span>
-            <button onClick={e=>{ e.stopPropagation(); onRemove(r.id) }}
-              style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text-4)', fontSize:'0.82rem', lineHeight:1, padding:'0 1px', marginLeft:1 }}>×</button>
-          </div>
-        )
-      })}
+      {runs.map(r => (
+        <RunChip key={r.id} r={r} active={r.id===activeRunId} onSelect={onSelect} onRemove={onRemove} />
+      ))}
     </div>
   )
 }
@@ -530,6 +565,7 @@ function PlotsPanel({ run, session, contrastLabel }) {
           collection:    run.collectionId,
           subcategory:   run.collectionSub,
           species:       run.species,
+          runId:         run.id,
           plotType,
           params: {
             n_show:    nShow,
@@ -863,20 +899,22 @@ export default function GSEAExplorer({ session, contrastLabel, annMap }) {
     setRunning(true); setRunError(null)
     let tick=0; const timer=setInterval(()=>setElapsed(++tick),1000)
     try {
+      const runId = Date.now()
       const r=await fetch('/api/gsea/run',{ method:'POST', headers:{'Content-Type':'application/json'},
         body:JSON.stringify({ sessionId:session.sessionId, contrastLabel, rankMethod,
           collection:collection.id, subcategory:collection.sub, species,
           minSize, maxSize, scoreType, nPerm, pAdjMethod, padjCutoff,
-          filterMethod, filterValue, annMap:annMap||null }), signal:ctrl.signal })
+          filterMethod, filterValue, annMap:annMap||null, runId }), signal:ctrl.signal })
       const data=await r.json()
       if(data.error) throw new Error(data.error)
       const rm=RANK_METHODS.find(m=>m.value===rankMethod)
-      const newRun={ id:Date.now(), collectionLabel:collection.label, collectionKey:collection.key,
+      const newRun={ id:runId, collectionLabel:collection.label, collectionKey:collection.key,
         collectionId:collection.id, collectionSub:collection.sub,
         rankMethod, rankShort:rm?.short??rankMethod, filterMethod, filterValue, species,
         scoreType, nPerm, pAdjMethod, padjCutoff,
         results:data.results, rankedList:data.rankedList, meta:data.meta,
-        timestamp:new Date().toLocaleTimeString(), contrastLabel }
+        timestamp:new Date().toLocaleTimeString(), contrastLabel,
+        params: { rankMethod, pAdjMethod, padjCutoff, minSize, maxSize, filterMethod, filterValue, species } }
       setRuns(prev=>[...prev,newRun])
       setActiveRunId(newRun.id)
       setContentTab('results'); curveCacheRef.current={}
@@ -895,7 +933,7 @@ export default function GSEAExplorer({ session, contrastLabel, annMap }) {
       const r=await fetch('/api/gsea/curve',{ method:'POST', headers:{'Content-Type':'application/json'},
         body:JSON.stringify({ sessionId:session.sessionId, contrastLabel, pathway:result.pathway,
           collection:ar?.collectionId??collection.id, subcategory:ar?.collectionSub??collection.sub,
-          species:ar?.species??species }) })
+          species:ar?.species??species, runId:ar?.id }) })
       const data=await r.json()
       if(data.error) throw new Error(data.error)
       curveCacheRef.current[result.pathway]=data; setCurveData(data)

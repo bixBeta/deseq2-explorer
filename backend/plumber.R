@@ -1796,7 +1796,8 @@ function(req, res) {
     padj_method    = body$pAdjMethod    %||% "BH",
     filter_method  = body$filterMethod  %||% "quantile",
     filter_value   = body$filterValue   %||% 0.25,
-    ann_map        = body$annMap
+    ann_map        = body$annMap,
+    run_id         = body$runId
   )
 }
 
@@ -1813,7 +1814,8 @@ function(req, res) {
     pathway        = body$pathway,
     collection     = body$collection    %||% "H",
     subcategory    = body$subcategory,
-    species        = body$species       %||% "Homo sapiens"
+    species        = body$species       %||% "Homo sapiens",
+    run_id         = body$runId
   )
 }
 
@@ -1831,6 +1833,7 @@ function(req, res) {
     subcategory    = body$subcategory,
     species        = body$species       %||% "Homo sapiens",
     plot_type      = body$plotType      %||% "dotplot",
-    params         = body$params        %||% list()
+    params         = body$params        %||% list(),
+    run_id         = body$runId
   )
 }
