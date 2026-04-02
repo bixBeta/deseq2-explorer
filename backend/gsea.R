@@ -421,7 +421,7 @@ gsea_plots <- function(session_id, contrast_label, collection, subcategory, spec
         pathway_sel <- as.character(params$pathways %||% character(0))
         if (length(pathway_sel) == 0) {
           res_df      <- as.data.frame(gsea_result)
-          pathway_sel <- head(res_df$ID[order(res_df$p.adjust)], 3L)
+          pathway_sel <- head(res_df$ID[order(res_df$p.adjust)], n_show)
         }
         # Shorten Description labels: strip leading collection prefix (e.g. HALLMARK_, KEGG_)
         # and truncate to avoid overlapping curve labels
