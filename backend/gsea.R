@@ -3,6 +3,10 @@
 
 `%||%` <- function(x, y) if (!is.null(x) && length(x) > 0) x else y
 
+# Resolve dirs the same way plumber.R does — self-contained, no lexical dependency
+.upload_dir  <- function() Sys.getenv("UPLOAD_DIR",  file.path(dirname(getwd()), "data", "uploads"))
+.results_dir <- function() Sys.getenv("RESULTS_DIR", file.path(dirname(getwd()), "data", "results"))
+
 # ── Internal: derive cache file path ──────────────────────────────────────────
 .gsea_cache_path <- function(session_id, contrast_label, collection, subcategory, species) {
   key <- paste0(
@@ -10,7 +14,7 @@
     gsub("[^A-Za-z0-9]", "_", paste0(collection, "_", subcategory %||% "none")),
     "_", gsub("[^A-Za-z0-9]", "_", contrast_label %||% "default")
   )
-  file.path(RESULTS_DIR, paste0(key, ".rds"))
+  file.path(.results_dir(), paste0(key, ".rds"))
 }
 
 # ── Internal: locate contrast results from saved RDS ──────────────────────────
@@ -27,8 +31,8 @@
 # ── Internal: build the ranked statistics vector ───────────────────────────────
 .build_ranked_vec <- function(session_id, contrast_label, rank_method,
                                filter_method, filter_value, ann_map) {
-  results_path <- file.path(RESULTS_DIR, paste0(session_id, "_results.rds"))
-  upload_path  <- file.path(UPLOAD_DIR,  paste0(session_id, ".rds"))
+  results_path <- file.path(.results_dir(), paste0(session_id, "_results.rds"))
+  upload_path  <- file.path(.upload_dir(),  paste0(session_id, ".rds"))
   if (!file.exists(results_path)) stop("Results not found — please run DESeq2 first")
   if (!file.exists(upload_path))  stop("Upload not found")
 
@@ -88,8 +92,8 @@
 
 # ── gsea_preview: row-median histogram for the filter density plot ─────────────
 gsea_preview <- function(session_id, contrast_label) {
-  upload_path  <- file.path(UPLOAD_DIR,  paste0(session_id, ".rds"))
-  results_path <- file.path(RESULTS_DIR, paste0(session_id, "_results.rds"))
+  upload_path  <- file.path(.upload_dir(),  paste0(session_id, ".rds"))
+  results_path <- file.path(.results_dir(), paste0(session_id, "_results.rds"))
   if (!file.exists(upload_path))  stop("Upload not found")
   if (!file.exists(results_path)) stop("Results not found — please run DESeq2 first")
 
