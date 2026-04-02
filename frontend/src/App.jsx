@@ -212,6 +212,7 @@ export default function App() {
       if (info.annMap    && Object.keys(info.annMap).length    > 0) setAnnMap(info.annMap)
       if (info.annDetails && Object.keys(info.annDetails).length > 0) setAnnDetails(info.annDetails)
       if (info.sampleLabels && Object.keys(info.sampleLabels).length > 0) setSampleLabels(info.sampleLabels)
+      if (info.gseaRuns?.length > 0) setGseaRuns(info.gseaRuns)
       // Restore metaState so "Add Contrast" can route back to the design panel
       if (info.metadataRows?.length > 0) {
         const norm = normParseInfo(info)
@@ -259,7 +260,7 @@ export default function App() {
   }
 
   /* ── Build save payload (shared by manual save, autosave, beacon) ── */
-  function buildSaveBody(ms = metaState, sl = sampleLabels) {
+  function buildSaveBody(ms = metaState, sl = sampleLabels, gr = gseaRuns) {
     const body = { sessionId: session.sessionId, email: auth.email, pin: auth.pin }
     if (ms) {
       body.keepSamples = [...ms.selected]
@@ -268,6 +269,7 @@ export default function App() {
     if (annMap     && Object.keys(annMap).length     > 0) body.annMap     = annMap
     if (annDetails && Object.keys(annDetails).length > 0) body.annDetails = annDetails
     if (sl && Object.keys(sl).length > 0) body.sampleLabels = sl
+    if (gr?.length > 0) body.gseaRuns = gr
     return body
   }
 
@@ -296,12 +298,14 @@ export default function App() {
   const sessionRef      = useRef(session)
   const authRef         = useRef(auth)
   const sampleLabelsRef = useRef(sampleLabels)
+  const gseaRunsRef     = useRef(gseaRuns)
   useEffect(() => { annMapRef.current       = annMap        }, [annMap])
   useEffect(() => { annDetailsRef.current   = annDetails    }, [annDetails])
   useEffect(() => { metaRef.current         = metaState     }, [metaState])
   useEffect(() => { sessionRef.current      = session       }, [session])
   useEffect(() => { authRef.current         = auth          }, [auth])
   useEffect(() => { sampleLabelsRef.current = sampleLabels  }, [sampleLabels])
+  useEffect(() => { gseaRunsRef.current     = gseaRuns      }, [gseaRuns])
 
   useEffect(() => {
     function onUnload() {
@@ -319,6 +323,8 @@ export default function App() {
       if (am && Object.keys(am).length > 0) body.annMap = am
       if (ad && Object.keys(ad).length > 0) body.annDetails = ad
       if (sl && Object.keys(sl).length > 0) body.sampleLabels = sl
+      const gr = gseaRunsRef.current
+      if (gr?.length > 0) body.gseaRuns = gr
       navigator.sendBeacon('/api/session/save', new Blob([JSON.stringify(body)], { type: 'application/json' }))
     }
     window.addEventListener('beforeunload', onUnload)
@@ -531,7 +537,8 @@ export default function App() {
                    session={session} annMap={annMap} annDetails={annDetails}
                    sampleLabels={sampleLabels}
                    onAnnotate={(map, details) => { setAnnMap(map); setAnnDetails(details || null) }}
-                   onGseaRunsChange={setGseaRuns} />
+                   onGseaRunsChange={setGseaRuns}
+                   initialGseaRuns={gseaRuns} />
         )}
        </ErrorBoundary>
       </main>

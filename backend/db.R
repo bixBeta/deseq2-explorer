@@ -23,7 +23,7 @@ get_db <- function() {
     )
   ")
   # Safely add columns when upgrading from older schema
-  for (col_def in c("name TEXT", "ann_map_json TEXT", "ann_details_json TEXT", "sample_labels_json TEXT")) {
+  for (col_def in c("name TEXT", "ann_map_json TEXT", "ann_details_json TEXT", "sample_labels_json TEXT", "gsea_runs_json TEXT")) {
     tryCatch(
       dbExecute(con, paste("ALTER TABLE sessions ADD COLUMN", col_def)),
       error = function(e) invisible(NULL)
@@ -91,7 +91,7 @@ session_load_by_id <- function(id, email, pin_hash) {
 session_update <- function(id, design_json = NULL, rds_path = NULL,
                            results_path = NULL, name = NULL,
                            ann_map_json = NULL, ann_details_json = NULL,
-                           sample_labels_json = NULL) {
+                           sample_labels_json = NULL, gsea_runs_json = NULL) {
   now <- format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
   con <- get_db()
   on.exit(dbDisconnect(con))
@@ -102,6 +102,7 @@ session_update <- function(id, design_json = NULL, rds_path = NULL,
   if (!is.null(ann_map_json))       dbExecute(con, "UPDATE sessions SET ann_map_json=?,       updated_at=? WHERE id=?", list(ann_map_json,       now, id))
   if (!is.null(ann_details_json))   dbExecute(con, "UPDATE sessions SET ann_details_json=?,   updated_at=? WHERE id=?", list(ann_details_json,   now, id))
   if (!is.null(sample_labels_json)) dbExecute(con, "UPDATE sessions SET sample_labels_json=?, updated_at=? WHERE id=?", list(sample_labels_json, now, id))
+  if (!is.null(gsea_runs_json))     dbExecute(con, "UPDATE sessions SET gsea_runs_json=?,     updated_at=? WHERE id=?", list(gsea_runs_json,     now, id))
   invisible(TRUE)
 }
 

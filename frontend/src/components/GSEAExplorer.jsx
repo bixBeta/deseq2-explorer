@@ -384,39 +384,84 @@ function ResultsTable({ run, onPathwayClick, selectedPathway }) {
 }
 
 // ── Ranked list panel ─────────────────────────────────────────────────────────
+const PER_PAGE_OPTIONS = [50, 100, 200, 'All']
+
 function RankedListPanel({ run }) {
-  const [page,setPage]=useState(0)
-  const PER=50
-  const list=run?.rankedList??[]
-  const pages=Math.ceil(list.length/PER)
-  const pageData=list.slice(page*PER,(page+1)*PER)
-  const maxAbs=useMemo(()=>Math.max(...list.map(r=>Math.abs(r.score||0)),1),[list])
-  const gOff=page*PER
+  const [page,    setPage]    = useState(0)
+  const [perPage, setPerPage] = useState(50)
+  const [sortAsc, setSortAsc] = useState(false)  // default: high→low (desc)
 
-  if(!list.length) return <div style={{ padding:40, textAlign:'center', color:'var(--text-3)' }}>Run GSEA to see the ranked list</div>
+  const rawList = run?.rankedList ?? []
 
-  const CB=`1px solid var(--border)`
+  const list = useMemo(() => {
+    const sorted = [...rawList].sort((a,b) => sortAsc ? a.score - b.score : b.score - a.score)
+    return sorted
+  }, [rawList, sortAsc])
+
+  const PER    = perPage === 'All' ? list.length : perPage
+  const pages  = perPage === 'All' ? 1 : Math.ceil(list.length / PER)
+  const gOff   = page * PER
+  const pageData = list.slice(gOff, gOff + PER)
+  const maxAbs = useMemo(() => Math.max(...list.map(r => Math.abs(r.score || 0)), 1), [list])
+
+  // Reset to page 0 when perPage or sort changes
+  const prevPer  = useRef(perPage)
+  const prevSort = useRef(sortAsc)
+  if (prevPer.current !== perPage || prevSort.current !== sortAsc) {
+    prevPer.current = perPage; prevSort.current = sortAsc; setPage(0)
+  }
+
+  if (!list.length) return <div style={{ padding:40, textAlign:'center', color:'var(--text-3)' }}>Run GSEA to see the ranked list</div>
+
+  const CB = `1px solid var(--border)`
+  const selStyle = { padding:'3px 8px', borderRadius:6, fontSize:'0.72rem', border:`1px solid ${V.border}`, background:'var(--bg-card2)', color:'var(--text-2)', cursor:'pointer' }
+
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+      {/* Toolbar */}
       <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
         <span style={{ fontSize:'0.78rem', color:'var(--text-2)', fontWeight:600 }}>{list.length.toLocaleString()} genes ranked</span>
         <span style={{ fontSize:'0.72rem', color:V.up }}>↑ {list.filter(r=>r.score>0).length.toLocaleString()} positive</span>
         <span style={{ fontSize:'0.72rem', color:V.down }}>↓ {list.filter(r=>r.score<0).length.toLocaleString()} negative</span>
-        <button onClick={()=>downloadCSV(list.map((r,i)=>({ rank:i+1,gene:r.gene,score:r.score })),`ranked_list_${run?.collectionLabel?.replace(/\s/g,'_')}.csv`)}
+
+        {/* Sort toggle */}
+        <button onClick={() => setSortAsc(s => !s)}
+          style={{ ...selStyle, display:'flex', alignItems:'center', gap:4, color: 'var(--text-2)' }}
+          title="Toggle score sort order">
+          Score {sortAsc ? '↑ Low→High' : '↓ High→Low'}
+        </button>
+
+        {/* Per-page selector */}
+        <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+          <span style={{ fontSize:'0.7rem', color:'var(--text-3)' }}>Show</span>
+          {PER_PAGE_OPTIONS.map(opt => (
+            <button key={opt} onClick={() => setPerPage(opt)}
+              style={{ ...selStyle, fontWeight: perPage===opt ? 700 : 400,
+                color: perPage===opt ? 'var(--accent)' : 'var(--text-2)',
+                borderColor: perPage===opt ? 'rgba(var(--accent-rgb),0.4)' : V.border,
+                background: perPage===opt ? 'rgba(var(--accent-rgb),0.08)' : 'var(--bg-card2)' }}>
+              {opt}
+            </button>
+          ))}
+        </div>
+
+        <button onClick={() => downloadCSV(list.map((r,i) => ({ rank:i+1, gene:r.gene, score:r.score })), `ranked_list_${run?.collectionLabel?.replace(/\s/g,'_')}.csv`)}
           style={{ marginLeft:'auto', padding:'4px 10px', borderRadius:7, border:`1px solid ${V.border}`, background:V.muted, color:V.text, fontSize:'0.72rem', fontWeight:600, cursor:'pointer' }}>↓ CSV</button>
       </div>
+
+      {/* Table */}
       <div style={{ overflowX:'auto', borderRadius:10, border:CB }}>
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.78rem' }}>
           <thead><tr>
-            {[['#'],['Gene'],['Score'],['']].map(([l],i)=>(
+            {['#', 'Gene', 'Score', ''].map((l,i) => (
               <th key={i} style={{ padding:'7px 10px', fontSize:'0.65rem', fontWeight:700, letterSpacing:'0.05em', textTransform:'uppercase', color:'var(--text-3)', background:'var(--bg-card2)', border:CB }}>{l}</th>
             ))}
           </tr></thead>
           <tbody>
-            {pageData.map((r,i)=>{
-              const rank=gOff+i+1; const pos=r.score>0
+            {pageData.map((r, i) => {
+              const rank = gOff + i + 1; const pos = r.score > 0
               return (
-                <tr key={rank} style={{ background:i%2===0?'transparent':'rgba(255,255,255,0.015)' }}>
+                <tr key={rank} style={{ background: i%2===0 ? 'transparent' : 'rgba(255,255,255,0.015)' }}>
                   <td style={{ padding:'5px 10px', color:'var(--text-4)', fontFamily:'monospace', fontSize:'0.7rem', border:CB }}>{rank}</td>
                   <td style={{ padding:'5px 10px', fontFamily:'monospace', fontWeight:600, color:'var(--text-1)', border:CB }}>{r.gene}</td>
                   <td style={{ padding:'5px 10px', fontFamily:'monospace', fontSize:'0.72rem', color:pos?V.up:V.down, border:CB }}>{r.score>0?'+':''}{r.score.toFixed(4)}</td>
@@ -429,12 +474,21 @@ function RankedListPanel({ run }) {
           </tbody>
         </table>
       </div>
-      {pages>1 && (
-        <div style={{ display:'flex', gap:4, justifyContent:'center', alignItems:'center' }}>
-          {[['←',()=>setPage(p=>Math.max(0,p-1)),page===0],['→',()=>setPage(p=>Math.min(pages-1,p+1)),page===pages-1]].map(([l,fn,dis])=>(
-            <button key={l} onClick={fn} disabled={dis} style={{ padding:'3px 10px', borderRadius:6, fontSize:'0.75rem', cursor:dis?'default':'pointer', background:'var(--bg-card2)', border:`1px solid ${V.border}`, color:'var(--text-2)', opacity:dis?0.4:1 }}>{l}</button>
-          ))}
-          <span style={{ fontSize:'0.72rem', color:'var(--text-3)' }}>{page+1}/{pages}</span>
+
+      {/* Pagination */}
+      {pages > 1 && (
+        <div style={{ display:'flex', gap:6, justifyContent:'center', alignItems:'center' }}>
+          <button onClick={() => setPage(0)} disabled={page===0}
+            style={{ ...selStyle, opacity:page===0?0.4:1 }}>«</button>
+          <button onClick={() => setPage(p => Math.max(0, p-1))} disabled={page===0}
+            style={{ ...selStyle, opacity:page===0?0.4:1 }}>‹</button>
+          <span style={{ fontSize:'0.72rem', color:'var(--text-3)', minWidth:60, textAlign:'center' }}>
+            {page+1} / {pages}
+          </span>
+          <button onClick={() => setPage(p => Math.min(pages-1, p+1))} disabled={page===pages-1}
+            style={{ ...selStyle, opacity:page===pages-1?0.4:1 }}>›</button>
+          <button onClick={() => setPage(pages-1)} disabled={page===pages-1}
+            style={{ ...selStyle, opacity:page===pages-1?0.4:1 }}>»</button>
         </div>
       )}
     </div>
@@ -822,7 +876,7 @@ function MountainModal({ pathway, result, curveData, curveLoading, onClose }) {
 }
 
 // ── Main GSEAExplorer ─────────────────────────────────────────────────────────
-export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsChange }) {
+export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsChange, initialRuns }) {
   const [rankMethod,   setRankMethod]   = useState('log2FC')
   const [collection,   setCollection]   = useState(COLLECTIONS[0])
   const [species,      setSpecies]      = useState('Homo sapiens')
@@ -843,7 +897,7 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
   const [runError, setRunError] = useState(null)
   const [elapsed,  setElapsed]  = useState(0)
 
-  const [runs,        setRuns]        = useState([])
+  const [runs,        setRuns]        = useState(() => initialRuns ?? [])
   const [activeRunId, setActiveRunId] = useState(null)
 
   // Only show runs belonging to the current contrast

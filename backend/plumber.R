@@ -211,6 +211,12 @@ function(req, res) {
     error = function(e) NULL
   )
 
+  gsea_runs_out <- tryCatch(
+    if (!is.na(row$gsea_runs_json[1]) && nchar(row$gsea_runs_json[1]) > 0)
+      fromJSON(row$gsea_runs_json[1], simplifyVector = FALSE) else NULL,
+    error = function(e) NULL
+  )
+
   list(
     sessionId    = row$id[1],
     name         = if (!is.na(row$name[1])) row$name[1] else "Session",
@@ -223,7 +229,8 @@ function(req, res) {
     results      = results_out,
     annMap       = ann_map_out,
     annDetails   = ann_details_out,
-    sampleLabels = sample_labels_out
+    sampleLabels = sample_labels_out,
+    gseaRuns     = gsea_runs_out
   )
 }
 
@@ -407,6 +414,7 @@ function(req, res) {
   ann_map      <- body$annMap       # named list gene_id -> symbol, or NULL
   ann_details  <- body$annDetails   # named list gene_id -> { description, biotype, ... }
   sample_labels <- body$sampleLabels # named list originalSample -> displayLabel, or NULL
+  gsea_runs    <- body$gseaRuns     # array of GSEA run objects, or NULL
 
   if (is.null(email) || is.null(pin)) stop("email and pin are required")
   if (is.null(session_id) || session_id == "") stop("sessionId is required")
@@ -449,12 +457,13 @@ function(req, res) {
 
   saveRDS(list(counts = counts, metadata = meta), rds_path)
 
-  # Persist annotation map and details if provided
+  # Persist annotation map, details, sample labels, and GSEA runs if provided
   ann_map_json        <- if (!is.null(ann_map)      && length(ann_map)      > 0) toJSON(ann_map,      auto_unbox = TRUE) else NULL
   ann_details_json    <- if (!is.null(ann_details)  && length(ann_details)  > 0) toJSON(ann_details,  auto_unbox = TRUE) else NULL
   sample_labels_json  <- if (!is.null(sample_labels) && length(sample_labels) > 0) toJSON(sample_labels, auto_unbox = TRUE) else NULL
+  gsea_runs_json      <- if (!is.null(gsea_runs)    && length(gsea_runs)    > 0) toJSON(gsea_runs,    auto_unbox = TRUE) else NULL
   session_update(session_id, ann_map_json = ann_map_json, ann_details_json = ann_details_json,
-                 sample_labels_json = sample_labels_json)
+                 sample_labels_json = sample_labels_json, gsea_runs_json = gsea_runs_json)
 
   list(ok = TRUE)
 }
@@ -1819,7 +1828,7 @@ function(req, res) {
   )
 }
 
-# ── GSEA: clusterProfiler / plotthis visualisation plots ──────────────────────
+# ── GSEA: clusterProfiler / enrichplot visualisation plots ────────────────────
 #* @post /api/gsea/plots
 #* @serializer unboxedJSON
 function(req, res) {

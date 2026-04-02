@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import methodsMd from '../../public/methods.md?raw'
+import methodsMd from '../methods.md?raw'
 
 // ── Simple markdown → JSX renderer ───────────────────────────────────────────
 function renderMd(md) {
@@ -171,35 +171,163 @@ function inlineRender(text) {
 }
 
 // ── HTML export ───────────────────────────────────────────────────────────────
-function mdToHtml(md) {
-  return md
-    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/^---$/gm, '<hr>')
-    .replace(/^[-*] (.+)$/gm, '<li>$1</li>')
-    .replace(/(<li>.*<\/li>\n?)+/g, m => `<ul>${m}</ul>`)
-    .replace(/```[a-z]*\n([\s\S]*?)```/gm, (_, code) =>
-      `<pre><code>${code.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code></pre>`)
-    .split('\n\n')
-    .map(block => block.trim().startsWith('<') ? block : `<p>${block}</p>`)
-    .join('\n')
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
 }
 
-function buildHtmlExport(md, sessionParams) {
-  const paramsHtml = sessionParams ? `
-  <section>
-    <h2>Session Parameters</h2>
-    <table>
-      <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
-      <tbody>
-        ${sessionParams.map(([k,v]) => `<tr><td>${k}</td><td><code>${v ?? '—'}</code></td></tr>`).join('')}
-      </tbody>
-    </table>
-  </section>
-  <hr>` : ''
+function inlineHtml(text) {
+  // Escape HTML first, then apply markdown inline syntax
+  return escHtml(text)
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" style="color:#0e7490">$1</a>')
+}
+
+function mdToHtml(md) {
+  const lines = md.split('\n')
+  const out = []
+  let i = 0
+
+  while (i < lines.length) {
+    const line = lines[i]
+
+    // Fenced code block — extracted BEFORE any inline processing
+    if (line.startsWith('```')) {
+      const codeLines = []
+      i++
+      while (i < lines.length && !lines[i].startsWith('```')) { codeLines.push(lines[i]); i++ }
+      i++ // skip closing ```
+      out.push(`<pre><code>${escHtml(codeLines.join('\n'))}</code></pre>`)
+      continue
+    }
+
+    // Pipe table
+    if (line.startsWith('|') && lines[i + 1]?.startsWith('|---')) {
+      const headers = line.split('|').map(s => s.trim()).filter(Boolean)
+      i += 2
+      const rows = []
+      while (i < lines.length && lines[i].startsWith('|')) {
+        rows.push(lines[i].split('|').map(s => s.trim()).filter(Boolean)); i++
+      }
+      out.push(
+        `<table><thead><tr>${headers.map(h => `<th>${inlineHtml(h)}</th>`).join('')}</tr></thead>` +
+        `<tbody>${rows.map(row => `<tr>${row.map(c => `<td>${inlineHtml(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`
+      )
+      continue
+    }
+
+    // HR
+    if (line.trim() === '---') { out.push('<hr>'); i++; continue }
+
+    // Headings (longest prefix first) — id attributes match TOC anchor hrefs
+    const slug = t => t.toLowerCase().replace(/[^\w\s-]/g,'').trim().replace(/\s+/g,'-')
+    if (line.startsWith('#### ')) { const t=line.slice(5); out.push(`<h4 id="${slug(t)}">${inlineHtml(t)}</h4>`); i++; continue }
+    if (line.startsWith('### '))  { const t=line.slice(4); out.push(`<h3 id="${slug(t)}">${inlineHtml(t)}</h3>`); i++; continue }
+    if (line.startsWith('## '))   { const t=line.slice(3); out.push(`<h2 id="${slug(t)}">${inlineHtml(t)}</h2>`); i++; continue }
+    if (line.startsWith('# '))    { const t=line.slice(2); out.push(`<h1 id="${slug(t)}">${inlineHtml(t)}</h1>`); i++; continue }
+
+    // TOC / anchor list items: - [Text](#anchor)
+    if (line.match(/^- \[/)) {
+      const items = []
+      while (i < lines.length && lines[i].match(/^- \[/)) {
+        const m = lines[i].match(/^- \[([^\]]+)\]\(([^)]+)\)/)
+        items.push(m ? `<li><a href="${m[2]}" style="color:#0e7490">${escHtml(m[1])}</a></li>`
+                     : `<li>${inlineHtml(lines[i].slice(2))}</li>`)
+        i++
+      }
+      out.push(`<ul>${items.join('')}</ul>`)
+      continue
+    }
+
+    // Bullet list
+    if (line.match(/^[-*] /)) {
+      const items = []
+      while (i < lines.length && lines[i].match(/^[-*] /)) {
+        items.push(`<li>${inlineHtml(lines[i].slice(2))}</li>`); i++
+      }
+      out.push(`<ul>${items.join('')}</ul>`)
+      continue
+    }
+
+    // Empty line
+    if (line.trim() === '') { i++; continue }
+
+    // Paragraph — collect consecutive non-special lines
+    const paraLines = []
+    while (
+      i < lines.length &&
+      lines[i].trim() !== '' &&
+      !lines[i].startsWith('#') &&
+      !lines[i].startsWith('```') &&
+      !lines[i].startsWith('|') &&
+      lines[i].trim() !== '---' &&
+      !lines[i].match(/^[-*] /)
+    ) { paraLines.push(lines[i]); i++ }
+    if (paraLines.length) out.push(`<p>${inlineHtml(paraLines.join(' '))}</p>`)
+  }
+
+  return out.join('\n')
+}
+
+function buildHtmlExport(md, sessionRows, contrasts, gseaRuns, alpha) {
+  const eff_alpha = alpha ?? 0.05
+
+  const sessionHtml = sessionRows?.some(([,v]) => v != null) ? `
+<section>
+  <h2>Session Parameters</h2>
+  <table>
+    <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
+    <tbody>${sessionRows.filter(([,v]) => v != null).map(([k,v]) =>
+      `<tr><td>${escHtml(k)}</td><td><code>${escHtml(String(v))}</code></td></tr>`).join('')}
+    </tbody>
+  </table>
+</section>` : ''
+
+  const contrastsHtml = contrasts?.length ? `
+<section>
+  <h2>DESeq2 Contrasts</h2>
+  <table>
+    <thead><tr><th>Contrast</th><th>Genes tested</th><th>Sig. (padj&lt;α)</th><th>Up</th><th>Down</th></tr></thead>
+    <tbody>${contrasts.map(ct => {
+      const genes = ct.results ?? []
+      const sig   = genes.filter(g => g.padj != null && g.padj < eff_alpha)
+      const up    = sig.filter(g => g.log2FC > 0).length
+      const dn    = sig.length - up
+      return `<tr><td><code>${escHtml(ct.label ?? '')}</code></td><td>${genes.length.toLocaleString()}</td>` +
+             `<td>${sig.length.toLocaleString()}</td><td style="color:#059669">↑ ${up.toLocaleString()}</td>` +
+             `<td style="color:#dc2626">↓ ${dn.toLocaleString()}</td></tr>`
+    }).join('')}
+    </tbody>
+  </table>
+</section>` : ''
+
+  const RANK_LABELS_EXP   = { log2FC:'LFC', stat:'Wald stat', shrunkLFC:'Shrunk LFC', signedNegLog10p:'−log10p' }
+  const FILTER_LABELS_EXP = { quantile:'Quantile', abs_lfc:'|LFC|', pvalue:'p-value', padj:'padj' }
+
+  const gseaHtml = gseaRuns?.length ? `
+<section>
+  <h2>GSEA Runs (${gseaRuns.length})</h2>
+  <table>
+    <thead><tr><th>Contrast</th><th>Collection</th><th>Rank by</th><th>padj method</th><th>padj cutoff</th><th>Filter</th><th>Gene set size</th><th>Species</th><th>Pathways</th><th>Time</th></tr></thead>
+    <tbody>${gseaRuns.map(r => {
+      const p = r.params ?? r
+      return `<tr><td><code>${escHtml(r.contrastLabel ?? '')}</code></td>` +
+        `<td>${escHtml(r.collectionLabel ?? '')}${r.collectionSub ? ` / ${escHtml(r.collectionSub)}` : ''}</td>` +
+        `<td>${escHtml(RANK_LABELS_EXP[p.rankMethod] ?? p.rankMethod ?? '')}</td>` +
+        `<td>${escHtml(p.pAdjMethod ?? '')}</td>` +
+        `<td>${escHtml(String(p.padjCutoff ?? ''))}</td>` +
+        `<td>${escHtml((FILTER_LABELS_EXP[p.filterMethod] ?? p.filterMethod ?? '')+' > '+(p.filterValue ?? ''))}</td>` +
+        `<td>${escHtml(String(p.minSize ?? ''))}–${escHtml(String(p.maxSize ?? ''))}</td>` +
+        `<td>${escHtml(p.species ?? '')}</td>` +
+        `<td>${r.meta?.n_pathways ?? '—'}</td>` +
+        `<td>${escHtml(r.timestamp ?? '')}</td></tr>`
+    }).join('')}
+    </tbody>
+  </table>
+</section>` : ''
+
+  const hasParams = sessionHtml || contrastsHtml || gseaHtml
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -208,25 +336,28 @@ function buildHtmlExport(md, sessionParams) {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>DESeq2 ExploreR — Methods Report</title>
 <style>
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 860px; margin: 40px auto; padding: 0 24px; color: #1e293b; line-height: 1.65; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 900px; margin: 40px auto; padding: 0 24px; color: #1e293b; line-height: 1.65; }
   h1 { color: #0e7490; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; }
   h2 { color: #0e7490; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-top: 2rem; }
   h3 { color: #334155; margin-top: 1.5rem; }
-  code { background: #f1f5f9; padding: 1px 5px; border-radius: 3px; font-size: 0.85em; font-family: 'JetBrains Mono', monospace; color: #0e7490; }
-  pre { background: #1e293b; color: #e2e8f0; padding: 16px; border-radius: 8px; overflow-x: auto; }
-  pre code { background: none; color: inherit; font-size: 0.82rem; }
-  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.88rem; }
+  h4 { color: #475569; margin-top: 1rem; }
+  a { color: #0e7490; }
+  code { background: #f1f5f9; padding: 1px 5px; border-radius: 3px; font-size: 0.85em; font-family: 'JetBrains Mono', 'Fira Code', monospace; color: #0e7490; }
+  pre { background: #1e293b; color: #e2e8f0; padding: 16px 20px; border-radius: 8px; overflow-x: auto; margin: 0.6rem 0 1.2rem; }
+  pre code { background: none; color: inherit; font-size: 0.82rem; padding: 0; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0 1.5rem; font-size: 0.88rem; }
   th { background: #f1f5f9; padding: 8px 12px; text-align: left; border-bottom: 2px solid #cbd5e1; color: #0e7490; }
   td { padding: 6px 12px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
   tr:nth-child(even) td { background: #f8fafc; }
   hr { border: none; border-top: 1px solid #e2e8f0; margin: 2rem 0; }
   ul { padding-left: 1.5rem; }
-  li { margin-bottom: 0.25rem; }
+  li { margin-bottom: 0.3rem; }
+  p { margin: 0 0 0.8rem; }
   .generated { font-size: 0.75rem; color: #94a3b8; margin-top: 3rem; border-top: 1px solid #e2e8f0; padding-top: 1rem; }
 </style>
 </head>
 <body>
-${paramsHtml}
+${hasParams ? `${sessionHtml}${contrastsHtml}${gseaHtml}<hr>` : ''}
 ${mdToHtml(md)}
 <p class="generated">Generated by DESeq2 ExploreR — ${new Date().toLocaleString()}</p>
 </body>
@@ -293,7 +424,7 @@ export default function ConsoleModal({ onClose, session, design, results, parseI
   ]
 
   function handleExport() {
-    const html = buildHtmlExport(methodsMd, sessionRows)
+    const html = buildHtmlExport(methodsMd, sessionRows, contrasts, gseaRuns, alpha)
     const blob = new Blob([html], { type: 'text/html' })
     const a    = Object.assign(document.createElement('a'), {
       href: URL.createObjectURL(blob), download: 'deseq2-explorer-methods.html'
@@ -412,25 +543,33 @@ export default function ConsoleModal({ onClose, session, design, results, parseI
                       <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.79rem' }}>
                         <thead>
                           <tr style={{ background:'rgba(var(--accent-rgb),0.07)' }}>
-                            {['Contrast','Collection','Rank method','padj method','padj cutoff','Pathways','Time'].map(h=>(
+                            {['Contrast','Collection','Rank by','padj method','padj cutoff','Filter','Gene set size','Species','Pathways','Time'].map(h=>(
                               <th key={h} style={{ padding:'6px 10px', textAlign:'left', color:'var(--accent)',
                                 fontWeight:600, borderBottom:'2px solid var(--border)', whiteSpace:'nowrap' }}>{h}</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
-                          {gseaRuns.map((r, i) => (
-                            <tr key={r.id} style={{ background: i%2===0?'transparent':'rgba(255,255,255,0.02)',
-                              borderBottom:'1px solid var(--border)' }}>
-                              <td style={{ padding:'5px 10px', fontSize:'0.73rem', color:'var(--text-1)', fontFamily:'monospace' }}>{r.contrastLabel}</td>
-                              <td style={{ padding:'5px 10px', color:'var(--text-2)' }}>{r.collectionLabel}{r.collectionSub ? ` / ${r.collectionSub}` : ''}</td>
-                              <td style={{ padding:'5px 10px', color:'var(--text-2)' }}>{r.rankMethod}</td>
-                              <td style={{ padding:'5px 10px', color:'var(--text-2)' }}>{r.pAdjMethod}</td>
-                              <td style={{ padding:'5px 10px', color:'var(--text-2)' }}>{r.padjCutoff}</td>
-                              <td style={{ padding:'5px 10px', color:'var(--text-2)' }}>{r.meta?.n_pathways ?? '—'}</td>
-                              <td style={{ padding:'5px 10px', color:'var(--text-3)', fontSize:'0.71rem' }}>{r.timestamp}</td>
-                            </tr>
-                          ))}
+                          {gseaRuns.map((r, i) => {
+                            const p = r.params ?? r
+                            const RANK_LABELS = { log2FC:'LFC', stat:'Wald stat', shrunkLFC:'Shrunk LFC', signedNegLog10p:'−log₁₀p' }
+                            const FILTER_LABELS = { quantile:'Quantile', abs_lfc:'|LFC|', pvalue:'p-value', padj:'padj' }
+                            return (
+                              <tr key={r.id} style={{ background: i%2===0?'transparent':'rgba(255,255,255,0.02)',
+                                borderBottom:'1px solid var(--border)' }}>
+                                <td style={{ padding:'5px 10px', fontSize:'0.73rem', color:'var(--text-1)', fontFamily:'monospace' }}>{r.contrastLabel}</td>
+                                <td style={{ padding:'5px 10px', color:'var(--text-2)' }}>{r.collectionLabel}{r.collectionSub ? ` / ${r.collectionSub}` : ''}</td>
+                                <td style={{ padding:'5px 10px', color:'var(--text-2)' }}>{RANK_LABELS[p.rankMethod] ?? p.rankMethod}</td>
+                                <td style={{ padding:'5px 10px', color:'var(--text-2)' }}>{p.pAdjMethod}</td>
+                                <td style={{ padding:'5px 10px', color:'var(--text-2)' }}>{p.padjCutoff}</td>
+                                <td style={{ padding:'5px 10px', color:'var(--text-2)', whiteSpace:'nowrap' }}>{FILTER_LABELS[p.filterMethod] ?? p.filterMethod} &gt; {p.filterValue}</td>
+                                <td style={{ padding:'5px 10px', color:'var(--text-2)', whiteSpace:'nowrap' }}>{p.minSize}–{p.maxSize}</td>
+                                <td style={{ padding:'5px 10px', color:'var(--text-2)' }}>{p.species}</td>
+                                <td style={{ padding:'5px 10px', color:'var(--text-2)' }}>{r.meta?.n_pathways ?? '—'}</td>
+                                <td style={{ padding:'5px 10px', color:'var(--text-3)', fontSize:'0.71rem' }}>{r.timestamp}</td>
+                              </tr>
+                            )
+                          })}
                         </tbody>
                       </table>
                     </>

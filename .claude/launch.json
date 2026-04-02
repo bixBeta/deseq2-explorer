@@ -11,6 +11,7 @@
       "name": "deseq2-frontend",
       "runtimeExecutable": "/opt/homebrew/bin/npm",
       "runtimeArgs": ["run", "dev", "--", "--port", "5174"],
+      "cwd": "/Users/fa286/Desktop/deseq2-app/frontend",
       "port": 5174
     }
   ]

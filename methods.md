@@ -111,13 +111,13 @@ points  <- points[sort(c(which(is_sig), ns_idx))]
 
 ## Principal Component Analysis
 
-PCA is computed on `varianceStabilizingTransformation(dds, blind = TRUE)` counts, matching the DESeq2 `plotPCA()` convention for exploratory ordination. The top N most variable genes (by row variance, default: 500; user-configurable) are selected using `rowVars()` from the `matrixStats` package, and `prcomp()` is applied to the transposed matrix (`scale. = FALSE`).
+PCA is computed on `varianceStabilizingTransformation(dds, blind = TRUE)` counts, matching the DESeq2 `plotPCA()` convention for exploratory ordination. The top N most variable genes (by row variance) are selected using `rowVars()` from the `matrixStats` package, and `prcomp()` is applied to the transposed matrix (`scale. = FALSE`). By default, all genes are used (`ntop = NULL`); the user can restrict to the top N via the frontend control (UI default: 500).
 
 ```r
 vsd_blind <- varianceStabilizingTransformation(dds, blind = TRUE)
 pca_mat   <- assay(vsd_blind)
 rv        <- rowVars(pca_mat)
-n_top     <- min(ntop, nrow(pca_mat))
+n_top     <- if (is.null(ntop)) nrow(pca_mat) else min(ntop, nrow(pca_mat))
 top_genes <- pca_mat[order(rv, decreasing = TRUE)[seq_len(n_top)], ]
 pca_obj   <- prcomp(t(top_genes), scale. = FALSE)
 variance  <- summary(pca_obj)$importance["Proportion of Variance", ] * 100
@@ -148,12 +148,12 @@ Distributions are visualised as violin plots with embedded box plots using Plotl
 
 ## Gene Violin Plot
 
-Single-gene expression is visualised as a violin + jitter + box plot using [`ggpubr`](https://cran.r-project.org/package=ggpubr) (`ggviolin()`). Expression values are size-factor-normalised counts (`counts(dds, normalized = TRUE)`). A Wilcoxon rank-sum test (`wilcox.test`) is applied between the two contrast groups using `stat_compare_means()`, with significance annotations (ns / \* / \*\* / \*\*\* / \*\*\*\*) and exact p-value label. DESeq2 statistics (baseMean, log₂FC, lfcSE, p-value, padj) for the gene in the selected contrast are displayed alongside the plot.
+Single-gene expression is visualised as a violin + jitter + box plot using [`ggpubr`](https://cran.r-project.org/package=ggpubr) (`ggviolin()`). Expression values are log₂-transformed raw integer counts (`log2(counts + 1)`). A Wilcoxon rank-sum test (`wilcox.test`) is applied between the two contrast groups using `stat_compare_means()`, with significance annotations (ns / \* / \*\* / \*\*\* / \*\*\*\*) and exact p-value label. DESeq2 statistics (baseMean, log₂FC, lfcSE, p-value, padj) for the gene in the selected contrast are displayed alongside the plot.
 
 ```r
 p <- ggviolin(df, x = "group", y = "expr", fill = "group",
               add        = c("jitter", "boxplot"),
-              add.params = list(fill = "white", width = 0.12, size = 1.2, alpha = 0.6)) +
+              add.params = list(fill = "white", width = 0.15, size = 1.2, alpha = 0.6)) +
   stat_compare_means(method = "wilcox.test", label = "p.signif") +
   stat_compare_means(label = "p.format", label.y.npc = 0.92)
 ```
@@ -213,8 +213,8 @@ If the filtered gene list exceeds `topN` (default: 50), genes are ranked by mean
 
 ### Display modes
 
-**Normalized counts (VST Z-score)**
-VST-normalized counts are extracted from `varianceStabilizingTransformation(dds, blind = FALSE)`. Each gene (row) is Z-score standardized across samples. Genes with zero variance are set to 0. This is the default display mode.
+**Normalized counts (Z-score)**
+Expression values are taken from the session's stored log₂-transformed counts (`norm_matrix`, computed as `log2(size-factor-normalised counts + 1)`), with VST (`varianceStabilizingTransformation(dds, blind = FALSE)`) used as a fallback when `norm_matrix` is not available. Each gene (row) is Z-score standardized across samples. Genes with zero variance are set to 0. This is the default display mode.
 
 **log₂FC across contrasts**
 A matrix of log₂ fold changes is built with genes as rows and contrasts as columns. Missing values (gene not tested in a contrast) are set to 0. No additional scaling is applied.
@@ -367,3 +367,142 @@ The enrichment curve, peak position, rug marks (pathway gene positions in the ra
 ### Multiple runs and contrast isolation
 
 All GSEA runs are stored in component state keyed by contrast label. Switching contrasts resets the active run view to show only runs belonging to the current contrast; all prior runs across all contrasts remain in memory for the session.
+
+---
+
+### GSEA Visualisation Plots
+
+All plots are rendered server-side using [`enrichplot`](https://bioconductor.org/packages/enrichplot/) and [`ggplot2`](https://ggplot2.tidyverse.org/), saved as PNG at 150 dpi, and returned as base64-encoded images. Common parameters shared by all plot types:
+
+| Parameter | Default | Description |
+|---|---|---|
+| `n_show` | 20 | Number of top pathways to display |
+| `font_size` | 11 | Base font size (pt) |
+| `color_pos` | `#e63946` | Colour for positive enrichment / high values |
+| `color_neg` | `#457b9d` | Colour for negative enrichment / low values |
+| `width` × `height` | 9 × 7 in | Output image dimensions |
+
+The `gsea_result` object is a `gseaResult` S4 object returned by `clusterProfiler::GSEA()` and cached to disk after each run. The `stats_vec` named numeric vector (the ranked gene list) is also cached alongside it.
+
+#### Dot Plot
+
+Displays the top `n_show` pathways ranked by p.adjust. The x-axis shows NES (Normalised Enrichment Score), dot size reflects the number of genes in the leading edge, and dot colour (fill) encodes adjusted p-value.
+
+```r
+suppressWarnings(
+  dotplot(gsea_result, showCategory = n_show, font.size = font_size,
+          label_format = 40, x = "NES", color = "p.adjust") +
+    scale_fill_gradient(low = color_pos, high = color_neg) +
+    theme_bw(base_size = font_size) +
+    ggtitle("GSEA Dot Plot")
+)
+```
+
+> **Note:** `dotplot()` maps p.adjust to the `fill` aesthetic, not `color`. `scale_fill_gradient` is required; `scale_color_gradient` has no effect. The `suppressWarnings()` suppresses the "scale already present" message when overriding enrichplot's default fill scale.
+
+#### Ridge Plot
+
+Shows the fold-change distribution of leading-edge genes for each of the top `n_show` pathways as overlapping density ridges. Useful for seeing whether enrichment is driven by a broad shift or a few extreme outliers.
+
+```r
+# showCategory must be numeric (double) — inherits(n, "numeric") returns FALSE for integers
+suppressWarnings(
+  ridgeplot(gsea_result, showCategory = as.numeric(n_show)) +
+    scale_fill_gradient(low = color_neg, high = color_pos) +
+    theme_bw(base_size = font_size) +
+    ggtitle("GSEA Ridge Plot — Leading Edge Expression")
+)
+```
+
+> **Note:** `ridgeplot()` internally checks `inherits(showCategory, "numeric")`, which returns `FALSE` for R integers. `as.numeric()` coercion is required.
+
+#### Heat Plot
+
+A gene × pathway heatmap where columns are pathways and rows are leading-edge genes. Cell colour encodes the gene's ranking score (fold change), making it easy to see which genes drive enrichment across multiple pathways simultaneously.
+
+```r
+# pathway_sel: character vector of pathway IDs; defaults to top min(n_show, 10) by padj
+suppressWarnings(
+  heatplot(gsea_result, foldChange = stats_vec, showCategory = pathway_sel) +
+    scale_fill_gradient2(low = color_neg, mid = "white", high = color_pos, midpoint = 0) +
+    theme_bw(base_size = font_size) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+    ggtitle("GSEA Heat Plot — Leading Edge Genes")
+)
+```
+
+#### UpSet Plot
+
+Visualises the overlap of leading-edge gene sets across the top `n_show` (capped at 15) pathways as an UpSet diagram. Intersection sizes are shown as bars; set sizes are shown as a horizontal bar chart. Ordered by intersection frequency.
+
+```r
+# enrichplot::upsetplot for gseaResult returns a UpSetR object, not ggplot2
+# Must use png()/print()/dev.off() pipeline
+res_df    <- as.data.frame(gsea_result)
+sel       <- head(res_df$ID[order(res_df$p.adjust)], n_up)   # n_up = min(n_show, 15)
+core      <- res_df$core_enrichment[match(sel, res_df$ID)]
+gene_sets <- setNames(
+  lapply(core, function(x) strsplit(x, "/")[[1]]),
+  substr(sel, 1, 40)
+)
+png(tmp, width = round(w * 150), height = round(h * 150), res = 150)
+print(UpSetR::upset(UpSetR::fromList(gene_sets), nsets = length(gene_sets),
+                    sets.bar.color = color_pos, main.bar.color = color_neg,
+                    text.scale = font_size / 11, order.by = "freq"))
+dev.off()
+```
+
+> **Note:** `enrichplot::upsetplot()` on a `gseaResult` object returns a `UpSetR` object (not ggplot2), which cannot be passed to `ggsave()`. The `png()/print()/dev.off()` pipeline is required.
+
+#### Enrichment Map
+
+A network graph where nodes are pathways and edges connect pathways that share a high proportion of leading-edge genes (Jaccard similarity). Node colour encodes p.adjust; node size encodes gene set size. Clustered pathways with similar biology are naturally positioned together.
+
+```r
+gsea_result2 <- pairwise_termsim(gsea_result)
+emapplot(gsea_result2, showCategory = n_show,
+         color = "p.adjust", layout = "kk") +
+  scale_color_gradient(low = color_pos, high = color_neg) +
+  theme_void(base_size = font_size) +
+  ggtitle("Enrichment Map")
+```
+
+`pairwise_termsim()` pre-computes the term similarity matrix required by `emapplot()`. The Kamada–Kawai (`"kk"`) layout is used for stable, aesthetically balanced placement.
+
+#### Concept Network (cnetplot)
+
+A bipartite network connecting selected pathways (large nodes) to their individual leading-edge genes (small nodes), coloured by fold change. Shows gene-level detail and which genes are shared across pathways.
+
+```r
+# pathway_sel: character vector of pathway IDs; defaults to top 5 by padj
+cnetplot(gsea_result, foldChange = stats_vec,
+         showCategory = pathway_sel,
+         circular     = isTRUE(params$circular),
+         colorEdge    = TRUE, node_label = "all") +
+  scale_color_gradient2(low = color_neg, mid = "white", high = color_pos, midpoint = 0) +
+  theme_void(base_size = font_size) +
+  ggtitle("Concept Network — Gene-Pathway Links")
+```
+
+The `circular` layout option arranges pathway nodes in a ring when multiple pathways are shown, which can reduce edge crossing for dense networks.
+
+#### GSEA Plot (Enrichment Score Curve)
+
+The classic GSEA mountain plot showing the running enrichment score curve, ranked gene position rug, and ranking metric bar for one or more pathways. Each pathway gets a distinct colour interpolated between `color_pos` and `color_neg`. Pathway labels have their collection prefix stripped (e.g. `HALLMARK_`, `KEGG_`) and are truncated to 30 characters to prevent label overlap. A p-value table is appended below.
+
+```r
+# pathway_sel: character vector; defaults to top min(n_show, 3) by padj
+gsea_tmp <- gsea_result
+idx <- match(pathway_sel, gsea_tmp@result$ID)
+gsea_tmp@result$Description[idx] <- substr(
+  gsub("^[A-Z0-9]+_", "", gsea_tmp@result$Description[idx]), 1, 30
+)
+# gseaplot2 returns a cowplot composite — cannot use + operator on result
+n_paths <- length(pathway_sel)
+colors  <- if (n_paths == 1) color_pos else colorRampPalette(c(color_pos, color_neg))(n_paths)
+enrichplot::gseaplot2(gsea_tmp, geneSetID = pathway_sel,
+                      color = colors, base_size = font_size,
+                      pvalue_table = TRUE)
+```
+
+> **Note:** `gseaplot2()` returns a `cowplot` composite object. The `+` operator cannot be used to add ggplot2 layers to it; all styling must be done via its own parameters before the call.
