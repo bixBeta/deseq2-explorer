@@ -343,14 +343,16 @@ gsea_plots <- function(session_id, contrast_label, collection, subcategory, spec
       },
 
       "ridgeplot" = {
-        ridgeplot(gsea_result, showCategory = n_show, core_enrichment = TRUE) +
+        # core_enrichment=TRUE triggers a scoping bug in some enrichplot versions — omit it
+        ridgeplot(gsea_result, showCategory = n_show) +
           scale_fill_gradient(low = color_neg, high = color_pos) +
           theme_bw(base_size = font_size) +
           ggtitle("GSEA Ridge Plot — Leading Edge Expression")
       },
 
       "upsetplot" = {
-        enrichplot::upsetplot(gsea_result, n = min(n_show, 15L)) +
+        # upsetplot dispatches differently for gseaResult — use showCategory not n
+        enrichplot::upsetplot(gsea_result, showCategory = min(n_show, 15L)) +
           theme_bw(base_size = font_size) +
           ggtitle("GSEA UpSet Plot — Leading Edge Overlap")
       },
