@@ -235,10 +235,10 @@ gsea_run <- function(session_id, contrast_label, rank_method, collection, subcat
     list(gene = names(stats_vec)[i], score = round(as.numeric(stats_vec[i]), 4))
   })
 
-  # Cache stats_vec + gene_sets for the fast /curve endpoint
+  # Cache stats_vec + gene_sets + gseaResult for curve + plots endpoints
   cache_path <- .gsea_cache_path(session_id, contrast_label, collection, subcategory, species)
   tryCatch(
-    saveRDS(list(stats_vec = stats_vec, gene_sets = gene_sets), cache_path),
+    saveRDS(list(stats_vec = stats_vec, gene_sets = gene_sets, gsea_result = gsea_res), cache_path),
     error = function(e) message("[gsea] Cache save failed: ", e$message)
   )
 
@@ -301,4 +301,123 @@ gsea_curve <- function(session_id, contrast_label, pathway,
     n        = n,
     nHits    = n_path
   )
+}
+
+# ── gsea_plots: render clusterProfiler / plotthis visualisations ──────────────
+gsea_plots <- function(session_id, contrast_label, collection, subcategory, species,
+                       plot_type, params) {
+  cache_path <- .gsea_cache_path(session_id, contrast_label, collection, subcategory, species)
+  if (!file.exists(cache_path)) stop("GSEA cache not found — please run GSEA first")
+
+  cache       <- readRDS(cache_path)
+  gsea_result <- cache$gsea_result
+  stats_vec   <- cache$stats_vec
+  if (is.null(gsea_result)) stop("GSEA result object not in cache — please re-run GSEA")
+
+  if (!requireNamespace("clusterProfiler", quietly = TRUE)) stop("clusterProfiler not installed")
+  if (!requireNamespace("ggplot2",         quietly = TRUE)) stop("ggplot2 not installed")
+  if (!requireNamespace("enrichplot",      quietly = TRUE)) stop("enrichplot not installed")
+  library(clusterProfiler); library(ggplot2); library(enrichplot)
+
+  # Common params with defaults
+  n_show     <- as.integer(params$n_show     %||% 20L)
+  font_size  <- as.numeric(params$font_size  %||% 11)
+  color_pos  <- as.character(params$color_pos %||% "#e63946")
+  color_neg  <- as.character(params$color_neg %||% "#457b9d")
+  label_fmt  <- as.character(params$label_fmt %||% "p.adjust")
+
+  p <- tryCatch({
+    switch(plot_type,
+
+      "dotplot" = {
+        dotplot(gsea_result, showCategory = n_show, font.size = font_size,
+                label_format = 40, split = ".sign") +
+          facet_grid(. ~ .sign) +
+          scale_color_gradient(low = color_neg, high = color_pos) +
+          theme_bw(base_size = font_size) +
+          ggtitle("GSEA Dot Plot")
+      },
+
+      "ridgeplot" = {
+        ridgeplot(gsea_result, showCategory = n_show, fill = "p.adjust",
+                  core_enrichment = TRUE) +
+          scale_fill_gradient(low = color_pos, high = color_neg) +
+          theme_bw(base_size = font_size) +
+          ggtitle("GSEA Ridge Plot — Leading Edge Expression")
+      },
+
+      "heatplot" = {
+        pathway_sel <- as.character(params$pathways %||% character(0))
+        if (length(pathway_sel) == 0) {
+          res_df      <- as.data.frame(gsea_result)
+          pathway_sel <- head(res_df$ID[order(res_df$p.adjust)], min(n_show, 10L))
+        }
+        heatplot(gsea_result, foldChange = stats_vec, showCategory = pathway_sel) +
+          scale_fill_gradient2(low = color_neg, mid = "white", high = color_pos, midpoint = 0) +
+          theme_bw(base_size = font_size) +
+          ggtitle("GSEA Heat Plot — Leading Edge Genes")
+      },
+
+      "upsetplot" = {
+        upsetplot(gsea_result, n = min(n_show, 15L)) +
+          theme_bw(base_size = font_size) +
+          ggtitle("GSEA UpSet Plot — Leading Edge Overlap")
+      },
+
+      "emapplot" = {
+        gsea_result2 <- pairwise_termsim(gsea_result)
+        emapplot(gsea_result2, showCategory = n_show,
+                 color = label_fmt, layout = "kk") +
+          scale_color_gradient(low = color_neg, high = color_pos) +
+          theme_void(base_size = font_size) +
+          ggtitle("Enrichment Map")
+      },
+
+      "cnetplot" = {
+        pathway_sel <- as.character(params$pathways %||% character(0))
+        if (length(pathway_sel) == 0) {
+          res_df      <- as.data.frame(gsea_result)
+          pathway_sel <- head(res_df$ID[order(res_df$p.adjust)], 5L)
+        }
+        cnetplot(gsea_result, foldChange = stats_vec,
+                 showCategory = pathway_sel,
+                 circular = isTRUE(params$circular),
+                 colorEdge = TRUE, node_label = "all") +
+          scale_color_gradient2(low = color_neg, mid = "white", high = color_pos, midpoint = 0) +
+          theme_void(base_size = font_size) +
+          ggtitle("Concept Network — Gene-Pathway Links")
+      },
+
+      "gsea_plot" = {
+        # plotthis::GSEAPlot — single or multi-pathway enrichment curve
+        if (!requireNamespace("plotthis", quietly = TRUE)) stop("plotthis not installed")
+        library(plotthis)
+        pathway_sel <- as.character(params$pathways %||% character(0))
+        if (length(pathway_sel) == 0) {
+          res_df      <- as.data.frame(gsea_result)
+          pathway_sel <- head(res_df$ID[order(res_df$p.adjust)], 3L)
+        }
+        plotthis::GSEAPlot(
+          gsea_result,
+          term           = pathway_sel,
+          stats          = stats_vec,
+          color_pos      = color_pos,
+          color_neg      = color_neg,
+          base_size      = font_size
+        )
+      },
+
+      stop(paste0("Unknown plot type: ", plot_type))
+    )
+  }, error = function(e) stop("Plot generation failed: ", e$message))
+
+  # Render to PNG and encode as base64
+  w <- as.numeric(params$width  %||% 9)
+  h <- as.numeric(params$height %||% 7)
+  tmp <- tempfile(fileext = ".png")
+  on.exit(unlink(tmp), add = TRUE)
+  ggplot2::ggsave(tmp, p, width = w, height = h, dpi = 150, bg = "white")
+  b64 <- paste0("data:image/png;base64,",
+                base64enc::base64encode(readBin(tmp, "raw", file.info(tmp)$size)))
+  list(image = b64, plotType = plot_type)
 }

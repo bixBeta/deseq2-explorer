@@ -406,6 +406,184 @@ function RankedListPanel({ run }) {
   )
 }
 
+// ── clusterProfiler / plotthis plots panel ────────────────────────────────────
+const PLOT_TYPES = [
+  { key:'dotplot',   label:'Dot Plot',         icon:'●', desc:'Top pathways by NES & padj, sized by gene count' },
+  { key:'ridgeplot', label:'Ridge Plot',        icon:'≋', desc:'Leading-edge expression distributions per pathway' },
+  { key:'heatplot',  label:'Heat Plot',         icon:'▦', desc:'Leading-edge genes × pathway heatmap' },
+  { key:'upsetplot', label:'UpSet Plot',        icon:'⊞', desc:'Leading-edge gene overlaps across pathways' },
+  { key:'emapplot',  label:'Enrichment Map',    icon:'◎', desc:'Network of pathway similarity by shared genes' },
+  { key:'cnetplot',  label:'Concept Network',   icon:'◈', desc:'Gene-pathway concept network (cnetplot)' },
+  { key:'gsea_plot', label:'GSEA Plot',         icon:'⟳', desc:'plotthis::GSEAPlot — enrichment curve(s)' },
+]
+
+function PlotsPanel({ run, session, contrastLabel }) {
+  const [plotType,   setPlotType]   = useState('dotplot')
+  const [nShow,      setNShow]      = useState(20)
+  const [fontSize,   setFontSize]   = useState(11)
+  const [width,      setWidth]      = useState(9)
+  const [height,     setHeight]     = useState(7)
+  const [colorPos,   setColorPos]   = useState('#e63946')
+  const [colorNeg,   setColorNeg]   = useState('#457b9d')
+  const [pathwayInput, setPathwayInput] = useState('')
+  const [loading,    setLoading]    = useState(false)
+  const [imgSrc,     setImgSrc]     = useState(null)
+  const [error,      setError]      = useState(null)
+
+  const pathwaysForPlot = plotType === 'heatplot' || plotType === 'cnetplot' || plotType === 'gsea_plot'
+  const pathwayList = pathwayInput.split('\n').map(s=>s.trim()).filter(Boolean)
+
+  const handleGenerate = async () => {
+    if (!run || !session?.sessionId) return
+    setLoading(true); setError(null); setImgSrc(null)
+    try {
+      const r = await fetch('/api/gsea/plots', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          sessionId:     session.sessionId,
+          contrastLabel,
+          collection:    run.collectionId,
+          subcategory:   run.collectionSub,
+          species:       run.species,
+          plotType,
+          params: {
+            n_show:    nShow,
+            font_size: fontSize,
+            color_pos: colorPos,
+            color_neg: colorNeg,
+            width,
+            height,
+            pathways:  pathwayList.length ? pathwayList : null,
+          },
+        }),
+      })
+      const data = await r.json()
+      if (data.error) throw new Error(data.error)
+      setImgSrc(data.image)
+    } catch(e) { setError(e.message) }
+    finally { setLoading(false) }
+  }
+
+  const downloadPng = () => {
+    if (!imgSrc) return
+    const a = Object.assign(document.createElement('a'), { href: imgSrc, download: `gsea_${plotType}.png` })
+    a.click()
+  }
+
+  const CB = `1px solid var(--border)`
+
+  return (
+    <div style={{ display:'flex', gap:16, alignItems:'flex-start' }}>
+
+      {/* Controls */}
+      <div style={{ width:220, flexShrink:0, display:'flex', flexDirection:'column', gap:10 }}>
+
+        {/* Plot type */}
+        <div>
+          <div style={{ ...LBL, marginBottom:5 }}>Plot type</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
+            {PLOT_TYPES.map(pt=>(
+              <button key={pt.key} onClick={()=>{ setPlotType(pt.key); setImgSrc(null); setError(null) }} title={pt.desc}
+                style={{ display:'flex', alignItems:'center', gap:7, padding:'5px 8px', borderRadius:6, cursor:'pointer', textAlign:'left', border:`1px solid ${plotType===pt.key?V.border:'transparent'}`, background:plotType===pt.key?V.muted:'transparent', transition:'all 0.1s', width:'100%' }}>
+                <span style={{ fontSize:'0.9rem', opacity:0.8 }}>{pt.icon}</span>
+                <div>
+                  <div style={{ fontSize:'0.74rem', fontWeight:plotType===pt.key?700:400, color:'var(--text-1)' }}>{pt.label}</div>
+                  <div style={{ fontSize:'0.6rem', color:'var(--text-3)', lineHeight:1.3 }}>{pt.desc.split('—')[0].trim()}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ height:1, background:'var(--border)' }} />
+
+        {/* Common params */}
+        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+          <div style={{ ...LBL, marginBottom:2 }}>Parameters</div>
+
+          {!pathwaysForPlot && (
+            <div>
+              <div style={{ fontSize:'0.66rem', color:'var(--text-3)', marginBottom:2 }}>Show top N pathways</div>
+              <input type="number" value={nShow} min={5} max={50} onChange={e=>setNShow(+e.target.value)}
+                style={{ width:'100%', padding:'4px 8px', fontSize:'0.78rem', background:'rgba(255,255,255,0.05)', border:CB, borderRadius:6, color:'var(--text-1)' }} />
+            </div>
+          )}
+
+          {pathwaysForPlot && (
+            <div>
+              <div style={{ fontSize:'0.66rem', color:'var(--text-3)', marginBottom:2 }}>Pathways (one per line; blank = top 5 by padj)</div>
+              <textarea value={pathwayInput} onChange={e=>setPathwayInput(e.target.value)} rows={4} placeholder="HALLMARK_HYPOXIA&#10;HALLMARK_MYC_TARGETS_V1"
+                style={{ width:'100%', padding:'4px 8px', fontSize:'0.68rem', fontFamily:'monospace', background:'rgba(255,255,255,0.05)', border:CB, borderRadius:6, color:'var(--text-1)', resize:'vertical' }} />
+            </div>
+          )}
+
+          <div style={{ display:'flex', gap:6 }}>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:'0.66rem', color:'var(--text-3)', marginBottom:2 }}>Font size</div>
+              <input type="number" value={fontSize} min={7} max={18} onChange={e=>setFontSize(+e.target.value)}
+                style={{ width:'100%', padding:'4px 6px', fontSize:'0.75rem', background:'rgba(255,255,255,0.05)', border:CB, borderRadius:6, color:'var(--text-1)' }} />
+            </div>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:'0.66rem', color:'var(--text-3)', marginBottom:2 }}>W × H (in)</div>
+              <div style={{ display:'flex', gap:3 }}>
+                <input type="number" value={width}  min={4} max={20} onChange={e=>setWidth(+e.target.value)}  style={{ width:'50%', padding:'4px 4px', fontSize:'0.72rem', background:'rgba(255,255,255,0.05)', border:CB, borderRadius:6, color:'var(--text-1)' }} />
+                <input type="number" value={height} min={3} max={20} onChange={e=>setHeight(+e.target.value)} style={{ width:'50%', padding:'4px 4px', fontSize:'0.72rem', background:'rgba(255,255,255,0.05)', border:CB, borderRadius:6, color:'var(--text-1)' }} />
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display:'flex', gap:6 }}>
+            {[['Pos color', colorPos, setColorPos],['Neg color', colorNeg, setColorNeg]].map(([l,v,set])=>(
+              <div key={l} style={{ flex:1 }}>
+                <div style={{ fontSize:'0.66rem', color:'var(--text-3)', marginBottom:2 }}>{l}</div>
+                <input type="color" value={v} onChange={e=>set(e.target.value)}
+                  style={{ width:'100%', height:28, padding:2, borderRadius:5, border:CB, cursor:'pointer', background:'transparent' }} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <button onClick={handleGenerate} disabled={loading||!run}
+          style={{ padding:'9px 0', borderRadius:8, border:'none', cursor:loading||!run?'wait':'pointer', background:loading?`rgba(14,116,144,0.35)`:`linear-gradient(135deg,${V.accent},${V.accent2})`, color:'#fff', fontWeight:700, fontSize:'0.82rem', transition:'all 0.15s' }}>
+          {loading ? '⟳ Generating…' : '▶ Generate Plot'}
+        </button>
+
+        {imgSrc && (
+          <button onClick={downloadPng}
+            style={{ padding:'6px 0', borderRadius:7, border:`1px solid ${V.border}`, background:V.muted, color:'var(--text-1)', fontSize:'0.75rem', fontWeight:600, cursor:'pointer' }}>
+            ↓ Download PNG
+          </button>
+        )}
+      </div>
+
+      {/* Image area */}
+      <div style={{ flex:1, minWidth:0, borderRadius:10, border:CB, background:'var(--bg-card)', minHeight:420, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden' }}>
+        {loading && (
+          <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:12 }}>
+            <div style={{ width:36, height:36, borderRadius:'50%', border:`3px solid ${V.muted}`, borderTopColor:V.accent, animation:'gsea-spin 0.8s linear infinite' }} />
+            <span style={{ fontSize:'0.8rem', color:'var(--text-3)' }}>Rendering with R…</span>
+          </div>
+        )}
+        {error && (
+          <div style={{ padding:24, maxWidth:420, textAlign:'center' }}>
+            <div style={{ fontSize:'1.4rem', marginBottom:8 }}>⚠</div>
+            <div style={{ fontSize:'0.78rem', color:'#f87171', lineHeight:1.6 }}>{error}</div>
+          </div>
+        )}
+        {imgSrc && !loading && (
+          <img src={imgSrc} alt={plotType} style={{ maxWidth:'100%', maxHeight:'80vh', objectFit:'contain' }} />
+        )}
+        {!imgSrc && !loading && !error && (
+          <div style={{ textAlign:'center', color:'var(--text-3)', padding:40 }}>
+            <div style={{ fontSize:'2.5rem', opacity:0.15, marginBottom:10 }}>◈</div>
+            <div style={{ fontSize:'0.82rem' }}>Select a plot type and click Generate</div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Enrichment mountain plot modal ────────────────────────────────────────────
 function MountainModal({ pathway, result, curveData, curveLoading, onClose }) {
   const ref=useRef(null)
@@ -764,7 +942,11 @@ export default function GSEAExplorer({ session, contrastLabel, annMap }) {
             <>
               <RunChips runs={contrastRuns} activeRunId={activeRunId} onSelect={id=>{ setActiveRunId(id); setSelPathway(null); setCurveData(null) }} onRemove={removeRun} />
               <div style={{ display:'flex', gap:2, borderBottom:`1px solid ${V.border}` }}>
-                {[['results',`◉ Pathways${activeRun?.results?.length?` (${activeRun.results.length})`:''}`],['ranked',`≡ Ranked List${activeRun?.rankedList?.length?` (${activeRun.rankedList.length.toLocaleString()})`:''}`]].map(([k,l])=>(
+                {[
+                  ['results', `◉ Pathways${activeRun?.results?.length?` (${activeRun.results.length})`:''}`],
+                  ['ranked',  `≡ Ranked List${activeRun?.rankedList?.length?` (${activeRun.rankedList.length.toLocaleString()})`:''}`],
+                  ['plots',   '◈ Plots'],
+                ].map(([k,l])=>(
                   <button key={k} onClick={()=>setContentTab(k)}
                     style={{ padding:'6px 14px', border:'none', borderRadius:'6px 6px 0 0', cursor:'pointer', fontSize:'0.8rem', fontWeight:contentTab===k?700:400, background:contentTab===k?V.muted:'transparent', color:contentTab===k?'var(--text-1)':'var(--text-3)', borderBottom:`2px solid ${contentTab===k?V.accent:'transparent'}`, transition:'all 0.12s' }}>{l}</button>
                 ))}
@@ -772,6 +954,7 @@ export default function GSEAExplorer({ session, contrastLabel, annMap }) {
               <div style={{ paddingTop:4 }}>
                 {contentTab==='results' && <ResultsTable run={activeRun} onPathwayClick={handlePathwayClick} selectedPathway={selPathway?.pathway} />}
                 {contentTab==='ranked'  && <RankedListPanel run={activeRun} />}
+                {contentTab==='plots'   && <PlotsPanel run={activeRun} session={session} contrastLabel={contrastLabel} />}
               </div>
             </>
           )}

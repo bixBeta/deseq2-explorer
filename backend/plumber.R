@@ -1816,3 +1816,21 @@ function(req, res) {
     species        = body$species       %||% "Homo sapiens"
   )
 }
+
+# ── GSEA: clusterProfiler / plotthis visualisation plots ──────────────────────
+#* @post /api/gsea/plots
+#* @serializer unboxedJSON
+function(req, res) {
+  body       <- fromJSON(rawToChar(req$bodyRaw))
+  session_id <- body$sessionId
+  if (is.null(session_id) || session_id == "") stop("sessionId is required")
+  gsea_plots(
+    session_id     = session_id,
+    contrast_label = body$contrastLabel,
+    collection     = body$collection    %||% "H",
+    subcategory    = body$subcategory,
+    species        = body$species       %||% "Homo sapiens",
+    plot_type      = body$plotType      %||% "dotplot",
+    params         = body$params        %||% list()
+  )
+}
