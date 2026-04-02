@@ -453,49 +453,63 @@ export default function GSEACompare({ session, gseaRuns }) {
             )}
           </div>
 
-          <div className="glass" style={{ minHeight: 340, display: 'flex', alignItems: 'center',
-                                          justifyContent: 'center', padding: 20, position: 'relative' }}>
+          <div className="glass" style={{ position: 'relative', padding: 0 }}>
+            {/* toolbar row */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 14, alignItems: 'center',
+                          padding: '10px 16px', borderBottom: imgB64 ? '1px solid var(--border)' : 'none' }}>
+              {imgB64 && <>
+                <button onClick={() => setExpanded(true)}
+                        style={{ fontSize: '0.72rem', color: 'var(--text-3)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                  ⤢ Expand
+                </button>
+                <a href={`data:image/png;base64,${imgB64}`} download="gsea_compare_upset.png"
+                   style={{ fontSize: '0.72rem', color: '#818cf8', textDecoration: 'none' }}>
+                  ↓ Download PNG
+                </a>
+              </>}
+            </div>
+
+            {/* scrollable plot area */}
+            <div style={{ overflow: 'auto', maxHeight: 600, padding: imgB64 ? 12 : 0 }}>
             {loading && (
-              <div style={{ textAlign: 'center', color: 'var(--text-3)' }}>
-                <div style={{ fontSize: '1.5rem', marginBottom: 8 }}>⟳</div>
-                <span style={{ fontSize: '0.85rem' }}>Rendering UpSet plot…</span>
-              </div>
-            )}
-            {!loading && error && (
-              <div style={{ color: '#f87171', fontSize: '0.85rem', textAlign: 'center', maxWidth: 480 }}>
-                <div style={{ fontSize: '1.2rem', marginBottom: 6 }}>✕</div>
-                {error}
-              </div>
-            )}
-            {!loading && !error && imgB64 && (
-              <div style={{ width: '100%' }}>
-                <img src={`data:image/png;base64,${imgB64}`} alt="GSEA UpSet comparison"
-                     style={{ maxWidth: '100%', borderRadius: 8, boxShadow: '0 2px 16px rgba(0,0,0,0.4)',
-                              display: 'block', margin: '0 auto', cursor: 'zoom-in' }}
-                     onClick={() => setExpanded(true)} />
-                <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end', gap: 14, alignItems: 'center' }}>
-                  <button onClick={() => setExpanded(true)}
-                          style={{ fontSize: '0.72rem', color: 'var(--text-3)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                    ⤢ Expand
-                  </button>
-                  <a href={`data:image/png;base64,${imgB64}`} download="gsea_compare_upset.png"
-                     style={{ fontSize: '0.72rem', color: '#818cf8', textDecoration: 'none' }}>
-                    ↓ Download PNG
-                  </a>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 320 }}>
+                <div style={{ textAlign: 'center', color: 'var(--text-3)' }}>
+                  <div style={{ fontSize: '1.5rem', marginBottom: 8 }}>⟳</div>
+                  <span style={{ fontSize: '0.85rem' }}>Rendering UpSet plot…</span>
                 </div>
               </div>
             )}
-            {!loading && !error && !imgB64 && (
-              <div style={{ textAlign: 'center', color: 'var(--text-3)', maxWidth: 420 }}>
-                <div style={{ fontSize: '2.5rem', marginBottom: 10, opacity: 0.25 }}>⊗</div>
-                <p style={{ fontSize: '0.85rem' }}>
-                  Select pathways from the left and click <strong style={{ color: 'var(--text-2)' }}>Plot</strong> to compare leading-edge genes.
-                </p>
-                <p style={{ fontSize: '0.72rem', marginTop: 6, opacity: 0.6 }}>
-                  Each pathway becomes one set; intersecting bars show shared genes.
-                </p>
+            {!loading && error && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 320 }}>
+                <div style={{ color: '#f87171', fontSize: '0.85rem', textAlign: 'center', maxWidth: 480 }}>
+                  <div style={{ fontSize: '1.2rem', marginBottom: 6 }}>✕</div>
+                  {error}
+                </div>
               </div>
             )}
+            {!loading && !error && imgB64 && (
+              <div>
+                <img src={`data:image/png;base64,${imgB64}`} alt="GSEA UpSet comparison"
+                     style={{ display: 'block', width: plotWidth, height: plotHeight,
+                              borderRadius: 6, boxShadow: '0 2px 16px rgba(0,0,0,0.3)', cursor: 'zoom-in' }}
+                     onClick={() => setExpanded(true)} />
+              </div>
+            )}
+            {!loading && !error && !imgB64 && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 320 }}>
+                <div style={{ textAlign: 'center', color: 'var(--text-3)', maxWidth: 420 }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: 10, opacity: 0.25 }}>⊗</div>
+                  <p style={{ fontSize: '0.85rem' }}>
+                    Select pathways from the left and click <strong style={{ color: 'var(--text-2)' }}>Plot</strong> to compare leading-edge genes.
+                  </p>
+                  <p style={{ fontSize: '0.72rem', marginTop: 6, opacity: 0.6 }}>
+                    Each pathway becomes one set; intersecting bars show shared genes.
+                  </p>
+                </div>
+              </div>
+            )}
+            </div>
+
           </div>
         </>}
 
