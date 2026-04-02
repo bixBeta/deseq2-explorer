@@ -90,7 +90,7 @@
   sort(stats_vec, decreasing = TRUE)
 }
 
-# ── gsea_preview: row-median histogram for the filter density plot ─────────────
+# ── gsea_preview: per-sample KDE distributions + row-median filter stats ────────
 gsea_preview <- function(session_id, contrast_label) {
   upload_path  <- file.path(.upload_dir(),  paste0(session_id, ".rds"))
   results_path <- file.path(.results_dir(), paste0(session_id, "_results.rds"))
@@ -100,27 +100,46 @@ gsea_preview <- function(session_id, contrast_label) {
   library(matrixStats)
   upload   <- readRDS(upload_path)
   counts   <- as.matrix(upload$counts)
-  row_meds <- rowMedians(counts)
-  names(row_meds) <- rownames(counts)
+  n_genes  <- nrow(counts)
+  n_samp   <- ncol(counts)
 
-  # KDE of log1p(row medians) — smoother than histogram
-  dens    <- density(log1p(row_meds), bw = "nrd0", n = 512, from = 0)
-  q_probs <- seq(0, 1, by = 0.01)   # 101 points for smooth slider interpolation
-  q_vals  <- quantile(row_meds, q_probs, na.rm = TRUE)
-
-  list(
-    kde = list(
+  # Per-sample KDE of log1p counts (for distribution display)
+  kdes <- lapply(seq_len(n_samp), function(j) {
+    vals <- log1p(counts[, j])
+    dens <- density(vals, bw = "nrd0", n = 256, from = 0)
+    list(
+      sample = colnames(counts)[j],
       x = round(as.numeric(dens$x), 4),
       y = round(as.numeric(dens$y), 8)
-    ),
-    quantileValues = round(as.numeric(q_vals), 2),   # 101 values at 0%..100%
+    )
+  })
+
+  # Row medians — used for the filter cutoff
+  row_meds        <- rowMedians(counts)
+  names(row_meds) <- rownames(counts)
+
+  # 101-point quantile table (0%…100%) for slider interpolation
+  q_probs <- seq(0, 1, by = 0.01)
+  q_vals  <- quantile(row_meds, q_probs, na.rm = TRUE)
+
+  # Downsampled sorted row medians (up to 2000 pts) for accurate gene-count calc in JS
+  all_meds  <- sort(row_meds, na.last = FALSE)
+  n_total   <- length(all_meds)
+  ds_idx    <- unique(round(seq(1, n_total, length.out = min(2000L, n_total))))
+  meds_ds   <- round(as.numeric(all_meds[ds_idx]), 2)
+
+  list(
+    kdes           = kdes,
+    quantileValues = round(as.numeric(q_vals), 2),
+    mediansSample  = meds_ds,          # sorted, for JS binary-search gene count
     quartiles = list(
-      q25 = round(as.numeric(quantile(row_meds, 0.25, na.rm = TRUE)), 2),
-      q50 = round(as.numeric(quantile(row_meds, 0.50, na.rm = TRUE)), 2),
-      q75 = round(as.numeric(quantile(row_meds, 0.75, na.rm = TRUE)), 2),
-      q90 = round(as.numeric(quantile(row_meds, 0.90, na.rm = TRUE)), 2)
+      q25 = round(as.numeric(q_vals[26]), 2),
+      q50 = round(as.numeric(q_vals[51]), 2),
+      q75 = round(as.numeric(q_vals[76]), 2),
+      q90 = round(as.numeric(q_vals[91]), 2)
     ),
-    n_genes = length(row_meds)
+    n_genes  = n_genes,
+    n_samples = n_samp
   )
 }
 
