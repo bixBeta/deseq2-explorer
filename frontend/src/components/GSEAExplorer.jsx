@@ -606,15 +606,15 @@ export default function GSEAExplorer({ session, contrastLabel, annMap }) {
           {/* Rank method */}
           <div>
             <SectionLabel>Rank method</SectionLabel>
-            {RANK_METHODS.map(m=>(
-              <label key={m.value} style={{ display:'flex', alignItems:'flex-start', gap:8, cursor:'pointer', padding:'7px 10px', borderRadius:8, marginBottom:5, background:rankMethod===m.value?V.muted:'rgba(255,255,255,0.03)', border:`1px solid ${rankMethod===m.value?V.border:'rgba(255,255,255,0.06)'}`, transition:'all 0.12s' }}>
-                <input type="radio" checked={rankMethod===m.value} onChange={()=>setRankMethod(m.value)} style={{ marginTop:2, accentColor:V.accent }} />
-                <div>
-                  <div style={{ fontSize:'0.78rem', color:'var(--text-1)', fontWeight:600 }}>{m.label}</div>
-                  <div style={{ fontSize:'0.65rem', color:'var(--text-3)' }}>{m.hint}</div>
-                </div>
-              </label>
-            ))}
+            <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+              {RANK_METHODS.map(m=>(
+                <button key={m.value} onClick={()=>setRankMethod(m.value)}
+                  style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, padding:'6px 10px', borderRadius:7, cursor:'pointer', textAlign:'left', background:rankMethod===m.value?V.muted:'transparent', border:`1px solid ${rankMethod===m.value?V.border:'transparent'}`, transition:'all 0.12s', width:'100%' }}>
+                  <span style={{ fontSize:'0.78rem', color:'var(--text-1)', fontWeight:rankMethod===m.value?700:400 }}>{m.label}</span>
+                  <span style={{ fontSize:'0.62rem', color:'var(--text-3)', whiteSpace:'nowrap' }}>{m.hint}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Pre-filter — compact, opens modal */}
