@@ -136,6 +136,25 @@ function OverlapMatrix({ sets }) {
     return cell.overlap_coef.toFixed(2)
   }
 
+  function exportMatrixCSV() {
+    const metricKey = metric === 'count' ? 'count' : metric === 'jaccard' ? 'jaccard' : 'overlap_coef'
+    const header = ['Pathway', ...sets.map(s => s.pathway)].join(',')
+    const rows = sets.map((rowSet, i) => {
+      const cols = matrix[i].map((cell, j) => {
+        if (i === j) return rowSet.genes.length
+        if (!cell) return 0
+        return metricKey === 'count' ? cell.count : metricKey === 'jaccard' ? cell.jaccard.toFixed(4) : cell.overlap_coef.toFixed(4)
+      })
+      return [JSON.stringify(rowSet.pathway), ...cols].join(',')
+    })
+    const csv = [header, ...rows].join('\n')
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })),
+      download: `gsea_overlap_${metric}.csv`,
+    })
+    a.click(); URL.revokeObjectURL(a.href)
+  }
+
   // Tooltip for intersection cells: show shared genes
   function intersectionTip(a, b, cell) {
     if (!cell || cell.count === 0) return null
@@ -165,6 +184,12 @@ function OverlapMatrix({ sets }) {
             {m === 'count' ? 'Count' : m === 'jaccard' ? 'Jaccard' : 'Overlap coef.'}
           </button>
         ))}
+        <button onClick={exportMatrixCSV}
+                style={{ marginLeft: 'auto', fontSize: '0.65rem', padding: '2px 10px', borderRadius: 5,
+                         cursor: 'pointer', border: '1px solid rgba(99,102,241,0.25)',
+                         background: 'rgba(99,102,241,0.08)', color: '#818cf8' }}>
+          ↓ CSV
+        </button>
       </div>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed',
