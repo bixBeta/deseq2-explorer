@@ -10,6 +10,12 @@ RUN npm run build
 FROM rocker/r-ver:4.4
 
 # System deps
+# - curl/ssl/xml: R package compilation + httr/blastula
+# - sqlite3: RSQLite
+# - zlib/png/tiff/jpeg: image I/O for ggplot2 / heatmaply PNG output
+# - cairo/fontconfig/freetype/harfbuzz/fribidi: required by systemfonts → textshaping → ggplot2
+# - libxt: R graphics device fallback
+# - libgit2: dep of some tidyverse install-time packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nginx \
     supervisor \
@@ -18,11 +24,37 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxml2-dev \
     libsqlite3-dev \
     zlib1g-dev \
+    libpng-dev \
+    libtiff-dev \
+    libjpeg-dev \
+    libcairo2-dev \
+    libfontconfig1-dev \
+    libfreetype6-dev \
+    libharfbuzz-dev \
+    libfribidi-dev \
+    libxt-dev \
+    libgit2-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# R packages (BiocManager handles Bioconductor)
-RUN R -e "install.packages(c('BiocManager','plumber','jsonlite','DBI','RSQLite','uuid','digest','blastula','matrixStats','httr'), repos='https://cloud.r-project.org')"
-RUN R -e "BiocManager::install(c('DESeq2'), ask=FALSE, update=FALSE)"
+# ── CRAN packages ──────────────────────────────────────────────────────────────
+# Core infrastructure
+RUN R -e "install.packages(c('BiocManager','plumber','jsonlite','DBI','RSQLite','uuid','digest','blastula','httr','base64enc'), repos='https://cloud.r-project.org')"
+
+# Computation & parallelism
+RUN R -e "install.packages(c('matrixStats','mirai'), repos='https://cloud.r-project.org')"
+
+# Visualisation (ggpubr pulls ggplot2 + rstatix; heatmaply pulls plotly + dendextend)
+RUN R -e "install.packages(c('ggplot2','ggpubr','heatmaply','plotly','UpSetR'), repos='https://cloud.r-project.org')"
+
+# GSEA gene-set data
+RUN R -e "install.packages('msigdbr', repos='https://cloud.r-project.org')"
+
+# ── Bioconductor packages ──────────────────────────────────────────────────────
+# DESeq2 first (large dependency tree — separate layer for cache efficiency)
+RUN R -e "BiocManager::install('DESeq2', ask=FALSE, update=FALSE)"
+
+# GSEA analysis + visualisation (clusterProfiler pulls fgsea, DOSE, enrichplot)
+RUN R -e "BiocManager::install(c('clusterProfiler','enrichplot'), ask=FALSE, update=FALSE)"
 
 # Copy React build → nginx html dir
 COPY --from=builder /app/frontend/dist /usr/share/nginx/html
