@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import methodsMd from '../methods.md?raw'
+import deseq2LogoRaw from '../assets/deseq2-applogo.svg?raw'
+import trexLogoRaw   from '../assets/trex-applogo.svg?raw'
 
 // ── Simple markdown → JSX renderer ───────────────────────────────────────────
 function renderMd(md) {
@@ -366,29 +368,9 @@ function buildHtmlExport(md, sessionRows, contrasts, gseaRuns, alpha) {
     <h1>DESeq2 ExploreR</h1>
     <p>Methods &amp; Session Report — ${new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })}</p>
   </div>
-  <div class="doc-logo">
-    <svg width="50" height="50" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="exp-hg" x1="3" y1="5" x2="37" y2="35" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stop-color="#4f46e5"/><stop offset="100%" stop-color="#7c3aed"/>
-        </linearGradient>
-        <filter id="exp-hf" x="-15%" y="-15%" width="130%" height="130%">
-          <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#4f46e5" flood-opacity="0.4"/>
-        </filter>
-      </defs>
-      <path d="M 37,20 L 28.5,34.7 L 11.5,34.7 L 3,20 L 11.5,5.3 L 28.5,5.3 Z" fill="url(#exp-hg)" filter="url(#exp-hf)"/>
-      <text x="20" y="25" text-anchor="middle" fill="white" font-family="Inter,system-ui,sans-serif" font-weight="800" font-size="15">D</text>
-    </svg>
-    <svg width="50" height="50" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="exp-trex" x1="3" y1="5" x2="37" y2="35" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stop-color="#1e1b4b"/><stop offset="100%" stop-color="#312e81"/>
-        </linearGradient>
-      </defs>
-      <path d="M 37,20 L 28.5,34.7 L 11.5,34.7 L 3,20 L 11.5,5.3 L 28.5,5.3 Z" fill="url(#exp-trex)" stroke="#6d28d9" stroke-width="1"/>
-      <text x="20" y="17" text-anchor="middle" fill="#c4b5fd" font-family="Inter,system-ui,sans-serif" font-weight="700" font-size="10">TR</text>
-      <text x="20" y="29" text-anchor="middle" fill="#c4b5fd" font-family="Inter,system-ui,sans-serif" font-weight="700" font-size="10">Ex</text>
-    </svg>
+  <div class="doc-logo" style="display:flex;align-items:center;gap:6px;">
+    <div style="width:50px;height:50px;border-radius:12px;overflow:hidden;flex-shrink:0;">${deseq2LogoRaw}</div>
+    <div style="width:50px;height:50px;border-radius:12px;overflow:hidden;flex-shrink:0;">${trexLogoRaw}</div>
   </div>
 </div>
 ${hasParams ? `${sessionHtml}${contrastsHtml}${gseaHtml}<hr>` : ''}

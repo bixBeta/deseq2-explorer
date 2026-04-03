@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, Component } from 'react'
+import deseq2Logo from './assets/deseq2-applogo.svg'
+import trexLogo   from './assets/trex-applogo.svg'
 import SessionGate   from './components/SessionGate'
 import SessionPicker from './components/SessionPicker'
 import Uploader      from './components/Uploader'
@@ -40,93 +42,12 @@ class ErrorBoundary extends Component {
   }
 }
 
-// ── App icon variants — change ICON_VARIANT to 'A' | 'B' | 'C' to switch ────
-const ICON_VARIANT = 'C'
-
-// Flat-top hexagon path centered at (20,20) r=17
-const HEX = 'M 37,20 L 28.5,34.7 L 11.5,34.7 L 3,20 L 11.5,5.3 L 28.5,5.3 Z'
-
 function TRExLogo({ size = 34 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="trex-bg" x1="3" y1="5" x2="37" y2="35" gradientUnits="userSpaceOnUse">
-          <stop offset="0%"   stopColor="#1e1b4b"/>
-          <stop offset="100%" stopColor="#312e81"/>
-        </linearGradient>
-      </defs>
-      <path d={HEX} fill="url(#trex-bg)" stroke="#6d28d9" strokeWidth="1"/>
-      <text x="20" y="17" textAnchor="middle" fill="#c4b5fd"
-            fontFamily="Inter,system-ui,sans-serif" fontWeight="700" fontSize="10">TR</text>
-      <text x="20" y="29" textAnchor="middle" fill="#c4b5fd"
-            fontFamily="Inter,system-ui,sans-serif" fontWeight="700" fontSize="10">Ex</text>
-    </svg>
-  )
+  return <img src={trexLogo} width={size} height={size} alt="TREx" style={{ borderRadius: Math.round(size * 0.21) }} />
 }
 
-function AppIcon({ variant = ICON_VARIANT }) {
-  // Variant A — clean hexagon, deep indigo→violet, bold D
-  if (variant === 'A') return (
-    <svg width="34" height="34" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="hg-a" x1="3" y1="5" x2="37" y2="35" gradientUnits="userSpaceOnUse">
-          <stop offset="0%"   stopColor="#4f46e5"/>
-          <stop offset="100%" stopColor="#7c3aed"/>
-        </linearGradient>
-        <filter id="hf-a" x="-15%" y="-15%" width="130%" height="130%">
-          <feDropShadow dx="0" dy="2" stdDeviation="2.5" floodColor="#4f46e5" floodOpacity="0.4"/>
-        </filter>
-      </defs>
-      <path d={HEX} fill="url(#hg-a)" filter="url(#hf-a)"/>
-      <text x="20" y="25" textAnchor="middle" fill="white"
-            fontFamily="Inter,system-ui,sans-serif" fontWeight="800" fontSize="15">D</text>
-    </svg>
-  )
-
-  // Variant B — hexagon with inner hex ring, indigo→cyan (AWS-like depth)
-  if (variant === 'B') return (
-    <svg width="34" height="34" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="hg-b" x1="3" y1="5" x2="37" y2="35" gradientUnits="userSpaceOnUse">
-          <stop offset="0%"   stopColor="#0ea5e9"/>
-          <stop offset="100%" stopColor="var(--accent)"/>
-        </linearGradient>
-        <filter id="hf-b" x="-15%" y="-15%" width="130%" height="130%">
-          <feDropShadow dx="0" dy="2" stdDeviation="2.5" floodColor="#0ea5e9" floodOpacity="0.4"/>
-        </filter>
-      </defs>
-      <path d={HEX} fill="url(#hg-b)" filter="url(#hf-b)"/>
-      {/* inner ring */}
-      <path d="M 31,20 L 25.5,29.5 L 14.5,29.5 L 9,20 L 14.5,10.5 L 25.5,10.5 Z"
-            fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="1"/>
-      <text x="20" y="25" textAnchor="middle" fill="white"
-            fontFamily="Inter,system-ui,sans-serif" fontWeight="800" fontSize="15">D</text>
-    </svg>
-  )
-
-  // Variant C — dark hexagon with teal accent line, monochrome biotech feel
-  return (
-    <svg width="34" height="34" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="hg-c" x1="3" y1="5" x2="37" y2="35" gradientUnits="userSpaceOnUse">
-          <stop offset="0%"   stopColor="#1e1b4b"/>
-          <stop offset="100%" stopColor="#312e81"/>
-        </linearGradient>
-        <linearGradient id="hg-c2" x1="3" y1="5" x2="37" y2="35" gradientUnits="userSpaceOnUse">
-          <stop offset="0%"   stopColor="#2dd4bf"/>
-          <stop offset="100%" stopColor="#818cf8"/>
-        </linearGradient>
-        <filter id="hf-c" x="-15%" y="-15%" width="130%" height="130%">
-          <feDropShadow dx="0" dy="2" stdDeviation="2.5" floodColor="#2dd4bf" floodOpacity="0.35"/>
-        </filter>
-      </defs>
-      <path d={HEX} fill="url(#hg-c)" filter="url(#hf-c)"/>
-      {/* teal accent edge on top-right */}
-      <path d="M 28.5,5.3 L 37,20" stroke="url(#hg-c2)" strokeWidth="2.5" strokeLinecap="round"/>
-      <text x="20" y="25" textAnchor="middle" fill="white"
-            fontFamily="Inter,system-ui,sans-serif" fontWeight="800" fontSize="15">D</text>
-    </svg>
-  )
+function AppIcon() {
+  return <img src={deseq2Logo} width="34" height="34" alt="DESeq2 ExploreR" style={{ borderRadius: 7 }} />
 }
 
 const STEPS       = ['upload', 'metadata', 'design', 'results']
@@ -417,7 +338,7 @@ export default function App() {
         {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <AppIcon />
-          <span style={{ fontSize: '0.6rem', color: 'var(--text-3)', opacity: 0.4, fontWeight: 300 }}>×</span>
+          <span style={{ fontSize: '0.6rem', color: 'var(--accent)', fontWeight: 300 }}>×</span>
           <TRExLogo size={34} />
           <span className="font-bold text-base gradient-text" style={{ marginLeft: 6 }}>DESeq2 ExploreR</span>
         </div>
