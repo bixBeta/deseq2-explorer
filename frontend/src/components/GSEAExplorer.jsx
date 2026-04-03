@@ -900,6 +900,7 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
 
   const [histData,     setHistData]     = useState(null)
   const [histLoading,  setHistLoading]  = useState(false)
+  const [histError,    setHistError]    = useState(null)
   const [showDistModal,setShowDistModal]= useState(false)
 
   const [running,  setRunning]  = useState(false)
@@ -933,13 +934,13 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
   // Fetch preview when contrast changes
   useEffect(()=>{
     if(!session?.sessionId) return
-    setHistData(null); setHistLoading(true)
+    setHistData(null); setHistLoading(true); setHistError(null)
     const ctrl=new AbortController()
     fetch('/api/gsea/preview',{ method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({ sessionId:session.sessionId, contrastLabel }), signal:ctrl.signal })
       .then(r=>r.json())
       .then(d=>{ if(d.error) throw new Error(d.error); setHistData(d); setHistLoading(false) })
-      .catch(e=>{ if(e.name!=='AbortError') setHistLoading(false) })
+      .catch(e=>{ if(e.name!=='AbortError'){ setHistError(e.message || 'Failed to load distributions'); setHistLoading(false) } })
     return ()=>ctrl.abort()
   },[session, contrastLabel])
 
@@ -1086,10 +1087,15 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
                 <span style={{ color:'var(--text-3)' }}>Passing</span>
                 <span style={{ color:V.text, fontWeight:700 }}>~{nAbove.toLocaleString()}</span>
               </div>
-              <button onClick={()=>setShowDistModal(true)} title="View per-sample count distributions"
-                disabled={!histData}
-                style={{ padding:'5px 10px', borderRadius:6, border:`1px solid ${V.border}`, background:V.muted, color:V.text, fontSize:'0.72rem', fontWeight:600, cursor:histData?'pointer':'default', opacity:histData?1:0.45, whiteSpace:'nowrap' }}>
-                {histLoading ? '…' : '⎚ Distributions'}
+              <button onClick={()=>{ if(histData) setShowDistModal(true) }}
+                title={histError ? histError : 'View per-sample count distributions'}
+                disabled={!histData && !histError}
+                style={{ padding:'5px 10px', borderRadius:6, border:`1px solid ${histError?'rgba(244,63,94,0.4)':V.border}`,
+                  background: histError?'rgba(244,63,94,0.08)':V.muted,
+                  color: histError?'#f43f5e':V.text,
+                  fontSize:'0.72rem', fontWeight:600, cursor:histData?'pointer':'default',
+                  opacity: (!histData && !histError) ? 0.45 : 1, whiteSpace:'nowrap' }}>
+                {histLoading ? '…' : histError ? '✕ Dist. error' : '⎚ Distributions'}
               </button>
             </div>
           </div>

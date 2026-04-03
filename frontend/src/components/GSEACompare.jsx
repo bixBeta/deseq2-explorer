@@ -267,42 +267,42 @@ function MethodsPanel() {
         METHODS
       </button>
       {open && (
-        <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div>
-            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-2)', marginBottom: 3 }}>
+            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-2)', marginBottom: 4 }}>
               Leading-edge genes
             </div>
-            <p style={{ fontSize: '0.71rem', color: 'var(--text-3)', lineHeight: 1.55, margin: 0 }}>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-3)', lineHeight: 1.6, margin: 0 }}>
               The leading-edge subset is the core of genes that drive a pathway's enrichment score in GSEA.
               These are the genes ranked before the peak of the running enrichment score — i.e. the genes
               that contribute most to the observed enrichment.
             </p>
           </div>
-          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
-            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-2)', marginBottom: 3 }}>
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-2)', marginBottom: 4 }}>
               Count
             </div>
-            <p style={{ fontSize: '0.71rem', color: 'var(--text-3)', lineHeight: 1.55, margin: 0 }}>
-              Raw number of shared leading-edge genes between two pathways: <code style={{ background: 'var(--bg-card2)', padding: '1px 5px', borderRadius: 3, color: 'var(--accent-text)' }}>|A ∩ B|</code>.
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-3)', lineHeight: 1.6, margin: 0 }}>
+              Raw number of shared leading-edge genes between two pathways: <code style={{ background: 'var(--bg-card2)', padding: '2px 6px', borderRadius: 3, color: 'var(--accent-text)' }}>|A ∩ B|</code>.
               Useful for absolute counts but does not account for set size.
             </p>
           </div>
-          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
-            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-2)', marginBottom: 3 }}>
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-2)', marginBottom: 4 }}>
               Jaccard index
             </div>
-            <p style={{ fontSize: '0.71rem', color: 'var(--text-3)', lineHeight: 1.55, margin: 0 }}>
-              <code style={{ background: 'var(--bg-card2)', padding: '1px 5px', borderRadius: 3, color: 'var(--accent-text)' }}>|A ∩ B| / |A ∪ B|</code> — ranges from 0 (no overlap) to 1 (identical sets).
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-3)', lineHeight: 1.6, margin: 0 }}>
+              <code style={{ background: 'var(--bg-card2)', padding: '2px 6px', borderRadius: 3, color: 'var(--accent-text)' }}>|A ∩ B| / |A ∪ B|</code> — ranges from 0 (no overlap) to 1 (identical sets).
               Penalises both sets for genes that are not shared, making it a strict symmetric similarity measure.
               Best for comparing pathways of similar size.
             </p>
           </div>
-          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
-            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-2)', marginBottom: 3 }}>
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-2)', marginBottom: 4 }}>
               Overlap coefficient (Szymkiewicz–Simpson)
             </div>
-            <p style={{ fontSize: '0.71rem', color: 'var(--text-3)', lineHeight: 1.55, margin: 0 }}>
-              <code style={{ background: 'var(--bg-card2)', padding: '1px 5px', borderRadius: 3, color: 'var(--accent-text)' }}>|A ∩ B| / min(|A|, |B|)</code> — reaches 1.0 when the smaller set is entirely contained
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-3)', lineHeight: 1.6, margin: 0 }}>
+              <code style={{ background: 'var(--bg-card2)', padding: '2px 6px', borderRadius: 3, color: 'var(--accent-text)' }}>|A ∩ B| / min(|A|, |B|)</code> — reaches 1.0 when the smaller set is entirely contained
               in the larger one, regardless of the larger set's size. Ideal for detecting subset relationships
               and redundant pathways where one leading edge is nested inside another.
             </p>

@@ -1888,13 +1888,16 @@ function(req, res) {
     png(tmp, width = width, height = height, res = 120)
     print(UpSetR::upset(
       UpSetR::fromList(gene_sets),
-      nsets       = min(nsets, length(gene_sets)),
-      nintersects = nintersects,
-      order.by    = order_by,
-      text.scale  = font_size / 7,
-      point.size  = 2.8,
-      line.size   = 0.7,
-      mb.ratio    = c(0.6, 0.4)
+      nsets           = min(nsets, length(gene_sets)),
+      nintersects     = nintersects,
+      order.by        = order_by,
+      sets.bar.color  = "#0b446f",
+      main.bar.color  = "#0b446f",
+      matrix.color    = "#0b446f",
+      text.scale      = font_size / 7,
+      point.size      = 2.8,
+      line.size       = 0.7,
+      mb.ratio        = c(0.6, 0.4)
     ))
     dev.off()
     NULL

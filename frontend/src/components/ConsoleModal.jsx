@@ -202,7 +202,7 @@ function mdToHtml(md) {
       i++
       while (i < lines.length && !lines[i].startsWith('```')) { codeLines.push(lines[i]); i++ }
       i++ // skip closing ```
-      out.push(`<pre><code>${escHtml(codeLines.join('\n'))}</code></pre>`)
+      out.push(`<div class="code-block"><button class="copy-btn" onclick="copyCode(this)">Copy</button><pre><code>${escHtml(codeLines.join('\n'))}</code></pre></div>`)
       continue
     }
 
@@ -228,7 +228,16 @@ function mdToHtml(md) {
     const slug = t => t.toLowerCase().replace(/[^\w\s-]/g,'').trim().replace(/\s+/g,'-')
     if (line.startsWith('#### ')) { const t=line.slice(5); out.push(`<h4 id="${slug(t)}">${inlineHtml(t)}</h4>`); i++; continue }
     if (line.startsWith('### '))  { const t=line.slice(4); out.push(`<h3 id="${slug(t)}">${inlineHtml(t)}</h3>`); i++; continue }
-    if (line.startsWith('## '))   { const t=line.slice(3); out.push(`<h2 id="${slug(t)}">${inlineHtml(t)}</h2>`); i++; continue }
+    if (line.startsWith('## '))   {
+      const t = line.slice(3)
+      // Suppress inline Table of Contents — rendered as sidebar instead
+      if (t.trim() === 'Table of Contents') {
+        i++
+        while (i < lines.length && (lines[i].match(/^- \[/) || lines[i].trim() === '')) i++
+        continue
+      }
+      out.push(`<h2 id="${slug(t)}">${inlineHtml(t)}</h2>`); i++; continue
+    }
     if (line.startsWith('# '))    { const t=line.slice(2); out.push(`<h1 id="${slug(t)}">${inlineHtml(t)}</h1>`); i++; continue }
 
     // TOC / anchor list items: - [Text](#anchor)
@@ -292,13 +301,15 @@ function buildHtmlExport(md, sessionRows, contrasts, gseaRuns, alpha) {
 <section>
   <h2>DESeq2 Contrasts</h2>
   <table>
-    <thead><tr><th>Contrast</th><th>Genes tested</th><th>Sig. (padj&lt;α)</th><th>Up</th><th>Down</th></tr></thead>
+    <thead><tr><th>Contrast</th><th>Treatment</th><th>Reference</th><th>Genes tested</th><th>Sig. (padj&lt;α)</th><th>Up</th><th>Down</th></tr></thead>
     <tbody>${contrasts.map(ct => {
       const genes = ct.results ?? []
       const sig   = genes.filter(g => g.padj != null && g.padj < eff_alpha)
       const up    = sig.filter(g => g.log2FC > 0).length
       const dn    = sig.length - up
-      return `<tr><td><code>${escHtml(ct.label ?? '')}</code></td><td>${genes.length.toLocaleString()}</td>` +
+      return `<tr><td><code>${escHtml(ct.label ?? '')}</code></td>` +
+             `<td>${escHtml(ct.treatment ?? '—')}</td><td>${escHtml(ct.reference ?? '—')}</td>` +
+             `<td>${genes.length.toLocaleString()}</td>` +
              `<td>${sig.length.toLocaleString()}</td><td style="color:#059669">↑ ${up.toLocaleString()}</td>` +
              `<td style="color:#dc2626">↓ ${dn.toLocaleString()}</td></tr>`
     }).join('')}
@@ -333,6 +344,20 @@ function buildHtmlExport(md, sessionRows, contrasts, gseaRuns, alpha) {
 
   const hasParams = sessionHtml || contrastsHtml || gseaHtml
 
+  // Extract TOC entries from markdown for the sidebar
+  const tocItems = md.split('\n')
+    .filter(l => l.match(/^- \[/))
+    .map(l => { const m = l.match(/^- \[([^\]]+)\]\(([^)]+)\)/); return m ? { text: m[1], href: m[2] } : null })
+    .filter(Boolean)
+
+  const tocSidebarHtml = tocItems.length ? `
+<nav class="toc-sidebar" id="toc-sidebar">
+  <div class="toc-title">On this page</div>
+  <ul>
+    ${tocItems.map(item => `<li><a href="${item.href}" class="toc-link">${escHtml(item.text)}</a></li>`).join('\n    ')}
+  </ul>
+</nav>` : ''
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -340,7 +365,10 @@ function buildHtmlExport(md, sessionRows, contrasts, gseaRuns, alpha) {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>DESeq2 ExploreR — Methods Report</title>
 <style>
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 900px; margin: 40px auto; padding: 0 24px; color: #1e293b; line-height: 1.65; }
+  *, *::before, *::after { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; padding: 0; color: #1e293b; line-height: 1.65; background: #fff; }
+  .page-wrap { display: flex; max-width: 1180px; margin: 0 auto; padding: 40px 24px; gap: 0; align-items: flex-start; }
+  .main-content { flex: 1; min-width: 0; max-width: 860px; padding-left: 48px; }
   h1 { color: #0b446f; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; }
   h2 { color: #0b446f; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-top: 2rem; }
   h3 { color: #334155; margin-top: 1.5rem; }
@@ -362,22 +390,73 @@ function buildHtmlExport(md, sessionRows, contrasts, gseaRuns, alpha) {
   .doc-header-text h1 { border-bottom: none; padding-bottom: 0; margin: 0 0 2px; font-size: 1.5rem; }
   .doc-header-text p { margin: 0; font-size: 0.82rem; color: #64748b; }
   .doc-logo { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+  .code-block { position: relative; margin: 0.6rem 0 1.2rem; }
+  .code-block pre { margin: 0; border-radius: 8px; }
+  .copy-btn { position: absolute; top: 8px; right: 10px; padding: 3px 10px; font-size: 0.72rem; font-family: inherit; font-weight: 600; color: #94a3b8; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 5px; cursor: pointer; transition: all 0.15s; z-index: 1; }
+  .copy-btn:hover { background: rgba(255,255,255,0.14); color: #e2e8f0; }
+  .copy-btn.copied { color: #34d399; border-color: rgba(52,211,153,0.4); background: rgba(52,211,153,0.1); }
+  /* TOC sidebar */
+  .toc-sidebar { width: 220px; flex-shrink: 0; position: sticky; top: 32px; max-height: calc(100vh - 64px); overflow-y: auto; padding-right: 16px; border-right: 1px solid #e2e8f0; order: -1; }
+  .toc-title { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: #94a3b8; margin-bottom: 10px; padding-left: 8px; }
+  .toc-sidebar ul { list-style: none; padding: 0; margin: 0; }
+  .toc-sidebar li { margin-bottom: 1px; }
+  .toc-link { font-size: 0.78rem; color: #64748b; text-decoration: none; display: block; padding: 4px 8px; border-radius: 4px; border-left: 2px solid transparent; margin-left: -2px; line-height: 1.4; transition: color 0.12s, background 0.12s; }
+  .toc-link:hover { color: #0b446f; background: #f1f5f9; }
+  .toc-link.active { color: #0b446f; border-left-color: #0b446f; background: #eff6ff; font-weight: 600; }
+  @media (max-width: 820px) { .toc-sidebar { display: none; } .main-content { padding-left: 0; } }
 </style>
 </head>
 <body>
-<div class="doc-header">
-  <div class="doc-header-text">
-    <h1>DESeq2 ExploreR</h1>
-    <p>Methods &amp; Session Report — ${new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })}</p>
+<div class="page-wrap">
+  <div class="main-content">
+    <div class="doc-header">
+      <div class="doc-header-text">
+        <h1>DESeq2 ExploreR</h1>
+        <p>Methods &amp; Session Report — ${new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })}</p>
+      </div>
+      <div class="doc-logo" style="display:flex;align-items:center;gap:6px;">
+        <img src="${svgToDataUri(deseq2LogoRaw)}" width="50" height="50" style="border-radius:12px;" alt="DESeq2 ExploreR"/>
+        <img src="${svgToDataUri(trexLogoRaw)}"   width="50" height="50" style="border-radius:12px;" alt="TREx"/>
+      </div>
+    </div>
+    ${hasParams ? `${sessionHtml}${contrastsHtml}${gseaHtml}<hr>` : ''}
+    ${mdToHtml(md)}
+    <p class="generated">Generated by DESeq2 ExploreR</p>
   </div>
-  <div class="doc-logo" style="display:flex;align-items:center;gap:6px;">
-    <img src="${svgToDataUri(deseq2LogoRaw)}" width="50" height="50" style="border-radius:12px;" alt="DESeq2 ExploreR"/>
-    <img src="${svgToDataUri(trexLogoRaw)}"   width="50" height="50" style="border-radius:12px;" alt="TREx"/>
-  </div>
+  ${tocSidebarHtml}
 </div>
-${hasParams ? `${sessionHtml}${contrastsHtml}${gseaHtml}<hr>` : ''}
-${mdToHtml(md)}
-<p class="generated">Generated by DESeq2 ExploreR</p>
+<script>
+function copyCode(btn) {
+  var code = btn.nextElementSibling.querySelector('code').innerText;
+  navigator.clipboard.writeText(code).then(function() {
+    btn.textContent = 'Copied!'; btn.classList.add('copied');
+    setTimeout(function() { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+  }).catch(function() {
+    btn.textContent = 'Failed';
+    setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
+  });
+}
+// Scroll spy — highlight active TOC link
+(function() {
+  var links = document.querySelectorAll('.toc-link');
+  if (!links.length) return;
+  var headings = Array.from(links).map(function(a) {
+    return document.getElementById(a.getAttribute('href').slice(1));
+  }).filter(Boolean);
+  function onScroll() {
+    var scrollY = window.scrollY + 80;
+    var active = headings[0];
+    for (var i = 0; i < headings.length; i++) {
+      if (headings[i].getBoundingClientRect().top + window.scrollY <= scrollY) active = headings[i];
+    }
+    links.forEach(function(a) {
+      a.classList.toggle('active', a.getAttribute('href') === '#' + active.id);
+    });
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+})();
+</script>
 </body>
 </html>`
 }
@@ -436,6 +515,8 @@ export default function ConsoleModal({ onClose, session, design, results, parseI
     ['Fit type',          params.fitType ?? 'parametric'],
     ['Alpha (FDR)',        alpha],
     ['LFC threshold',     params.lfcThreshold ?? 0],
+    ['Pre-filter min count',    params.minCount ?? 1],
+    ['Pre-filter min samples',  params.minSamples ?? 2],
     ['Ind. filtering',    String(params.independentFiltering ?? true)],
     ['Cooks cutoff',      String(params.cooksCutoff ?? true)],
     ['Contrasts run',     contrasts.length || undefined],
@@ -527,7 +608,7 @@ export default function ConsoleModal({ onClose, session, design, results, parseI
                       <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.79rem' }}>
                         <thead>
                           <tr style={{ background:'rgba(var(--accent-rgb),0.07)' }}>
-                            {['Contrast','Genes tested','Sig. (padj<α)','Up','Down'].map(h=>(
+                            {['Contrast','Treatment','Reference','Genes tested','Sig. (padj<α)','Up','Down'].map(h=>(
                               <th key={h} style={{ padding:'6px 10px', textAlign:'left', color:'var(--accent)',
                                 fontWeight:600, borderBottom:'2px solid var(--border)', whiteSpace:'nowrap' }}>{h}</th>
                             ))}
@@ -543,6 +624,8 @@ export default function ConsoleModal({ onClose, session, design, results, parseI
                               <tr key={ct.label ?? i} style={{ background: i%2===0?'transparent':'rgba(255,255,255,0.02)',
                                 borderBottom:'1px solid var(--border)' }}>
                                 <td style={{ padding:'5px 10px', fontFamily:'monospace', fontSize:'0.73rem', color:'var(--text-1)' }}>{ct.label}</td>
+                                <td style={{ padding:'5px 10px', color:'var(--text-2)' }}>{ct.treatment ?? '—'}</td>
+                                <td style={{ padding:'5px 10px', color:'var(--text-2)' }}>{ct.reference ?? '—'}</td>
                                 <td style={{ padding:'5px 10px', color:'var(--text-2)' }}>{genes.length.toLocaleString()}</td>
                                 <td style={{ padding:'5px 10px', color:'var(--text-2)' }}>{sig.length.toLocaleString()}</td>
                                 <td style={{ padding:'5px 10px', color:'#10b981' }}>↑ {up.toLocaleString()}</td>

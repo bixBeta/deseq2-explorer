@@ -14,6 +14,7 @@
 - [Heatmap](#heatmap)
 - [Gene Annotation](#gene-annotation)
 - [Gene Set Enrichment Analysis (GSEA)](#gene-set-enrichment-analysis-gsea)
+- [GSEA Compare — Pathway Overlap Analysis](#gsea-compare--pathway-overlap-analysis)
 
 ---
 
@@ -506,3 +507,34 @@ enrichplot::gseaplot2(gsea_tmp, geneSetID = pathway_sel,
 ```
 
 > **Note:** `gseaplot2()` returns a `cowplot` composite object. The `+` operator cannot be used to add ggplot2 layers to it; all styling must be done via its own parameters before the call.
+
+---
+
+## GSEA Compare — Pathway Overlap Analysis
+
+The **GSEA Compare** tab allows cross-run, cross-contrast comparison of GSEA results by analysing the overlap between the leading-edge gene sets of selected pathways.
+
+### Leading-edge genes
+
+The leading-edge subset is the core set of genes that drive a pathway's enrichment score in GSEA. These are the genes ranked before the peak of the running enrichment score — i.e. the genes that contribute most to the observed enrichment. Leading-edge gene sets are extracted directly from the stored GSEA result objects (`core_enrichment` field of the `clusterProfiler::GSEA()` output, stored as `/`-delimited gene symbol strings).
+
+### Overlap metrics
+
+Three pairwise overlap metrics are computed between the leading-edge sets of any two selected pathways (A and B):
+
+| Metric | Formula | Range | Notes |
+|---|---|---|---|
+| **Count** | ∣A ∩ B∣ | 0 … min(∣A∣, ∣B∣) | Raw shared gene count; does not normalise for set size |
+| **Jaccard index** | ∣A ∩ B∣ / ∣A ∪ B∣ | 0 – 1 | Penalises both sets for unshared genes; symmetric; best when comparing pathways of similar size |
+| **Overlap coefficient** (Szymkiewicz–Simpson) | ∣A ∩ B∣ / min(∣A∣, ∣B∣) | 0 – 1 | Reaches 1.0 when the smaller set is entirely contained in the larger one; ideal for detecting subset/redundancy relationships |
+
+```
+Jaccard(A, B)  = |A ∩ B| / |A ∪ B|
+Overlap(A, B)  = |A ∩ B| / min(|A|, |B|)
+```
+
+All three metrics are displayed in the pairwise overlap matrix. The matrix can be exported as CSV for downstream analysis.
+
+### Pathway selection
+
+Pathways are drawn from all GSEA runs in the current session. Runs are filterable by adjusted p-value cutoff and by a top-N per run limit. A free-text search box further narrows the pathway list by name. Selected pathways are summarised in a detail table (paginated, 20 rows per page) showing pathway name, run label, contrast, NES, padj, and leading-edge gene count, with row hover highlighting for readability.

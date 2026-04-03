@@ -6,11 +6,11 @@ import trexLogo   from '../assets/trex-applogo.svg'
 const HEX = 'M 37,20 L 28.5,34.7 L 11.5,34.7 L 3,20 L 11.5,5.3 L 28.5,5.3 Z'
 
 function TRExLogoLarge() {
-  return <img src={trexLogo} width="48" height="48" alt="TREx" style={{ borderRadius: 10 }} />
+  return <img src={trexLogo} width="58" height="58" alt="TREx" style={{ borderRadius: 12 }} />
 }
 
 function AppIconLarge() {
-  return <img src={deseq2Logo} width="48" height="48" alt="DESeq2 ExploreR" style={{ borderRadius: 10 }} />
+  return <img src={deseq2Logo} width="58" height="58" alt="DESeq2 ExploreR" style={{ borderRadius: 12 }} />
 }
 
 const STEPS = [
@@ -106,7 +106,7 @@ export default function SessionGate({ onAuth, onExample }) {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
             <AppIconLarge />
-            <span style={{ fontSize: '1rem', color: 'var(--text-3)', opacity: 0.4, fontWeight: 200 }}>×</span>
+            <span style={{ fontSize: '1.2rem', color: 'var(--accent)', fontWeight: 200 }}>×</span>
             <TRExLogoLarge />
             <div>
               <h1 className="text-2xl font-bold gradient-text" style={{ lineHeight: 1.2 }}>DESeq2 ExploreR</h1>

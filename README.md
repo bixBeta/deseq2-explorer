@@ -1,8 +1,19 @@
-# DESeq2 ExploreR
+<p align="center">
+  <img src="frontend/src/assets/deseq2-applogo.svg" width="64" alt="DESeq2 ExploreR logo" />
+  &nbsp;
+  <img src="frontend/src/assets/trex-applogo.svg" width="64" alt="TREx logo" />
+</p>
 
-A web-based differential expression analysis platform for RNA-seq data, powered by DESeq2. Upload a count matrix, define experimental contrasts, and explore results through interactive visualizations — all in the browser, no R installation required.
+<h1 align="center">DESeq2 ExploreR</h1>
 
-> **Built by [@bixBeta](https://github.com/bixBeta)**
+<p align="center">
+  A web-based differential expression analysis platform for RNA-seq data, powered by DESeq2.<br/>
+  Upload a count matrix, define experimental contrasts, and explore results through interactive visualizations — all in the browser, no R installation required.
+</p>
+
+<p align="center">
+  <strong>Built by <a href="https://github.com/bixBeta">@bixBeta</a></strong>
+</p>
 
 ---
 

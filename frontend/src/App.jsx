@@ -76,7 +76,7 @@ export default function App() {
   const [annMap,      setAnnMap]      = useState(null)   // gene_id → symbol
   const [annDetails,  setAnnDetails]  = useState(null)   // gene_id → { chr, start, end, description } (GTF only)
   const [sampleLabels, setSampleLabels] = useState({})   // originalSample → displayName
-  const [saveStatus,  setSaveStatus]  = useState('idle')   // 'idle' | 'saving' | 'saved'
+  const [saveStatus,  setSaveStatus]  = useState('idle')   // 'idle' | 'saving' | 'saved' | 'error'
   const [copied,      setCopied]      = useState(false)
   const [showHelp,    setShowHelp]    = useState(false)
   const [showConsole, setShowConsole] = useState(false)
@@ -208,7 +208,8 @@ export default function App() {
       setTimeout(() => setSaveStatus('idle'), 2500)
     } catch (e) {
       console.error(e)
-      setSaveStatus('idle')
+      setSaveStatus('error')
+      setTimeout(() => setSaveStatus('idle'), 3000)
     }
   }
 
@@ -236,7 +237,7 @@ export default function App() {
       fetch('/api/session/save', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(buildSaveBody()),
-      }).catch(() => {})
+      }).catch(e => console.warn('Auto-save failed:', e.message))
     }, 2000)
     return () => clearTimeout(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -311,7 +312,7 @@ export default function App() {
           body: JSON.stringify(buildSaveBody(ms, newLabels)),
         })
       } catch (e) {
-        console.error('Auto-save metadata failed:', e)
+        console.warn('Auto-save metadata failed:', e.message)
       }
     }
   }
@@ -398,12 +399,19 @@ export default function App() {
             <button onClick={handleSave} disabled={saveStatus === 'saving'}
                     className="text-xs px-3 py-1.5 rounded-lg transition-all"
                     style={{
-                      background: saveStatus === 'saved' ? 'rgba(52,211,153,0.12)' : 'rgba(255,255,255,0.04)',
-                      color:      saveStatus === 'saved' ? '#34d399' : 'var(--text-3)',
+                      background: saveStatus === 'saved'  ? 'rgba(52,211,153,0.12)'
+                                : saveStatus === 'error'  ? 'rgba(244,63,94,0.12)'
+                                : 'rgba(255,255,255,0.04)',
+                      color:      saveStatus === 'saved'  ? '#34d399'
+                                : saveStatus === 'error'  ? '#f43f5e'
+                                : 'var(--text-3)',
                       border:     '1px solid var(--border)',
                       cursor:     saveStatus === 'saving' ? 'wait' : 'pointer',
                     }}>
-              {saveStatus === 'saving' ? '⏳ Saving…' : saveStatus === 'saved' ? '✓ Saved' : '💾 Save'}
+              {saveStatus === 'saving' ? '⏳ Saving…'
+             : saveStatus === 'saved'  ? '✓ Saved'
+             : saveStatus === 'error'  ? '✕ Save failed'
+             : '💾 Save'}
             </button>
           )}
           {showNav && (
