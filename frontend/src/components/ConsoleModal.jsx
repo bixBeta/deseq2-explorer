@@ -183,7 +183,7 @@ function inlineHtml(text) {
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" style="color:#0e7490">$1</a>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" style="color:#0b446f">$1</a>')
 }
 
 function mdToHtml(md) {
@@ -234,7 +234,7 @@ function mdToHtml(md) {
       const items = []
       while (i < lines.length && lines[i].match(/^- \[/)) {
         const m = lines[i].match(/^- \[([^\]]+)\]\(([^)]+)\)/)
-        items.push(m ? `<li><a href="${m[2]}" style="color:#0e7490">${escHtml(m[1])}</a></li>`
+        items.push(m ? `<li><a href="${m[2]}" style="color:#0b446f">${escHtml(m[1])}</a></li>`
                      : `<li>${inlineHtml(lines[i].slice(2))}</li>`)
         i++
       }
@@ -339,16 +339,16 @@ function buildHtmlExport(md, sessionRows, contrasts, gseaRuns, alpha) {
 <title>DESeq2 ExploreR — Methods Report</title>
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 900px; margin: 40px auto; padding: 0 24px; color: #1e293b; line-height: 1.65; }
-  h1 { color: #0e7490; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; }
-  h2 { color: #0e7490; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-top: 2rem; }
+  h1 { color: #0b446f; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; }
+  h2 { color: #0b446f; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-top: 2rem; }
   h3 { color: #334155; margin-top: 1.5rem; }
   h4 { color: #475569; margin-top: 1rem; }
-  a { color: #0e7490; }
-  code { background: #f1f5f9; padding: 1px 5px; border-radius: 3px; font-size: 0.85em; font-family: 'JetBrains Mono', 'Fira Code', monospace; color: #0e7490; }
+  a { color: #0b446f; }
+  code { background: #f1f5f9; padding: 1px 5px; border-radius: 3px; font-size: 0.85em; font-family: 'JetBrains Mono', 'Fira Code', monospace; color: #0b446f; }
   pre { background: #1e293b; color: #e2e8f0; padding: 16px 20px; border-radius: 8px; overflow-x: auto; margin: 0.6rem 0 1.2rem; }
   pre code { background: none; color: inherit; font-size: 0.82rem; padding: 0; }
   table { width: 100%; border-collapse: collapse; margin: 1rem 0 1.5rem; font-size: 0.88rem; }
-  th { background: #f1f5f9; padding: 8px 12px; text-align: left; border-bottom: 2px solid #cbd5e1; color: #0e7490; }
+  th { background: #f1f5f9; padding: 8px 12px; text-align: left; border-bottom: 2px solid #cbd5e1; color: #0b446f; }
   td { padding: 6px 12px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
   tr:nth-child(even) td { background: #f8fafc; }
   hr { border: none; border-top: 1px solid #e2e8f0; margin: 2rem 0; }

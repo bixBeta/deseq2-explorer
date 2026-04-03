@@ -3,12 +3,12 @@ import Plotly from 'plotly.js-dist-min'
 
 // ── Ocean palette — green/red preserved for ±NES ─────────────────────────────
 const V = {
-  accent:  '#0e7490',
-  accent2: '#0891b2',
-  text:    '#0891b2',
-  muted:   'rgba(14,116,144,0.12)',
-  border:  'rgba(14,116,144,0.35)',
-  card:    'rgba(14,116,144,0.06)',
+  accent:  '#0b446f',
+  accent2: '#1a6a9f',
+  text:    '#3a8fc7',
+  muted:   'rgba(11,68,111,0.12)',
+  border:  'rgba(11,68,111,0.35)',
+  card:    'rgba(11,68,111,0.06)',
   up:      '#10b981',
   down:    '#f43f5e',
 }
@@ -129,7 +129,7 @@ function DistributionModal({ histData, cutoffLog, cutoffOrig, filterMethod, filt
   return (
     <div style={{ position:'fixed', inset:0, zIndex:1100, background:'rgba(0,0,0,0.7)', backdropFilter:'blur(5px)', display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}
       onClick={onClose}>
-      <div style={{ background:'var(--bg-panel)', borderRadius:18, padding:28, width:'100%', maxWidth:880, border:`1px solid ${V.border}`, boxShadow:`0 0 60px rgba(14,116,144,0.2)` }}
+      <div style={{ background:'var(--bg-panel)', borderRadius:18, padding:28, width:'100%', maxWidth:880, border:`1px solid ${V.border}`, boxShadow:`0 0 60px rgba(11,68,111,0.2)` }}
         onClick={e=>e.stopPropagation()}>
 
         {/* Header */}
@@ -352,7 +352,7 @@ function ResultsTable({ run, onPathwayClick, selectedPathway }) {
               return (
                 <tr key={r.pathway??i} onClick={()=>onPathwayClick(r)}
                   style={{ cursor:'pointer', background:isSel?V.muted:i%2===0?'transparent':'rgba(255,255,255,0.015)', borderLeft:`3px solid ${isSel?V.accent:'transparent'}` }}
-                  onMouseEnter={e=>{ if(!isSel) e.currentTarget.style.background='rgba(14,116,144,0.07)' }}
+                  onMouseEnter={e=>{ if(!isSel) e.currentTarget.style.background='rgba(11,68,111,0.07)' }}
                   onMouseLeave={e=>{ if(!isSel) e.currentTarget.style.background=i%2===0?'transparent':'rgba(255,255,255,0.015)' }}>
                   <td style={{ padding:'7px 10px', color:'var(--text-1)', maxWidth:340, border:CB }}>
                     <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={r.pathway}>{name}</div>
@@ -719,7 +719,7 @@ function PlotsPanel({ run, session, contrastLabel }) {
         </div>
 
         <button onClick={handleGenerate} disabled={loading||!run}
-          style={{ padding:'9px 0', borderRadius:8, border:'none', cursor:loading||!run?'wait':'pointer', background:loading?`rgba(14,116,144,0.35)`:`linear-gradient(135deg,${V.accent},${V.accent2})`, color:'#fff', fontWeight:700, fontSize:'0.82rem', transition:'all 0.15s' }}>
+          style={{ padding:'9px 0', borderRadius:8, border:'none', cursor:loading||!run?'wait':'pointer', background:loading?`rgba(11,68,111,0.35)`:`linear-gradient(135deg,${V.accent},${V.accent2})`, color:'#fff', fontWeight:700, fontSize:'0.82rem', transition:'all 0.15s' }}>
           {loading ? '⟳ Generating…' : '▶ Generate Plot'}
         </button>
 
@@ -846,7 +846,7 @@ function MountainModal({ pathway, result, curveData, curveLoading, curveError, o
 
   return (
     <div style={{ position:'fixed', inset:0, zIndex:1000, background:'rgba(0,0,0,0.65)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', padding:24 }} onClick={onClose}>
-      <div style={{ background:'var(--bg-panel)', borderRadius:16, padding:20, width:'100%', maxWidth:780, border:`1px solid ${V.border}`, boxShadow:`0 0 40px rgba(14,116,144,0.18)` }} onClick={e=>e.stopPropagation()}>
+      <div style={{ background:'var(--bg-panel)', borderRadius:16, padding:20, width:'100%', maxWidth:780, border:`1px solid ${V.border}`, boxShadow:`0 0 40px rgba(11,68,111,0.18)` }} onClick={e=>e.stopPropagation()}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
           <span style={{ ...LBL, fontSize:'0.7rem' }}>Enrichment Mountain Plot</span>
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
@@ -1025,7 +1025,7 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
     <div data-accent="ocean" style={{ display:'flex', flexDirection:'column', gap:0 }}>
 
       {/* Header */}
-      <div style={{ background:`linear-gradient(135deg,rgba(14,116,144,0.12),rgba(8,145,178,0.04))`, border:`1px solid ${V.border}`, borderRadius:12, padding:'14px 20px', marginBottom:16, display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
+      <div style={{ background:`linear-gradient(135deg,rgba(11,68,111,0.12),rgba(26,106,159,0.04))`, border:`1px solid ${V.border}`, borderRadius:12, padding:'14px 20px', marginBottom:16, display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
         <div>
           <div style={{ fontSize:'1.05rem', fontWeight:700, color:'var(--text-1)', letterSpacing:'-0.01em' }}>⟳ GSEA Explorer</div>
           <div style={{ fontSize:'0.72rem', color:'var(--text-3)', marginTop:2 }}>GSEA · MSigDB · Ranked gene set enrichment</div>
@@ -1155,7 +1155,7 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
 
           {/* Run */}
           <button onClick={handleRun} disabled={running}
-            style={{ padding:'11px 0', borderRadius:10, border:'none', cursor:running?'wait':'pointer', background:running?`rgba(14,116,144,0.35)`:`linear-gradient(135deg,${V.accent},${V.accent2})`, color:'#fff', fontWeight:700, fontSize:'0.88rem', boxShadow:running?'none':`0 4px 16px rgba(14,116,144,0.45)`, transition:'all 0.15s', marginTop:4 }}>
+            style={{ padding:'11px 0', borderRadius:10, border:'none', cursor:running?'wait':'pointer', background:running?`rgba(11,68,111,0.35)`:`linear-gradient(135deg,${V.accent},${V.accent2})`, color:'#fff', fontWeight:700, fontSize:'0.88rem', boxShadow:running?'none':`0 4px 16px rgba(11,68,111,0.45)`, transition:'all 0.15s', marginTop:4 }}>
             {running?`Running… ${elapsed}s`:contrastRuns.length?'↺ New Run':'▶ Run GSEA'}
           </button>
           {runError && <div style={{ padding:'8px 12px', borderRadius:8, fontSize:'0.75rem', background:'rgba(248,113,113,0.08)', color:'#f87171', border:'1px solid rgba(248,113,113,0.2)', lineHeight:1.5 }}>⚠ {runError}</div>}

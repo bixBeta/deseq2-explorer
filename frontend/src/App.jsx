@@ -58,7 +58,7 @@ const ACCENT_THEMES = [
   { id: 'maroon',  label: 'Maroon',  color: '#9f1239' },
   { id: 'crimson', label: 'Crimson', color: '#b91c1c' },
   { id: 'forest',  label: 'Forest',  color: '#166534' },
-  { id: 'ocean',   label: 'Ocean',   color: '#0e7490' },
+  { id: 'ocean',   label: 'Ocean',   color: '#0b446f' },
   { id: 'amber',   label: 'Amber',   color: '#92400e' },
 ]
 

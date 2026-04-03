@@ -43,7 +43,7 @@ export default function ProgressBar({ active, label }) {
         <div style={{
           height: '100%',
           width: `${progress}%`,
-          background: 'linear-gradient(90deg, #0e7490, #2dd4bf)',
+          background: 'linear-gradient(90deg, #0b446f, #1a6a9f)',
           transition: progress === 100 ? 'width 0.3s ease' : 'width 0.12s linear',
           boxShadow: '0 0 8px rgba(45,212,191,0.6)',
         }} />
