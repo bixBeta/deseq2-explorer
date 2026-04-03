@@ -3,6 +3,8 @@ import methodsMd from '../methods.md?raw'
 import deseq2LogoRaw from '../assets/deseq2-applogo.svg?raw'
 import trexLogoRaw   from '../assets/trex-applogo.svg?raw'
 
+const svgToDataUri = (raw) => `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(raw)))}`
+
 // ── Simple markdown → JSX renderer ───────────────────────────────────────────
 function renderMd(md) {
   const lines = md.split('\n')
@@ -369,8 +371,8 @@ function buildHtmlExport(md, sessionRows, contrasts, gseaRuns, alpha) {
     <p>Methods &amp; Session Report — ${new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })}</p>
   </div>
   <div class="doc-logo" style="display:flex;align-items:center;gap:6px;">
-    <div style="width:50px;height:50px;border-radius:12px;overflow:hidden;flex-shrink:0;">${deseq2LogoRaw}</div>
-    <div style="width:50px;height:50px;border-radius:12px;overflow:hidden;flex-shrink:0;">${trexLogoRaw}</div>
+    <img src="${svgToDataUri(deseq2LogoRaw)}" width="50" height="50" style="border-radius:12px;" alt="DESeq2 ExploreR"/>
+    <img src="${svgToDataUri(trexLogoRaw)}"   width="50" height="50" style="border-radius:12px;" alt="TREx"/>
   </div>
 </div>
 ${hasParams ? `${sessionHtml}${contrastsHtml}${gseaHtml}<hr>` : ''}
