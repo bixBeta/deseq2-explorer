@@ -356,6 +356,14 @@ export default function GSEACompare({ session, gseaRuns }) {
     downloadCSV(rows, 'gsea_compare_pathways.csv')
   }
 
+  const [tablePage, setTablePage] = useState(0)
+  const TABLE_PER_PAGE = 20
+  const tablePages = Math.ceil(selectedSets.length / TABLE_PER_PAGE)
+  const tableRows  = selectedSets.slice(tablePage * TABLE_PER_PAGE, (tablePage + 1) * TABLE_PER_PAGE)
+
+  // Reset to page 0 when selection changes
+  useMemo(() => { setTablePage(0) }, [selectedSets.length])
+
   const { show: showTip, move: moveTip, hide: hideTip, node: tipNode } = useTooltip()
 
   if (!runs.length) {
@@ -467,7 +475,7 @@ export default function GSEACompare({ session, gseaRuns }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {selectedSets.map((s, i) => {
+                  {tableRows.map((s, i) => {
                     const showAll = expandedGenes.has(s.id)
                     const preview = showAll ? s.genes : s.genes.slice(0, 2)
                     const remaining = s.genes.length - 2
@@ -526,6 +534,24 @@ export default function GSEACompare({ session, gseaRuns }) {
                 </tbody>
               </table>
             </div>
+            {tablePages > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 10 }}>
+                <button onClick={() => setTablePage(p => Math.max(0, p - 1))} disabled={tablePage === 0}
+                        style={{ padding: '3px 10px', borderRadius: 6, fontSize: '0.72rem', cursor: tablePage === 0 ? 'default' : 'pointer',
+                                 background: 'var(--bg-card2)', border: '1px solid var(--border)', color: 'var(--text-2)', opacity: tablePage === 0 ? 0.4 : 1 }}>
+                  ←
+                </button>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>
+                  {tablePage + 1} / {tablePages}
+                  <span style={{ marginLeft: 6, color: 'var(--text-4)' }}>({selectedSets.length} total)</span>
+                </span>
+                <button onClick={() => setTablePage(p => Math.min(tablePages - 1, p + 1))} disabled={tablePage === tablePages - 1}
+                        style={{ padding: '3px 10px', borderRadius: 6, fontSize: '0.72rem', cursor: tablePage === tablePages - 1 ? 'default' : 'pointer',
+                                 background: 'var(--bg-card2)', border: '1px solid var(--border)', color: 'var(--text-2)', opacity: tablePage === tablePages - 1 ? 0.4 : 1 }}>
+                  →
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Pairwise overlap matrix + methods */}
