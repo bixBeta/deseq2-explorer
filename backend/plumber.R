@@ -1363,24 +1363,61 @@ function(req, res) {
   )
 }
 
-.query_biomart <- function(xml_query) {
-  resp <- tryCatch(
-    httr::POST(
-      "https://www.ensembl.org/biomart/martservice",
-      body   = list(query = xml_query),
-      encode = "form",
-      httr::timeout(120)
-    ),
-    error = function(e) { message("[BioMart] request error: ", e$message); NULL }
-  )
-  if (is.null(resp)) return(NULL)
-  if (httr::status_code(resp) != 200) {
-    message("[BioMart] HTTP ", httr::status_code(resp))
-    return(NULL)
+.BIOMART_MIRRORS <- c(
+  "https://www.ensembl.org",
+  "https://useast.ensembl.org",
+  "https://asia.ensembl.org"
+)
+
+.query_biomart <- function(xml_query, timeout_s = 120) {
+  for (mirror in .BIOMART_MIRRORS) {
+    for (attempt in seq_len(3)) {
+      resp <- tryCatch(
+        httr::POST(paste0(mirror, "/biomart/martservice"),
+          body = list(query = xml_query), encode = "form",
+          httr::timeout(timeout_s)),
+        error = function(e) {
+          message("[BioMart] ", mirror, " attempt ", attempt, " error: ", e$message); NULL
+        }
+      )
+      if (is.null(resp)) { Sys.sleep(min(2^attempt, 16)); next }
+      code <- httr::status_code(resp)
+      if (code == 429) {
+        wait <- tryCatch(as.numeric(httr::headers(resp)[["retry-after"]]), error = function(e) 15)
+        if (is.na(wait) || wait < 5) wait <- 15
+        message("[BioMart] ", mirror, " rate limited — waiting ", wait, "s")
+        Sys.sleep(wait); next
+      }
+      if (code != 200) {
+        message("[BioMart] ", mirror, " HTTP ", code)
+        Sys.sleep(min(2^attempt, 16)); next
+      }
+      txt <- httr::content(resp, "text", encoding = "UTF-8")
+      if (grepl("^ERROR", trimws(txt))) {
+        message("[BioMart] ", mirror, " server error: ", substr(txt, 1, 200))
+        break  # query syntax error — try next mirror, not same mirror
+      }
+      return(txt)  # success
+    }
+    message("[BioMart] ", mirror, " exhausted — trying next mirror")
   }
-  txt <- httr::content(resp, "text", encoding = "UTF-8")
-  if (grepl("^ERROR", trimws(txt))) { message("[BioMart] error: ", substr(txt, 1, 200)); return(NULL) }
-  txt
+  NULL
+}
+
+# Helper: split ids into batches, query BioMart for each, rbind results
+.biomart_batch_query <- function(ids, dataset, attrs, batch_size = 500L) {
+  if (length(ids) == 0) return(NULL)
+  batches <- split(ids, ceiling(seq_along(ids) / batch_size))
+  dfs <- list()
+  for (batch in batches) {
+    txt <- .query_biomart(.build_biomart_xml(dataset, paste(batch, collapse = ","), attrs))
+    if (!is.null(txt)) {
+      df <- .parse_biomart_tsv(txt)
+      if (!is.null(df) && nrow(df) > 0) dfs <- c(dfs, list(df))
+    }
+  }
+  if (length(dfs) == 0) return(NULL)
+  do.call(rbind, dfs)
 }
 
 .parse_biomart_tsv <- function(txt) {
@@ -1436,112 +1473,100 @@ function(req, res) {
   rest_batches <- split(gene_ids, ceiling(seq_along(gene_ids) / BATCH_R))
   for (batch in rest_batches) {
     # Build body as a plain string — avoids jsonlite auto_unbox pitfalls
-    # (length-1 char vector unboxed to scalar → {"ids":"ENSG..."} instead of array).
     body_json <- paste0('{"ids":[', paste0('"', batch, '"', collapse = ","), ']}')
 
-    resp <- tryCatch(
-      httr::POST(REST_URL,
-        httr::add_headers(`Content-Type` = "application/json", `Accept` = "application/json"),
-        body = body_json, encode = "raw", httr::timeout(90)),
-      error = function(e) { message("[REST] error: ", e$message); NULL }
-    )
-
-    if (is.null(resp)) { Sys.sleep(1); next }
-    code <- httr::status_code(resp)
-    if (code != 200) {
-      txt <- tryCatch(httr::content(resp, "text", encoding = "UTF-8"), error = function(e) "")
-      message("[REST] HTTP ", code, ": ", substr(txt, 1, 300))
-      Sys.sleep(1); next
-    }
-
-    data <- tryCatch(
-      jsonlite::fromJSON(httr::content(resp, "text", encoding = "UTF-8"),
-                         simplifyVector = FALSE),
-      error = function(e) { message("[REST] parse error: ", e$message); NULL }
-    )
-    if (is.null(data)) { Sys.sleep(1); next }
-
-    for (gid in names(data)) {
-      gene <- data[[gid]]
-      if (is.null(gene) || !is.list(gene)) next
-      sym <- .safe_str(gene$display_name)
-      dsc <- .safe_str(gene$description)
-      if (!is.null(dsc)) dsc <- trimws(sub("\\s*\\[Source:[^\\]]*\\]", "", dsc))
-      bio <- .safe_str(gene$biotype)
-      base_map[[gid]] <- list(
-        symbol      = sym,
-        description = if (!is.null(dsc) && nchar(dsc) > 0) dsc else NULL,
-        biotype     = bio
+    for (attempt in seq_len(3)) {
+      resp <- tryCatch(
+        httr::POST(REST_URL,
+          httr::add_headers(`Content-Type` = "application/json", `Accept` = "application/json"),
+          body = body_json, encode = "raw", httr::timeout(90)),
+        error = function(e) { message("[REST] attempt ", attempt, " error: ", e$message); NULL }
       )
+      if (is.null(resp)) { Sys.sleep(min(2^attempt, 8)); next }
+
+      code <- httr::status_code(resp)
+      if (code == 429) {
+        wait <- tryCatch(as.numeric(httr::headers(resp)[["retry-after"]]), error = function(e) 10)
+        if (is.na(wait) || wait < 5) wait <- 10
+        message("[REST] rate limited — waiting ", wait, "s before retry")
+        Sys.sleep(wait); next
+      }
+      if (code != 200) {
+        txt <- tryCatch(httr::content(resp, "text", encoding = "UTF-8"), error = function(e) "")
+        message("[REST] HTTP ", code, ": ", substr(txt, 1, 300))
+        Sys.sleep(min(2^attempt, 8)); next
+      }
+
+      data <- tryCatch(
+        jsonlite::fromJSON(httr::content(resp, "text", encoding = "UTF-8"),
+                           simplifyVector = FALSE),
+        error = function(e) { message("[REST] parse error: ", e$message); NULL }
+      )
+      if (is.null(data)) { Sys.sleep(2); next }
+
+      for (gid in names(data)) {
+        gene <- data[[gid]]
+        if (is.null(gene) || !is.list(gene)) next
+        sym <- .safe_str(gene$display_name)
+        dsc <- .safe_str(gene$description)
+        if (!is.null(dsc)) dsc <- trimws(sub("\\s*\\[Source:[^\\]]*\\]", "", dsc))
+        bio <- .safe_str(gene$biotype)
+        base_map[[gid]] <- list(
+          symbol      = sym,
+          description = if (!is.null(dsc) && nchar(dsc) > 0) dsc else NULL,
+          biotype     = bio
+        )
+      }
+      break  # success — exit retry loop
     }
-    Sys.sleep(0.1)  # gentle rate-limit pause
+    Sys.sleep(0.15)  # gentle rate-limit pause between batches
   }
-  message("[REST] mapped ", length(base_map), " / ", length(gene_ids), " genes")
-  if (length(base_map) > 0) {
-    g1 <- base_map[[1]]
-    message("[REST] first entry — class(symbol):", class(g1$symbol),
-            " is.null:", is.null(g1$symbol),
-            " value:", if (is.null(g1$symbol)) "NULL" else paste0('"', g1$symbol, '"'))
-  }
-
-  # ── Phase 2: BioMart fallback (if REST returned almost nothing) ───────────
-  rest_mapped_pct <- length(base_map) / max(length(gene_ids), 1)
-  if (rest_mapped_pct < 0.05) {
-    message("[BioMart] REST only returned ", round(rest_mapped_pct*100, 1),
-            "% — falling back to BioMart XML")
-
+  # ── Phase 2: BioMart gap-fill for any genes REST did not return ───────────
+  # Runs whenever REST missed at least one gene — not just when REST fails completely.
+  unmapped_ids <- setdiff(gene_ids, names(base_map))
+  if (length(unmapped_ids) > 0) {
+    message("[BioMart] gap-fill: querying ", length(unmapped_ids),
+            " genes not returned by REST")
     dataset    <- .make_dataset(organism)
     base_attrs <- c("ensembl_gene_id", "external_gene_name", "description", "gene_biotype")
-    BATCH_BM   <- 500L
-    bm_batches <- split(gene_ids, ceiling(seq_along(gene_ids) / BATCH_BM))
-    base_dfs   <- list()
+    bm_df      <- .biomart_batch_query(unmapped_ids, dataset, base_attrs)
 
-    for (batch in bm_batches) {
-      txt <- .query_biomart(.build_biomart_xml(dataset, paste(batch, collapse = ","), base_attrs))
-      if (!is.null(txt)) {
-        # Log first response for diagnosis
-        if (length(base_dfs) == 0)
-          message("[BioMart] first batch (500 chars): ", substr(txt, 1, 500))
-        df <- .parse_biomart_tsv(txt)
-        if (!is.null(df) && nrow(df) > 0) base_dfs <- c(base_dfs, list(df))
-      }
-    }
-
-    if (length(base_dfs) > 0) {
-      bm_df <- do.call(rbind, base_dfs)
-      # Access columns by name to avoid column-order ambiguity
-      id_col  <- if ("Gene stable ID" %in% names(bm_df)) "Gene stable ID" else names(bm_df)[1]
-      sym_col <- if ("Gene name"       %in% names(bm_df)) "Gene name"       else names(bm_df)[2]
-      dsc_col <- if ("Gene description"%in% names(bm_df)) "Gene description" else names(bm_df)[3]
-      bio_col <- if ("Gene type"       %in% names(bm_df)) "Gene type"       else names(bm_df)[4]
+    if (!is.null(bm_df)) {
+      # Named column access — robust to Ensembl column order changes
+      id_col  <- intersect(c("Gene stable ID",  "ensembl_gene_id"),  names(bm_df))[1]
+      sym_col <- intersect(c("Gene name",        "external_gene_name"), names(bm_df))[1]
+      dsc_col <- intersect(c("Gene description", "description"),      names(bm_df))[1]
+      bio_col <- intersect(c("Gene type",        "gene_biotype"),     names(bm_df))[1]
+      if (is.na(id_col))  id_col  <- names(bm_df)[1]
+      if (is.na(sym_col)) sym_col <- names(bm_df)[2]
+      if (is.na(dsc_col)) dsc_col <- names(bm_df)[3]
+      if (is.na(bio_col)) bio_col <- names(bm_df)[4]
       message("[BioMart] columns: ", paste(names(bm_df), collapse = " | "))
 
       for (i in seq_len(nrow(bm_df))) {
         gid <- .safe_str(bm_df[i, id_col])
-        if (is.null(gid)) next
+        if (is.null(gid) || gid %in% names(base_map)) next  # REST result wins
         sym <- .safe_str(bm_df[i, sym_col])
         dsc <- .safe_str(bm_df[i, dsc_col])
         if (!is.null(dsc)) dsc <- trimws(sub("\\s*\\[Source:[^\\]]*\\]", "", dsc))
         bio <- .safe_str(bm_df[i, bio_col])
-        if (!gid %in% names(base_map)) {   # first occurrence wins
-          base_map[[gid]] <- list(
-            symbol      = sym,
-            description = if (!is.null(dsc) && nchar(dsc) > 0) dsc else NULL,
-            biotype     = bio
-          )
-        }
+        base_map[[gid]] <- list(
+          symbol      = sym,
+          description = if (!is.null(dsc) && nchar(dsc) > 0) dsc else NULL,
+          biotype     = bio
+        )
       }
-      message("[BioMart] now mapped ", length(base_map), " / ", length(gene_ids), " genes")
+      message("[BioMart] gap-fill: now mapped ", length(base_map), " / ", length(gene_ids), " genes")
     }
   }
 
   if (length(base_map) == 0) {
     res$status <- 502
     return(list(error = paste0(
-      "Both Ensembl REST and BioMart returned no data for ", length(gene_ids),
-      " gene IDs (organism: ", organism, "). ",
+      "Both Ensembl REST and BioMart (3 mirrors × 3 retries) returned no data for ",
+      length(gene_ids), " gene IDs (organism: ", organism, "). ",
       "Sample IDs: ", paste(head(gene_ids, 3), collapse = ", "), ". ",
-      "Check the R backend logs (docker logs / Rscript output) for HTTP errors."
+      "Check the R backend logs for HTTP errors or verify the organism code."
     )))
   }
 
@@ -1552,22 +1577,24 @@ function(req, res) {
   ortho_index <- list()
 
   if (want_orthologs) {
-    BATCH_BM   <- 500L
-    bm_batches <- split(gene_ids, ceiling(seq_along(gene_ids) / BATCH_BM))
-    ortho_dfs  <- list()
-    for (batch in bm_batches) {
-      txt <- .query_biomart(.build_biomart_xml(dataset, paste(batch, collapse = ","), ortho_attrs))
-      df  <- .parse_biomart_tsv(txt)
-      if (!is.null(df) && nrow(df) > 0) ortho_dfs <- c(ortho_dfs, list(df))
-    }
-    if (length(ortho_dfs) > 0) {
-      oc <- do.call(rbind, ortho_dfs)
+    oc <- .biomart_batch_query(gene_ids, dataset, ortho_attrs)
+    if (!is.null(oc)) {
+      # Named column access — robust to Ensembl column order changes
+      id_col     <- intersect(c("Gene stable ID",       "ensembl_gene_id"),                       names(oc))[1]
+      h_id_col   <- intersect(c("Human gene stable ID", "hsapiens_homolog_ensembl_gene"),          names(oc))[1]
+      h_sym_col  <- intersect(c("Human gene name",      "hsapiens_homolog_associated_gene_name"),  names(oc))[1]
+      h_type_col <- intersect(c("Human orthology type", "hsapiens_homolog_orthology_type"),        names(oc))[1]
+      if (is.na(id_col))     id_col     <- names(oc)[1]
+      if (is.na(h_id_col))   h_id_col   <- names(oc)[2]
+      if (is.na(h_sym_col))  h_sym_col  <- names(oc)[3]
+      if (is.na(h_type_col)) h_type_col <- names(oc)[4]
+
       for (i in seq_len(nrow(oc))) {
-        gid    <- .safe_str(oc[i, 1])
-        h_type <- .safe_str(oc[i, 4])
+        gid    <- .safe_str(oc[i, id_col])
+        h_type <- .safe_str(oc[i, h_type_col])
         if (is.null(gid) || is.null(h_type) || h_type != "ortholog_one2one") next
-        h_id  <- .safe_str(oc[i, 2])
-        h_sym <- .safe_str(oc[i, 3])
+        h_id  <- .safe_str(oc[i, h_id_col])
+        h_sym <- .safe_str(oc[i, h_sym_col])
         if (!is.null(h_id) || !is.null(h_sym))
           ortho_index[[gid]] <- list(id = h_id, sym = h_sym)
       }

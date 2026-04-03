@@ -182,7 +182,7 @@ export default function AnnotationPanel({ geneIds, annMap, onAnnotate }) {
     setStage(
       idType === 'refseq' ? 'Resolving RefSeq accessions via NCBI…' :
       idType === 'ncbi'   ? 'Connecting to NCBI E-summary…' :
-                            'Connecting to Ensembl BioMart…'
+                            'Phase 1 — Ensembl REST API…'
     )
 
     // Animate progress slowly up to 85% while waiting
@@ -190,6 +190,8 @@ export default function AnnotationPanel({ geneIds, annMap, onAnnotate }) {
     progressTimer.current = setInterval(() => {
       setProgress(p => {
         if (p >= 85) { clearInterval(progressTimer.current); return p }
+        // Slow down in later stages to hint at BioMart gap-fill phase
+        if (p >= 50) setStage(useNcbi ? 'Fetching annotations…' : 'Phase 2 — BioMart gap-fill…')
         return p + (p < 40 ? 3 : p < 65 ? 1.5 : 0.5)
       })
     }, 800)
@@ -199,12 +201,18 @@ export default function AnnotationPanel({ geneIds, annMap, onAnnotate }) {
       ? { gene_ids: geneIds }
       : { gene_ids: geneIds, organism: effectiveBiomartOrg, want_orthologs: wantOrthologs && !isHuman }
 
+    // 5-minute client-side timeout — BioMart with retries can be slow
+    const controller = new AbortController()
+    const timeoutId  = setTimeout(() => controller.abort(), 5 * 60 * 1000)
+
     try {
       const resp = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+        signal: controller.signal,
       })
+      clearTimeout(timeoutId)
 
       clearInterval(progressTimer.current)
       setProgress(90); setStage('Parsing response…')
@@ -261,8 +269,13 @@ export default function AnnotationPanel({ geneIds, annMap, onAnnotate }) {
         source:       useNcbi ? 'ncbi' : 'biomart',
       })
     } catch (e) {
+      clearTimeout(timeoutId)
       clearInterval(progressTimer.current)
-      setError(e.message)
+      if (e.name === 'AbortError') {
+        setError('Request timed out after 5 minutes. Ensembl may be slow — please try again.')
+      } else {
+        setError(e.message)
+      }
     } finally {
       setLoading(false)
       setStage('')
@@ -572,8 +585,15 @@ export default function AnnotationPanel({ geneIds, annMap, onAnnotate }) {
       {/* Error */}
       {error && (
         <div style={{ padding: '10px 14px', borderRadius: 8, fontSize: '0.78rem',
-                      background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)', color: '#f87171' }}>
-          ⚠ {error}
+                      background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)',
+                      color: '#f87171', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <span style={{ flex: 1 }}>⚠ {error}</span>
+          <button onClick={() => method === 'gtf' ? null : (method === 'gprofiler' ? fetchGprofiler() : fetchAnnotation())}
+            style={{ flexShrink: 0, padding: '2px 10px', borderRadius: 5, fontSize: '0.72rem', fontWeight: 600,
+                     background: 'rgba(248,113,113,0.15)', border: '1px solid rgba(248,113,113,0.35)',
+                     color: '#f87171', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            ↺ Retry
+          </button>
         </div>
       )}
 
