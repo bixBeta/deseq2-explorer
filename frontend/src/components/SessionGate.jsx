@@ -1,48 +1,16 @@
 import { useState } from 'react'
 import ProgressBar from './ProgressBar'
+import deseq2Logo from '../assets/deseq2-applogo.svg'
+import trexLogo   from '../assets/trex-applogo.svg'
 
 const HEX = 'M 37,20 L 28.5,34.7 L 11.5,34.7 L 3,20 L 11.5,5.3 L 28.5,5.3 Z'
 
 function TRExLogoLarge() {
-  return (
-    <svg width="48" height="48" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="trex-lg-bg" x1="3" y1="5" x2="37" y2="35" gradientUnits="userSpaceOnUse">
-          <stop offset="0%"   stopColor="#1e1b4b"/>
-          <stop offset="100%" stopColor="#312e81"/>
-        </linearGradient>
-      </defs>
-      <path d={HEX} fill="url(#trex-lg-bg)" stroke="#6d28d9" strokeWidth="1"/>
-      <text x="20" y="17" textAnchor="middle" fill="#c4b5fd"
-            fontFamily="Inter,system-ui,sans-serif" fontWeight="700" fontSize="10">TR</text>
-      <text x="20" y="29" textAnchor="middle" fill="#c4b5fd"
-            fontFamily="Inter,system-ui,sans-serif" fontWeight="700" fontSize="10">Ex</text>
-    </svg>
-  )
+  return <img src={trexLogo} width="48" height="48" alt="TREx" style={{ borderRadius: 10 }} />
 }
 
 function AppIconLarge() {
-  return (
-    <svg width="48" height="48" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="sg-bg" x1="3" y1="5" x2="37" y2="35" gradientUnits="userSpaceOnUse">
-          <stop offset="0%"   stopColor="#1e1b4b"/>
-          <stop offset="100%" stopColor="#312e81"/>
-        </linearGradient>
-        <linearGradient id="sg-acc" x1="3" y1="5" x2="37" y2="35" gradientUnits="userSpaceOnUse">
-          <stop offset="0%"   stopColor="#2dd4bf"/>
-          <stop offset="100%" stopColor="#818cf8"/>
-        </linearGradient>
-        <filter id="sg-shadow" x="-15%" y="-15%" width="130%" height="130%">
-          <feDropShadow dx="0" dy="2" stdDeviation="2.5" floodColor="#2dd4bf" floodOpacity="0.35"/>
-        </filter>
-      </defs>
-      <path d={HEX} fill="url(#sg-bg)" filter="url(#sg-shadow)"/>
-      <path d="M 28.5,5.3 L 37,20" stroke="url(#sg-acc)" strokeWidth="2.5" strokeLinecap="round"/>
-      <text x="20" y="25" textAnchor="middle" fill="white"
-            fontFamily="Inter,system-ui,sans-serif" fontWeight="800" fontSize="15">D</text>
-    </svg>
-  )
+  return <img src={deseq2Logo} width="48" height="48" alt="DESeq2 ExploreR" style={{ borderRadius: 10 }} />
 }
 
 const STEPS = [

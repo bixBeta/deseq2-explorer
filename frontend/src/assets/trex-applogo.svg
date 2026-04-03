@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="417" height="417" viewBox="0 0 417 417">
+  <g id="Group_2" data-name="Group 2" transform="translate(5.412 -17.588)">
+    <g id="Component_1_2" data-name="Component 1 – 2" transform="translate(-5.412 17.588)">
+      <g id="Rectangle_1" data-name="Rectangle 1" fill="#ef3737" stroke="#2f2f2f" stroke-linejoin="round" stroke-width="1">
+        <rect width="417" height="417" rx="65" stroke="none"/>
+        <rect x="0.5" y="0.5" width="416" height="416" rx="64.5" fill="none"/>
+      </g>
+      <text id="TREX" transform="translate(70 245)" fill="#fff" font-size="113" font-family="AvenirNext-Bold, Avenir Next" font-weight="700"><tspan x="0" y="0">TREx</tspan></text>
+    </g>
+  </g>
+</svg>
