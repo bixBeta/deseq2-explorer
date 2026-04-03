@@ -218,14 +218,14 @@ function CollectionGrid({ selected, onChange }) {
 }
 
 // ── Inline NES bar ────────────────────────────────────────────────────────────
-function NESBar({ nes, maxAbs }) {
+function NESBar({ nes, maxAbs, decimals = 2 }) {
   const pct = Math.min((Math.abs(nes)/maxAbs)*46,46)
   return (
     <div style={{ position:'relative', width:96, height:20, display:'flex', alignItems:'center' }}>
       <div style={{ position:'absolute', left:'50%', top:'15%', width:1, height:'70%', background:'var(--border)' }} />
       <div style={{ position:'absolute', width:`${pct}%`, height:'55%', top:'22%', left:nes>0?'50%':`${50-pct}%`, background:nes>0?'rgba(16,185,129,0.5)':'rgba(244,63,94,0.5)', borderRadius:2 }} />
       <span style={{ position:'absolute', [nes>0?'left':'right']:0, fontSize:'0.67rem', fontFamily:'monospace', color:nes>0?V.up:V.down, fontWeight:600 }}>
-        {nes>0?'+':''}{nes.toFixed(2)}
+        {nes>0?'+':''}{nes.toFixed(decimals)}
       </span>
     </div>
   )
@@ -453,7 +453,7 @@ function RankedListPanel({ run }) {
       <div style={{ overflowX:'auto', borderRadius:10, border:CB }}>
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.78rem' }}>
           <thead><tr>
-            {['#', 'Gene', 'Score', ''].map((l,i) => (
+            {['#', 'Gene', 'Score'].map((l,i) => (
               <th key={i} style={{ padding:'7px 10px', fontSize:'0.65rem', fontWeight:700, letterSpacing:'0.05em', textTransform:'uppercase', color:'var(--text-3)', background:'var(--bg-card2)', border:CB }}>{l}</th>
             ))}
           </tr></thead>
@@ -464,10 +464,7 @@ function RankedListPanel({ run }) {
                 <tr key={rank} style={{ background: i%2===0 ? 'transparent' : 'rgba(255,255,255,0.015)' }}>
                   <td style={{ padding:'5px 10px', color:'var(--text-4)', fontFamily:'monospace', fontSize:'0.7rem', border:CB }}>{rank}</td>
                   <td style={{ padding:'5px 10px', fontFamily:'monospace', fontWeight:600, color:'var(--text-1)', border:CB }}>{r.gene}</td>
-                  <td style={{ padding:'5px 10px', fontFamily:'monospace', fontSize:'0.72rem', color:pos?V.up:V.down, border:CB }}>{r.score>0?'+':''}{r.score.toFixed(4)}</td>
-                  <td style={{ padding:'5px 10px', border:CB }}>
-                    <div style={{ width:Math.round((Math.abs(r.score)/maxAbs)*80), height:8, background:pos?'rgba(16,185,129,0.45)':'rgba(244,63,94,0.45)', borderRadius:3 }} />
-                  </td>
+                  <td style={{ padding:'5px 10px', border:CB }}><NESBar nes={r.score} maxAbs={maxAbs} decimals={4} /></td>
                 </tr>
               )
             })}

@@ -472,7 +472,10 @@ export default function GSEACompare({ session, gseaRuns }) {
                     const preview = showAll ? s.genes : s.genes.slice(0, 2)
                     const remaining = s.genes.length - 2
                     return (
-                      <tr key={s.id} style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
+                      <tr key={s.id}
+                          style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', transition: 'background 0.1s' }}
+                          onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--accent-rgb),0.07)'}
+                          onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)'}>
                         <td style={{ ...tdBase, whiteSpace: 'nowrap', maxWidth: 220, fontWeight: 500, cursor: 'default' }}
                             onMouseEnter={e => showTip(s.pathway, e)}
                             onMouseMove={moveTip}
