@@ -1,7 +1,5 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-
-const API = (path) => `/api${path}`
 
 function extractSets(runs, padjCutoff, topN, searchQ) {
   const q = searchQ.trim().toLowerCase()
@@ -239,20 +237,6 @@ export default function GSEACompare({ session, gseaRuns }) {
   const [topN,       setTopN]       = useState(0)
   const [searchQ,    setSearchQ]    = useState('')
   const [selected,   setSelected]   = useState(new Set())
-
-  const [orderBy,     setOrderBy]     = useState('freq')
-  const [fontSize,    setFontSize]    = useState(14)
-  const [plotWidth,   setPlotWidth]   = useState(800)
-  const [plotHeight,  setPlotHeight]  = useState(450)
-  const [minSize,     setMinSize]     = useState(1)
-  const [nintersects, setNintersects] = useState(40)
-
-  const [loading,  setLoading]  = useState(false)
-  const [imgB64,   setImgB64]   = useState(null)
-  const [error,    setError]    = useState(null)
-  const [expanded, setExpanded] = useState(false)
-
-  const [rightTab, setRightTab] = useState('plot')   // 'plot' | 'table'
   const [expandedGenes, setExpandedGenes] = useState(new Set())
 
   const allSets = useMemo(
@@ -274,28 +258,6 @@ export default function GSEACompare({ session, gseaRuns }) {
   }
   function selectAll() { setSelected(new Set(allSets.map(s => s.id))) }
   function clearAll()  { setSelected(new Set()) }
-
-  const runPlot = useCallback(async () => {
-    if (selectedSets.length < 2) { setError('Select at least 2 pathways to compare.'); return }
-    setLoading(true); setError(null); setImgB64(null)
-    try {
-      const resp = await fetch(API('/gsea/compare'), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sets: selectedSets.map(s => ({ label: s.plotLabel, genes: s.genes })),
-          orderBy, fontSize, width: plotWidth, height: plotHeight, minSize, nintersects,
-        }),
-      })
-      const data = await resp.json()
-      if (!resp.ok) throw new Error(data.error ?? `Server error ${resp.status}`)
-      if (!data.image) throw new Error('No image returned from server')
-      setImgB64(data.image)
-    } catch (e) {
-      setError(e.message)
-    } finally {
-      setLoading(false)
-    }
-  }, [selectedSets, orderBy, fontSize, plotWidth, plotHeight, minSize, nintersects])
 
   function exportTableCSV() {
     const rows = selectedSets.map(s => ({
@@ -388,290 +350,104 @@ export default function GSEACompare({ session, gseaRuns }) {
       </div>
 
       {/* ── Right panel ── */}
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
-
-        {/* Subtab bar */}
-        <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid var(--border)' }}>
-          {[['plot', '⊗ UpSet Plot'], ['table', '▤ Table']].map(([key, label]) => (
-            <button key={key} onClick={() => setRightTab(key)}
-                    style={{
-                      padding: '6px 16px', fontSize: '0.8rem', fontWeight: rightTab === key ? 600 : 400,
-                      background: 'transparent', border: 'none', cursor: 'pointer',
-                      color: rightTab === key ? 'var(--text-1)' : 'var(--text-3)',
-                      borderBottom: `2px solid ${rightTab === key ? 'var(--accent)' : 'transparent'}`,
-                      borderRadius: '6px 6px 0 0', transition: 'color 0.12s',
-                    }}>
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {/* ── UpSet Plot tab ── */}
-        {rightTab === 'plot' && <>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {selectedSets.length === 0 ? (
+          <div style={{ textAlign: 'center', color: 'var(--text-3)', padding: 60 }}>
+            Select pathways from the left panel to populate the table.
+          </div>
+        ) : <>
+          {/* Pathway details table */}
           <div className="glass" style={{ padding: 14 }}>
-            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-2)',
-                          letterSpacing: '0.06em', marginBottom: 10 }}>
-              PLOT PARAMETERS
-            </div>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                <span style={{ fontSize: '0.63rem', color: 'var(--text-3)' }}>Order by</span>
-                <select value={orderBy} onChange={e => setOrderBy(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
-                  <option value="freq">Frequency</option>
-                  <option value="degree">Degree</option>
-                </select>
-              </label>
-              {[
-                { label: 'Font size',     val: fontSize,    set: setFontSize,    min: 6,   max: 28,   step: 1,  w: 64 },
-                { label: 'Min genes',     val: minSize,     set: setMinSize,     min: 1,   max: 100,  step: 1,  w: 64 },
-                { label: 'Max intersect', val: nintersects, set: setNintersects, min: 1,   max: 200,  step: 1,  w: 72 },
-              ].map(({ label, val, set, min, max, step, w }) => (
-                <label key={label} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  <span style={{ fontSize: '0.63rem', color: 'var(--text-3)' }}>{label}</span>
-                  <input type="number" min={min} max={max} step={step} value={val}
-                         onChange={e => set(+e.target.value)}
-                         style={{ ...inputStyle, width: w }} />
-                </label>
-              ))}
-
-              {/* Width — drives height via 16:9 */}
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                <span style={{ fontSize: '0.63rem', color: 'var(--text-3)' }}>Width px</span>
-                <input type="number" min={400} max={3000} step={50} value={plotWidth}
-                       onChange={e => {
-                         const w = +e.target.value
-                         if (!w || w < 1) return
-                         setPlotWidth(w)
-                         setPlotHeight(Math.round(w * (1080 / 1920)))
-                       }}
-                       style={{ ...inputStyle, width: 80 }} />
-              </label>
-
-              {/* Height — drives width via 16:9 */}
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                <span style={{ fontSize: '0.63rem', color: 'var(--text-3)' }}>
-                  Height px <span style={{ opacity: 0.5 }}>(16:9)</span>
-                </span>
-                <input type="number" min={200} max={3000} step={50} value={plotHeight}
-                       onChange={e => {
-                         const h = +e.target.value
-                         if (!h || h < 1) return
-                         setPlotHeight(h)
-                         setPlotWidth(Math.round(h * (1920 / 1080)))
-                       }}
-                       style={{ ...inputStyle, width: 80 }} />
-              </label>
-              <button onClick={runPlot} disabled={loading || selectedSets.length < 2}
-                      style={{
-                        alignSelf: 'flex-end', padding: '6px 20px', borderRadius: 8,
-                        fontSize: '0.82rem', fontWeight: 600, border: 'none', cursor: 'pointer',
-                        background: selectedSets.length >= 2 ? 'linear-gradient(135deg,#6366f1,#7c3aed)' : 'rgba(255,255,255,0.05)',
-                        color: selectedSets.length >= 2 ? '#fff' : 'var(--text-3)',
-                        opacity: loading ? 0.6 : 1, transition: 'opacity 0.15s',
-                      }}>
-                {loading ? 'Plotting…' : `Plot (${selectedSets.length})`}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-2)', letterSpacing: '0.06em' }}>
+                SELECTED PATHWAYS ({selectedSets.length})
+              </span>
+              <button onClick={exportTableCSV}
+                      style={{ fontSize: '0.68rem', padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
+                               background: 'rgba(99,102,241,0.1)', color: '#818cf8',
+                               border: '1px solid rgba(99,102,241,0.25)' }}>
+                ↓ CSV
               </button>
             </div>
-            {selectedSets.length === 1 && (
-              <p style={{ margin: '8px 0 0', fontSize: '0.72rem', color: '#f59e0b' }}>
-                Select at least 2 pathways to generate a plot.
-              </p>
-            )}
-          </div>
-
-          <div className="glass" style={{ position: 'relative', padding: 0 }}>
-            {/* toolbar row */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 14, alignItems: 'center',
-                          padding: '10px 16px', borderBottom: imgB64 ? '1px solid var(--border)' : 'none' }}>
-              {imgB64 && <>
-                <button onClick={() => setExpanded(true)}
-                        style={{ fontSize: '0.72rem', color: 'var(--text-3)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                  ⤢ Expand
-                </button>
-                <a href={`data:image/png;base64,${imgB64}`} download="gsea_compare_upset.png"
-                   style={{ fontSize: '0.72rem', color: '#818cf8', textDecoration: 'none' }}>
-                  ↓ Download PNG
-                </a>
-              </>}
-            </div>
-
-            {/* scrollable plot area */}
-            <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 600, padding: imgB64 ? 12 : 0 }}>
-            {loading && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 320 }}>
-                <div style={{ textAlign: 'center', color: 'var(--text-3)' }}>
-                  <div style={{ fontSize: '1.5rem', marginBottom: 8 }}>⟳</div>
-                  <span style={{ fontSize: '0.85rem' }}>Rendering UpSet plot…</span>
-                </div>
-              </div>
-            )}
-            {!loading && error && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 320 }}>
-                <div style={{ color: '#f87171', fontSize: '0.85rem', textAlign: 'center', maxWidth: 480 }}>
-                  <div style={{ fontSize: '1.2rem', marginBottom: 6 }}>✕</div>
-                  {error}
-                </div>
-              </div>
-            )}
-            {!loading && !error && imgB64 && (
-              <div>
-                <img src={`data:image/png;base64,${imgB64}`} alt="GSEA UpSet comparison"
-                     style={{ display: 'block', width: plotWidth, height: plotHeight,
-                              maxWidth: 'none',
-                              borderRadius: 6, boxShadow: '0 2px 16px rgba(0,0,0,0.3)', cursor: 'zoom-in' }}
-                     onClick={() => setExpanded(true)} />
-              </div>
-            )}
-            {!loading && !error && !imgB64 && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 320 }}>
-                <div style={{ textAlign: 'center', color: 'var(--text-3)', maxWidth: 420 }}>
-                  <div style={{ fontSize: '2.5rem', marginBottom: 10, opacity: 0.25 }}>⊗</div>
-                  <p style={{ fontSize: '0.85rem' }}>
-                    Select pathways from the left and click <strong style={{ color: 'var(--text-2)' }}>Plot</strong> to compare leading-edge genes.
-                  </p>
-                  <p style={{ fontSize: '0.72rem', marginTop: 6, opacity: 0.6 }}>
-                    Each pathway becomes one set; intersecting bars show shared genes.
-                  </p>
-                </div>
-              </div>
-            )}
-            </div>
-
-          </div>
-        </>}
-
-        {/* ── Table tab ── */}
-        {rightTab === 'table' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-
-            {selectedSets.length === 0 ? (
-              <div style={{ textAlign: 'center', color: 'var(--text-3)', padding: 40 }}>
-                Select pathways from the left panel to populate the table.
-              </div>
-            ) : <>
-              {/* Pathway details table */}
-              <div className="glass" style={{ padding: 14 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                  <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-2)', letterSpacing: '0.06em' }}>
-                    SELECTED PATHWAYS ({selectedSets.length})
-                  </span>
-                  <button onClick={exportTableCSV}
-                          style={{ fontSize: '0.68rem', padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
-                                   background: 'rgba(99,102,241,0.1)', color: '#818cf8',
-                                   border: '1px solid rgba(99,102,241,0.25)' }}>
-                    ↓ CSV
-                  </button>
-                </div>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '0.75rem' }}>
-                    <thead>
-                      <tr style={{ background: 'var(--bg-card2)' }}>
-                        {['Pathway', 'Contrast', 'Collection', 'NES', 'padj', 'n genes', 'Leading edge'].map(h => (
-                          <th key={h} style={{ ...tdBase, fontWeight: 700, color: 'var(--text-2)',
-                                               textAlign: h === 'NES' || h === 'padj' || h === 'n genes' ? 'right' : 'left',
-                                               whiteSpace: 'nowrap' }}>
-                            {h}
-                          </th>
-                        ))}
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '0.75rem' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg-card2)' }}>
+                    {['Pathway', 'Contrast', 'Collection', 'NES', 'padj', 'n genes', 'Leading edge'].map(h => (
+                      <th key={h} style={{ ...tdBase, fontWeight: 700, color: 'var(--text-2)',
+                                           textAlign: h === 'NES' || h === 'padj' || h === 'n genes' ? 'right' : 'left',
+                                           whiteSpace: 'nowrap' }}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedSets.map((s, i) => {
+                    const showAll = expandedGenes.has(s.id)
+                    const preview = showAll ? s.genes : s.genes.slice(0, 2)
+                    const remaining = s.genes.length - 2
+                    return (
+                      <tr key={s.id} style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
+                        <td style={{ ...tdBase, whiteSpace: 'nowrap', maxWidth: 220, fontWeight: 500, cursor: 'default' }}
+                            onMouseEnter={e => showTip(s.pathway, e)}
+                            onMouseMove={moveTip}
+                            onMouseLeave={hideTip}>
+                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 220 }}>
+                            {s.pathway}
+                          </div>
+                        </td>
+                        <td style={{ ...tdBase, whiteSpace: 'nowrap', color: 'var(--text-2)' }}>{s.run.contrastLabel}</td>
+                        <td style={{ ...tdBase, whiteSpace: 'nowrap', color: 'var(--text-2)' }}>{s.run.collectionLabel}</td>
+                        <td style={{ ...tdBase, whiteSpace: 'nowrap', textAlign: 'right',
+                                     color: (s.nes ?? 0) >= 0 ? '#10b981' : '#f43f5e', fontWeight: 600 }}>
+                          {s.nes != null ? s.nes.toFixed(3) : '—'}
+                        </td>
+                        <td style={{ ...tdBase, whiteSpace: 'nowrap', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.7rem' }}>
+                          {s.padj != null ? s.padj.toExponential(2) : '—'}
+                        </td>
+                        <td style={{ ...tdBase, whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 600 }}>
+                          {s.genes.length}
+                        </td>
+                        <td style={{ ...tdBase, whiteSpace: 'nowrap' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                            {preview.map(g => (
+                              <span key={g} style={{
+                                fontSize: '0.65rem', padding: '1px 5px', borderRadius: 4,
+                                background: 'rgba(99,102,241,0.1)', color: '#818cf8',
+                                border: '1px solid rgba(99,102,241,0.2)', fontFamily: 'monospace',
+                              }}>{g}</span>
+                            ))}
+                            {remaining > 0 && (
+                              <button onClick={() => setExpandedGenes(prev => {
+                                const next = new Set(prev)
+                                showAll ? next.delete(s.id) : next.add(s.id)
+                                return next
+                              })} style={{
+                                fontSize: '0.65rem', padding: '1px 6px', borderRadius: 4,
+                                background: 'rgba(255,255,255,0.05)', color: 'var(--text-3)',
+                                border: '1px solid var(--border)', cursor: 'pointer', flexShrink: 0,
+                              }}>
+                                {showAll ? '▴ less' : `+${remaining} more`}
+                              </button>
+                            )}
+                          </div>
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {selectedSets.map((s, i) => {
-                        const showAll = expandedGenes.has(s.id)
-                        const preview = showAll ? s.genes : s.genes.slice(0, 2)
-                        const remaining = s.genes.length - 2
-                        return (
-                          <tr key={s.id} style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
-                            <td style={{ ...tdBase, whiteSpace: 'nowrap', maxWidth: 220, fontWeight: 500, cursor: 'default' }}
-                                onMouseEnter={e => showTip(s.pathway, e)}
-                                onMouseMove={moveTip}
-                                onMouseLeave={hideTip}>
-                              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 220 }}>
-                                {s.pathway}
-                              </div>
-                            </td>
-                            <td style={{ ...tdBase, whiteSpace: 'nowrap', color: 'var(--text-2)' }}>
-                              {s.run.contrastLabel}
-                            </td>
-                            <td style={{ ...tdBase, whiteSpace: 'nowrap', color: 'var(--text-2)' }}>
-                              {s.run.collectionLabel}
-                            </td>
-                            <td style={{ ...tdBase, whiteSpace: 'nowrap', textAlign: 'right',
-                                         color: (s.nes ?? 0) >= 0 ? '#10b981' : '#f43f5e', fontWeight: 600 }}>
-                              {s.nes != null ? s.nes.toFixed(3) : '—'}
-                            </td>
-                            <td style={{ ...tdBase, whiteSpace: 'nowrap', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.7rem' }}>
-                              {s.padj != null ? s.padj.toExponential(2) : '—'}
-                            </td>
-                            <td style={{ ...tdBase, whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 600 }}>
-                              {s.genes.length}
-                            </td>
-                            <td style={{ ...tdBase, whiteSpace: 'nowrap' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                                {preview.map(g => (
-                                  <span key={g} style={{
-                                    fontSize: '0.65rem', padding: '1px 5px', borderRadius: 4,
-                                    background: 'rgba(99,102,241,0.1)', color: '#818cf8',
-                                    border: '1px solid rgba(99,102,241,0.2)', fontFamily: 'monospace',
-                                    whiteSpace: 'nowrap',
-                                  }}>{g}</span>
-                                ))}
-                                {remaining > 0 && (
-                                  <button onClick={() => setExpandedGenes(prev => {
-                                    const next = new Set(prev)
-                                    showAll ? next.delete(s.id) : next.add(s.id)
-                                    return next
-                                  })} style={{
-                                    fontSize: '0.65rem', padding: '1px 6px', borderRadius: 4,
-                                    background: 'rgba(255,255,255,0.05)', color: 'var(--text-3)',
-                                    border: '1px solid var(--border)', cursor: 'pointer',
-                                    whiteSpace: 'nowrap', flexShrink: 0,
-                                  }}>
-                                    {showAll ? '▴ less' : `+${remaining} more`}
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Pairwise overlap matrix */}
-              {selectedSets.length >= 2 && (
-                <div className="glass" style={{ padding: 14 }}>
-                  <OverlapMatrix sets={selectedSets} />
-                </div>
-              )}
-            </>}
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        )}
 
-        {/* Fullscreen modal */}
-        {expanded && imgB64 && (
-          <div onClick={() => setExpanded(false)}
-               style={{
-                 position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.88)',
-                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                 padding: 24, cursor: 'zoom-out',
-               }}>
-            <img src={`data:image/png;base64,${imgB64}`} alt="GSEA UpSet comparison"
-                 style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: 10,
-                          boxShadow: '0 8px 48px rgba(0,0,0,0.7)', objectFit: 'contain' }} />
-            <button onClick={e => { e.stopPropagation(); setExpanded(false) }}
-                    style={{
-                      position: 'fixed', top: 20, right: 24,
-                      background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
-                      color: '#fff', borderRadius: 8, padding: '4px 12px',
-                      fontSize: '0.85rem', cursor: 'pointer',
-                    }}>
-              ✕ Close
-            </button>
-          </div>
-        )}
+          {/* Pairwise overlap matrix */}
+          {selectedSets.length >= 2 && (
+            <div className="glass" style={{ padding: 14 }}>
+              <OverlapMatrix sets={selectedSets} />
+            </div>
+          )}
+        </>}
       </div>
     </div>
   )
