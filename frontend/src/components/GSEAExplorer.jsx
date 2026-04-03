@@ -803,7 +803,7 @@ function PlotsPanel({ run, session, contrastLabel }) {
 }
 
 // ── Enrichment mountain plot modal ────────────────────────────────────────────
-function MountainModal({ pathway, result, curveData, curveLoading, onClose }) {
+function MountainModal({ pathway, result, curveData, curveLoading, curveError, onClose, onRetry }) {
   const ref=useRef(null)
   useEffect(()=>{
     if(!curveData||!ref.current) return
@@ -859,6 +859,18 @@ function MountainModal({ pathway, result, curveData, curveLoading, onClose }) {
             <div style={{ width:40, height:40, borderRadius:'50%', border:`3px solid ${V.muted}`, borderTopColor:V.accent, animation:'gsea-spin 0.7s linear infinite' }} />
             <span style={{ fontSize:'0.8rem', color:'var(--text-3)' }}>Computing enrichment curve…</span>
           </div>
+        ) : curveError ? (
+          <div style={{ height:200, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:14 }}>
+            <div style={{ fontSize:'0.85rem', color:'#f87171', textAlign:'center', maxWidth:480, lineHeight:1.6 }}>
+              ⚠ {curveError}
+            </div>
+            {onRetry && (
+              <button onClick={onRetry}
+                style={{ padding:'6px 18px', borderRadius:7, border:`1px solid ${V.border}`, background:V.muted, color:V.text, fontSize:'0.78rem', fontWeight:600, cursor:'pointer' }}>
+                ↺ Retry
+              </button>
+            )}
+          </div>
         ) : curveData ? (
           <>
             <div ref={ref} style={{ width:'100%' }} />
@@ -911,12 +923,13 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
   const [selPathway,   setSelPathway]   = useState(null)
   const [curveData,    setCurveData]    = useState(null)
   const [curveLoading, setCurveLoading] = useState(false)
+  const [curveError,   setCurveError]   = useState(null)
   const curveCacheRef  = useRef({})
   const runCtrlRef     = useRef(null)
 
   // Reset per-contrast state when contrast changes
   useEffect(()=>{
-    setActiveRunId(null); setSelPathway(null); setCurveData(null)
+    setActiveRunId(null); setSelPathway(null); setCurveData(null); setCurveError(null)
     curveCacheRef.current = {}
   },[contrastLabel])
 
@@ -975,18 +988,17 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
       setRuns(prev=>[...prev,newRun])
       setActiveRunId(newRun.id)
       setContentTab('results'); curveCacheRef.current={}
-      setSelPathway(null); setCurveData(null)
+      setSelPathway(null); setCurveData(null); setCurveError(null)
     } catch(e){ if(e.name!=='AbortError') setRunError(e.message) }
     finally{ clearInterval(timer); setElapsed(0); setRunning(false) }
   },[session,contrastLabel,rankMethod,collection,species,minSize,maxSize,scoreType,nPerm,pAdjMethod,padjCutoff,filterMethod,filterValue,annMap])
 
   // Curve on pathway click
-  const handlePathwayClick=useCallback(async(result)=>{
-    setSelPathway(result); setCurveData(null)
+  const fetchCurve = useCallback(async(result, ar)=>{
+    setCurveData(null); setCurveError(null)
     if(curveCacheRef.current[result.pathway]){ setCurveData(curveCacheRef.current[result.pathway]); return }
     setCurveLoading(true)
     try{
-      const ar=activeRun
       const r=await fetch('/api/gsea/curve',{ method:'POST', headers:{'Content-Type':'application/json'},
         body:JSON.stringify({ sessionId:session.sessionId, contrastLabel, pathway:result.pathway,
           collection:ar?.collectionId??collection.id, subcategory:ar?.collectionSub??collection.sub,
@@ -994,8 +1006,16 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
       const data=await r.json()
       if(data.error) throw new Error(data.error)
       curveCacheRef.current[result.pathway]=data; setCurveData(data)
-    } catch{ setCurveData(null) } finally{ setCurveLoading(false) }
-  },[session,contrastLabel,activeRun,collection,species])
+    } catch(e){
+      console.error('[GSEA curve]', e.message)
+      setCurveError(e.message || 'Failed to load enrichment curve')
+    } finally{ setCurveLoading(false) }
+  },[session,contrastLabel,collection,species])
+
+  const handlePathwayClick=useCallback((result)=>{
+    setSelPathway(result)
+    fetchCurve(result, activeRun)
+  },[fetchCurve, activeRun])
 
   const removeRun=(id)=>{ setRuns(p=>p.filter(r=>r.id!==id)); if(activeRunId===id) setActiveRunId(null); setSelPathway(null); setCurveData(null) }
 
@@ -1197,7 +1217,9 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
 
       {/* Mountain plot modal */}
       {selPathway && (
-        <MountainModal pathway={selPathway.pathway} result={selPathway} curveData={curveData} curveLoading={curveLoading} onClose={()=>{ setSelPathway(null); setCurveData(null) }} />
+        <MountainModal pathway={selPathway.pathway} result={selPathway} curveData={curveData} curveLoading={curveLoading} curveError={curveError}
+          onClose={()=>{ setSelPathway(null); setCurveData(null); setCurveError(null) }}
+          onRetry={()=>fetchCurve(selPathway, activeRun)} />
       )}
 
       <style>{`@keyframes gsea-spin { to { transform:rotate(360deg); } }`}</style>
