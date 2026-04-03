@@ -307,6 +307,20 @@ export default function App() {
   useEffect(() => { sampleLabelsRef.current = sampleLabels  }, [sampleLabels])
   useEffect(() => { gseaRunsRef.current     = gseaRuns      }, [gseaRuns])
 
+  /* ── Auto-save on annotation or GSEA runs change (debounced 2s) ── */
+  useEffect(() => {
+    if (!session || !auth || session.isExample) return
+    if (!annMap && !annDetails && !gseaRuns?.length) return
+    const t = setTimeout(() => {
+      fetch('/api/session/save', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildSaveBody()),
+      }).catch(() => {})
+    }, 2000)
+    return () => clearTimeout(t)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [annMap, annDetails, gseaRuns])
+
   useEffect(() => {
     function onUnload() {
       const s = sessionRef.current; const a = authRef.current
