@@ -1025,10 +1025,10 @@ function(req, res) {
   print(UpSetR::upset(
     m,
     order.by        = "freq",
-    sets.bar.color  = "#0e7490",
-    main.bar.color  = "#0891b2",
-    matrix.color    = "#0e7490",
-    text.scale      = c(1.3, 1.1, 1.0, 1.0, 1.2, 1.0),
+    sets.bar.color  = "#0b446f",
+    main.bar.color  = "#0b446f",
+    matrix.color    = "#0b446f",
+    text.scale      = c(1.69, 1.1, 1.0, 1.0, 1.2, 1.0),
     point.size      = 3,
     line.size       = 0.8
   ))

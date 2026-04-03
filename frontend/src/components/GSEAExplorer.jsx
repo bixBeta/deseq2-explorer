@@ -245,9 +245,9 @@ function RunChip({ r, active, onSelect, onRemove }) {
           cursor:'pointer', userSelect:'none', background:active?V.muted:'var(--bg-card2)',
           border:`1px solid ${active?V.border:'var(--border)'}`, transition:'all 0.12s' }}>
         <span style={{ fontSize:'0.7rem', fontWeight:700, color:active?'var(--text-1)':'var(--text-2)' }}>{r.collectionLabel}</span>
-        <span style={{ fontSize:'0.64rem', color:'var(--text-3)' }}>·{r.rankShort}</span>
-        <span style={{ fontSize:'0.62rem', color:active?V.text:'var(--text-4)', fontFamily:'monospace' }}>{r.meta?.n_pathways}↗</span>
-        <span style={{ fontSize:'0.6rem', color:'var(--text-4)' }}>{r.timestamp}</span>
+        <span style={{ fontSize:'0.64rem', color:'var(--text-2)' }}>·{r.rankShort}</span>
+        <span style={{ fontSize:'0.62rem', color:active?V.text:'var(--text-2)', fontFamily:'monospace' }}>{r.meta?.n_pathways}↗</span>
+        <span style={{ fontSize:'0.6rem', color:'var(--text-2)' }}>{r.timestamp}</span>
         <button onClick={e=>{ e.stopPropagation(); onRemove(r.id) }}
           style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text-4)', fontSize:'0.82rem', lineHeight:1, padding:'0 1px', marginLeft:1 }}>×</button>
       </div>
