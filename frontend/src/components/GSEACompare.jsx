@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 
 function extractSets(runs, padjCutoff, topN, searchQ) {
