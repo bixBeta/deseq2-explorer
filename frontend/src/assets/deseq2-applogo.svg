@@ -1,26 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="417" height="417" viewBox="0 0 417 417">
-  <g id="Group_3" data-name="Group 3" transform="translate(-279 -356)">
-    <g id="Group_1" data-name="Group 1" transform="translate(277.412 341.412)">
-      <g id="Component_1_1" data-name="Component 1 – 1" transform="translate(1.588 14.588)">
-        <g id="Rectangle_1" data-name="Rectangle 1" fill="#0b446f" stroke="#2f2f2f" stroke-linejoin="round" stroke-width="1">
-          <rect width="417" height="417" rx="65" stroke="none"/>
-          <rect x="0.5" y="0.5" width="416" height="416" rx="64.5" fill="none"/>
-        </g>
-        <text id="Deseq2" transform="translate(96 316)" fill="#fff" font-size="63" font-family="AvenirNext-Bold, Avenir Next" font-weight="700"><tspan x="0" y="0">Deseq2</tspan></text>
-        <text id="ExploreR" transform="translate(96 372)" fill="#fff" font-size="63" font-family="AvenirNext-Bold, Avenir Next" font-weight="700"><tspan x="0" y="0">ExploreR</tspan></text>
+  <g id="Group_5" data-name="Group 5" transform="translate(-1167 -356)">
+    <g id="Component_1_3" data-name="Component 1 – 3" transform="translate(1167 356)">
+      <g id="Rectangle_1" data-name="Rectangle 1" fill="#0b446f" stroke="#2f2f2f" stroke-linejoin="round" stroke-width="1">
+        <rect width="417" height="417" rx="65" stroke="none"/>
+        <rect x="0.5" y="0.5" width="416" height="416" rx="64.5" fill="none"/>
       </g>
     </g>
-    <g id="Ellipse_1" data-name="Ellipse 1" transform="translate(328 433)" fill="none" stroke="#fff" stroke-width="6">
-      <circle cx="67.5" cy="67.5" r="67.5" stroke="none"/>
-      <circle cx="67.5" cy="67.5" r="64.5" fill="none"/>
+    <g id="Group_4" data-name="Group 4" transform="translate(26 41.188)">
+      <g id="Ellipse_1" data-name="Ellipse 1" transform="translate(1213 434.812)" fill="none" stroke="#fff" stroke-width="12">
+        <circle cx="87.5" cy="87.5" r="87.5" stroke="none"/>
+        <circle cx="87.5" cy="87.5" r="81.5" fill="none"/>
+      </g>
+      <g id="Ellipse_2" data-name="Ellipse 2" transform="translate(1312 436.812)" fill="none" stroke="#fff" stroke-width="12">
+        <circle cx="87.5" cy="87.5" r="87.5" stroke="none"/>
+        <circle cx="87.5" cy="87.5" r="81.5" fill="none"/>
+      </g>
+      <line id="Line_1" data-name="Line 1" x2="46.726" y2="46.726" transform="translate(1336.953 466.799)" fill="none" stroke="#fff" stroke-width="8"/>
+      <line id="Line_4" data-name="Line 4" x2="46.726" y2="46.726" transform="translate(1317.484 534.292)" fill="none" stroke="#fff" stroke-width="8"/>
+      <line id="Line_2" data-name="Line 2" x2="57.109" y2="57.109" transform="translate(1326.569 483.673)" fill="none" stroke="#fff" stroke-width="8"/>
+      <line id="Line_3" data-name="Line 3" x2="57.109" y2="57.109" transform="translate(1317.484 505.738)" fill="none" stroke="#fff" stroke-width="8"/>
     </g>
-    <g id="Ellipse_2" data-name="Ellipse 2" transform="translate(404 434)" fill="none" stroke="#fff" stroke-width="6">
-      <circle cx="67.5" cy="67.5" r="67.5" stroke="none"/>
-      <circle cx="67.5" cy="67.5" r="64.5" fill="none"/>
-    </g>
-    <line id="Line_1" data-name="Line 1" x2="36" y2="36" transform="translate(423.5 457.5)" fill="none" stroke="#fff" stroke-width="6"/>
-    <line id="Line_4" data-name="Line 4" x2="36" y2="36" transform="translate(408.5 509.5)" fill="none" stroke="#fff" stroke-width="6"/>
-    <line id="Line_2" data-name="Line 2" x2="44" y2="44" transform="translate(415.5 470.5)" fill="none" stroke="#fff" stroke-width="6"/>
-    <line id="Line_3" data-name="Line 3" x2="44" y2="44" transform="translate(408.5 487.5)" fill="none" stroke="#fff" stroke-width="6"/>
   </g>
 </svg>
