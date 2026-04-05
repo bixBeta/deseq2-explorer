@@ -52,7 +52,11 @@
   base_means        <- rowMeans(counts)
   names(base_means) <- rownames(counts)
 
-  cutoff     <- as.numeric(filter_value)   # simple absolute baseMean threshold
+  cutoff <- if (filter_method == "quantile") {
+    as.numeric(quantile(base_means, as.numeric(filter_value), na.rm = TRUE))
+  } else {
+    as.numeric(filter_value)             # "count" mode — absolute baseMean threshold
+  }
   genes_pass <- names(base_means)[!is.na(base_means) & base_means >= cutoff]
 
   ct_obj <- .get_contrast(saved, contrast_label)
@@ -127,15 +131,19 @@ gsea_preview <- function(session_id, contrast_label) {
   # baseMean per gene (mean of normalised counts across all samples)
   base_means <- rowMeans(counts)
 
-  # Send all sorted baseMeans — no subsampling; JS binary-searches for live gene count
-  bm_sorted  <- round(as.numeric(sort(base_means, na.last = FALSE)), 2)
+  # 101-point quantile table (0%…100%) for quantile-mode slider interpolation
+  q_vals <- quantile(base_means, seq(0, 1, by = 0.01), na.rm = TRUE)
+
+  # Full sorted baseMeans — JS binary-searches for live gene count (no subsampling)
+  bm_sorted <- round(as.numeric(sort(base_means, na.last = FALSE)), 2)
 
   list(
-    kdes      = kdes,
-    baseMeans = bm_sorted,          # full sorted baseMeans for JS binary-search
-    bmMax     = round(max(base_means, na.rm = TRUE), 2),
-    n_genes   = n_genes,
-    n_samples = n_samp
+    kdes           = kdes,
+    baseMeans      = bm_sorted,                          # sorted, for JS binary-search
+    quantileValues = round(as.numeric(q_vals), 2),       # 101 values for quantile mode
+    bmMax          = round(max(base_means, na.rm = TRUE), 2),
+    n_genes        = n_genes,
+    n_samples      = n_samp
   )
 }
 

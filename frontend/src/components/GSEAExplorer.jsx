@@ -126,7 +126,7 @@ function SampleDensityChart({ histData, cutoffLog }) {
 }
 
 // ── Distribution + filter modal ───────────────────────────────────────────────
-function DistributionModal({ histData, cutoffLog, filterValue, setFilterValue, nAbove, countMax, onClose }) {
+function DistributionModal({ histData, cutoffLog, cutoffOrig, filterMethod, filterValue, setFilterValue, setFilterMethod, nAbove, countMax, onClose }) {
   return (
     <div style={{ position:'fixed', inset:0, zIndex:101000, background:'rgba(0,0,0,0.7)', backdropFilter:'blur(5px)', display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}
       onClick={onClose}>
@@ -153,17 +153,40 @@ function DistributionModal({ histData, cutoffLog, filterValue, setFilterValue, n
 
         {/* Controls */}
         <div style={{ marginTop:20, display:'flex', flexDirection:'column', gap:12 }}>
-          {/* baseMean cutoff slider + number input */}
-          <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-            <span style={{ fontSize:'0.82rem', color:'var(--text-2)', whiteSpace:'nowrap' }}>Min baseMean ≥</span>
-            <input type="range" min={0} max={Math.max(countMax, 100)} step={1} value={filterValue}
-              onChange={e=>setFilterValue(+e.target.value)} style={{ flex:1, accentColor:V.accent }} />
-            <input type="number" min={0} value={filterValue}
-              onChange={e=>setFilterValue(Math.max(0,+e.target.value))}
-              style={{ width:70, padding:'3px 6px', fontSize:'0.85rem', fontFamily:'monospace',
-                       background:'var(--bg-card2)', border:`1px solid ${V.border}`, borderRadius:6,
-                       color:V.text, textAlign:'right' }} />
+          {/* Mode toggle */}
+          <div style={{ display:'flex', gap:0, borderRadius:9, overflow:'hidden', border:`1px solid ${V.border}`, alignSelf:'flex-start' }}>
+            {[['count','baseMean cutoff'],['quantile','Quantile (% of genes)']].map(([v,l])=>(
+              <button key={v} onClick={()=>{ setFilterMethod(v); setFilterValue(v==='quantile'?0.25:10) }}
+                style={{ padding:'6px 16px', border:'none', cursor:'pointer', fontSize:'0.78rem', fontWeight:600,
+                         background:filterMethod===v?V.accent:'var(--bg-card2)', color:filterMethod===v?'#fff':'var(--text-2)', transition:'background 0.12s' }}>{l}</button>
+            ))}
           </div>
+
+          {/* Slider */}
+          {filterMethod==='quantile' ? (
+            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.82rem', color:'var(--text-2)' }}>
+                <span>Remove genes below the <b style={{ color:V.text }}>{(filterValue*100).toFixed(0)}th percentile</b></span>
+                <span style={{ fontFamily:'monospace', color:V.text }}>baseMean ≥ {cutoffOrig.toFixed(1)}</span>
+              </div>
+              <input type="range" min={0} max={0.75} step={0.01} value={filterValue}
+                onChange={e=>setFilterValue(+e.target.value)} style={{ width:'100%', accentColor:V.accent }} />
+              <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.72rem', color:'var(--text-3)' }}>
+                <span>0% (no filter)</span><span>75%</span>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+              <span style={{ fontSize:'0.82rem', color:'var(--text-2)', whiteSpace:'nowrap' }}>Min baseMean ≥</span>
+              <input type="range" min={0} max={Math.max(countMax, 100)} step={1} value={filterValue}
+                onChange={e=>setFilterValue(+e.target.value)} style={{ flex:1, accentColor:V.accent }} />
+              <input type="number" min={0} value={filterValue}
+                onChange={e=>setFilterValue(Math.max(0,+e.target.value))}
+                style={{ width:70, padding:'3px 6px', fontSize:'0.85rem', fontFamily:'monospace',
+                         background:'var(--bg-card2)', border:`1px solid ${V.border}`, borderRadius:6,
+                         color:V.text, textAlign:'right' }} />
+            </div>
+          )}
 
           {/* Stats row */}
           <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
@@ -245,7 +268,7 @@ function RunChip({ r, active, onSelect, onRemove }) {
             ['Rank by',    RANK_LABELS[p.rankMethod] ?? p.rankMethod],
             ['padj method',p.pAdjMethod],
             ['padj cutoff',p.padjCutoff],
-            ['Filter',     `baseMean ≥ ${p.filterValue}`],
+            ['Filter',     p.filterMethod==='quantile' ? `Quantile ${(p.filterValue*100).toFixed(0)}%` : `baseMean ≥ ${p.filterValue}`],
             ['Gene set size', `${p.minSize}–${p.maxSize}`],
             ['Species',    p.species],
             ['Time',       r.timestamp],
@@ -879,6 +902,7 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
   const [nPerm,        setNPerm]        = useState(1000)
   const [pAdjMethod,   setPAdjMethod]   = useState('BH')
   const [padjCutoff,   setPadjCutoff]   = useState(0.25)
+  const [filterMethod, setFilterMethod] = useState('count')
   const [filterValue,  setFilterValue]  = useState(10)
 
   const [histData,     setHistData]     = useState(null)
@@ -944,14 +968,18 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
     return ()=>ctrl.abort()
   },[session, contrastLabel])
 
-  // Derived cutoff — baseMean absolute threshold
-  const { cutoffLog, nAbove } = useMemo(()=>{
-    if(!histData) return { cutoffLog:0, nAbove:0 }
+  // Derived cutoff — supports both quantile and absolute baseMean modes
+  const { cutoffOrig, cutoffLog, nAbove } = useMemo(()=>{
+    if(!histData) return { cutoffOrig:0, cutoffLog:0, nAbove:0 }
+    const orig = filterMethod === 'quantile'
+      ? (histData.quantileValues?.[Math.min(Math.round(filterValue * 100), 100)] ?? 0)
+      : filterValue
     return {
-      cutoffLog: Math.log1p(filterValue),
-      nAbove:    genesAbove(histData.baseMeans, filterValue, histData.n_genes||0),
+      cutoffOrig: orig,
+      cutoffLog:  Math.log1p(orig),
+      nAbove:     genesAbove(histData.baseMeans, orig, histData.n_genes||0),
     }
-  },[histData, filterValue])
+  },[histData, filterMethod, filterValue])
 
   const countMax = histData?.bmMax ?? 1000
 
@@ -968,24 +996,24 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
         body:JSON.stringify({ sessionId:session.sessionId, contrastLabel, rankMethod,
           collection:collection.id, subcategory:collection.sub, species,
           minSize, maxSize, scoreType, nPerm, pAdjMethod, padjCutoff,
-          filterMethod:'count', filterValue, annMap:annMap||null, runId }), signal:ctrl.signal })
+          filterMethod, filterValue, annMap:annMap||null, runId }), signal:ctrl.signal })
       const data=await r.json()
       if(data.error) throw new Error(data.error)
       const rm=RANK_METHODS.find(m=>m.value===rankMethod)
       const newRun={ id:runId, collectionLabel:collection.label, collectionKey:collection.key,
         collectionId:collection.id, collectionSub:collection.sub,
-        rankMethod, rankShort:rm?.short??rankMethod, filterValue, species,
+        rankMethod, rankShort:rm?.short??rankMethod, filterMethod, filterValue, species,
         scoreType, nPerm, pAdjMethod, padjCutoff,
         results:data.results, rankedList:data.rankedList, meta:data.meta,
         timestamp:new Date().toLocaleTimeString(), contrastLabel,
-        params: { rankMethod, pAdjMethod, padjCutoff, minSize, maxSize, filterValue, species } }
+        params: { rankMethod, pAdjMethod, padjCutoff, minSize, maxSize, filterMethod, filterValue, species } }
       setRuns(prev=>[...prev,newRun])
       setActiveRunId(newRun.id)
       setContentTab('results'); curveCacheRef.current={}
       setSelPathway(null); setCurveData(null); setCurveError(null)
     } catch(e){ if(e.name!=='AbortError') setRunError(e.message) }
     finally{ clearInterval(timer); setElapsed(0); setRunning(false) }
-  },[session,contrastLabel,rankMethod,collection,species,minSize,maxSize,scoreType,nPerm,pAdjMethod,padjCutoff,filterValue,annMap])
+  },[session,contrastLabel,rankMethod,collection,species,minSize,maxSize,scoreType,nPerm,pAdjMethod,padjCutoff,filterMethod,filterValue,annMap])
 
   // Curve on pathway click
   const fetchCurve = useCallback(async(result, ar)=>{
@@ -1058,19 +1086,38 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
             </select>
           </div>
 
-          {/* Pre-filter — baseMean absolute cutoff */}
+          {/* Pre-filter — quantile or absolute baseMean */}
           <div>
             <SectionLabel>Pre-filter genes</SectionLabel>
-            <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
-              <span style={{ fontSize:'0.7rem', color:'var(--text-3)', whiteSpace:'nowrap' }}>baseMean ≥</span>
-              <input type="range" min={0} max={Math.max(countMax, 100)} step={1} value={filterValue}
-                onChange={e=>setFilterValue(+e.target.value)} style={{ flex:1, accentColor:V.accent }} />
-              <input type="number" min={0} value={filterValue}
-                onChange={e=>setFilterValue(Math.max(0,+e.target.value))}
-                style={{ width:56, padding:'2px 4px', fontSize:'0.72rem', fontFamily:'monospace',
-                         background:'var(--bg-card2)', border:`1px solid ${V.border}`, borderRadius:5,
-                         color:V.text, textAlign:'right' }} />
+            <div style={{ display:'flex', gap:4, marginBottom:6 }}>
+              {[['count','baseMean cutoff'],['quantile','Quantile']].map(([v,l])=>(
+                <button key={v} onClick={()=>{ setFilterMethod(v); setFilterValue(v==='quantile'?0.25:10) }}
+                  style={{ flex:1, padding:'4px 0', fontSize:'0.7rem', fontWeight:600, borderRadius:6, cursor:'pointer', border:'none',
+                           background:filterMethod===v?V.accent:'rgba(255,255,255,0.06)', color:filterMethod===v?'#fff':'var(--text-2)', transition:'all 0.12s' }}>{l}</button>
+              ))}
             </div>
+
+            {filterMethod==='quantile' ? (
+              <div style={{ marginBottom:8 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.7rem', color:'var(--text-3)', marginBottom:4 }}>
+                  <span>Remove bottom</span>
+                  <span style={{ color:V.text, fontWeight:700 }}>{(filterValue*100).toFixed(0)}% · ≥{cutoffOrig.toFixed(1)}</span>
+                </div>
+                <input type="range" min={0} max={0.75} step={0.01} value={filterValue}
+                  onChange={e=>setFilterValue(+e.target.value)} style={{ width:'100%', accentColor:V.accent }} />
+              </div>
+            ) : (
+              <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
+                <span style={{ fontSize:'0.7rem', color:'var(--text-3)', whiteSpace:'nowrap' }}>baseMean ≥</span>
+                <input type="range" min={0} max={Math.max(countMax, 100)} step={1} value={filterValue}
+                  onChange={e=>setFilterValue(+e.target.value)} style={{ flex:1, accentColor:V.accent }} />
+                <input type="number" min={0} value={filterValue}
+                  onChange={e=>setFilterValue(Math.max(0,+e.target.value))}
+                  style={{ width:52, padding:'2px 4px', fontSize:'0.72rem', fontFamily:'monospace',
+                           background:'var(--bg-card2)', border:`1px solid ${V.border}`, borderRadius:5,
+                           color:V.text, textAlign:'right' }} />
+              </div>
+            )}
 
             {/* Stat + distribution button */}
             <div style={{ display:'flex', gap:6 }}>
@@ -1201,8 +1248,9 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
       {/* Distribution modal — portaled to body so it's above all fullscreen panels */}
       {showDistModal && createPortal(
         <DistributionModal
-          histData={histData} cutoffLog={cutoffLog}
-          filterValue={filterValue} setFilterValue={setFilterValue}
+          histData={histData} cutoffLog={cutoffLog} cutoffOrig={cutoffOrig}
+          filterMethod={filterMethod} filterValue={filterValue}
+          setFilterValue={setFilterValue} setFilterMethod={setFilterMethod}
           nAbove={nAbove} countMax={countMax}
           onClose={()=>setShowDistModal(false)}
         />,

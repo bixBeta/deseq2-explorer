@@ -280,13 +280,22 @@ GSEA is performed using [`clusterProfiler::GSEA()`](https://bioconductor.org/pac
 
 ### Pre-filter: low-count gene removal
 
-Before ranking, genes are filtered by **baseMean** — the mean of DESeq2-normalised counts (`rowMeans(counts(dds, normalized = TRUE))`) across all samples. A gene is retained only if its baseMean ≥ the user-specified cutoff (default: 10 normalised counts). This directly removes lowly expressed genes without percentile conversion.
+Before ranking, genes are filtered by **baseMean** — the mean of DESeq2-normalised counts (`rowMeans(counts(dds, normalized = TRUE))`) across all samples. Two filter modes are available:
 
-The density distribution of per-sample normalised counts (log₁p-transformed) is displayed per sample to help choose an appropriate cutoff. The red dashed vertical line marks `log₁p(cutoff)` on the x-axis; genes whose baseMean falls to the left of the line are excluded from the ranked list.
+- **baseMean cutoff** (default) — retain genes with baseMean ≥ N normalised counts (default: 10). The slider and number input set N directly.
+- **Quantile** — retain genes above the Nth percentile of baseMean (default: 25th). The resolved baseMean threshold is shown alongside the slider.
+
+The density distribution of per-sample normalised counts (log₁p-transformed) is shown in a modal panel to guide cutoff selection. The red dashed vertical line marks `log₁p(cutoff)` on the x-axis; genes whose baseMean falls to the left of the line are excluded from the ranked list.
 
 ```r
 base_means <- rowMeans(counts(dds, normalized = TRUE))
-genes_pass <- names(base_means)[base_means >= cutoff]   # cutoff = user-defined absolute threshold
+
+cutoff <- if (filter_method == "quantile") {
+  quantile(base_means, filter_value, na.rm = TRUE)   # filter_value = 0–1
+} else {
+  filter_value                                        # absolute count threshold
+}
+genes_pass <- names(base_means)[base_means >= cutoff]
 ```
 
 ### Ranked gene list construction
