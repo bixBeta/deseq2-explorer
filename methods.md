@@ -280,12 +280,17 @@ GSEA is performed using [`clusterProfiler::GSEA()`](https://bioconductor.org/pac
 
 ### Pre-filter: low-count gene removal
 
-Before ranking, genes are filtered using row medians of DESeq2-normalised counts (`counts(dds, normalized = TRUE)`). Two filter modes are available:
+Before ranking, genes are filtered using **baseMean** — the mean of DESeq2-normalised counts (`counts(dds, normalized = TRUE)`) across all samples. Two filter modes are available:
 
-- **Quantile** — remove genes below the Nth percentile of row medians (default: 25th percentile)
-- **Absolute count** — remove genes with row median < N normalised counts
+- **Quantile** — remove genes below the Nth percentile of baseMean (default: 25th percentile)
+- **Absolute count** — remove genes with baseMean < N normalised counts
 
-The density distribution of normalised counts (log₁p-transformed) is shown per sample in a modal panel to guide cutoff selection.
+The density distribution of per-sample normalised counts (log₁p-transformed) is shown in a modal panel to guide cutoff selection. The red dashed cutoff line corresponds to the selected baseMean threshold; genes whose baseMean falls below the line are excluded from the ranked list.
+
+```r
+base_means <- rowMeans(counts(dds, normalized = TRUE))
+genes_pass <- names(base_means)[base_means >= cutoff]
+```
 
 ### Ranked gene list construction
 

@@ -1800,6 +1800,84 @@ function(req, res) {
   list(annotations = annotations, total = length(annotations), hasCoords = FALSE)
 }
 
+# ── Built-in annotation database ──────────────────────────────────────────────
+ANNOTATIONS_DIR <- Sys.getenv("ANNOTATIONS_DIR", file.path(getwd(), "annotations"))
+
+#* @get /api/annotate/builtin/list
+#* @serializer unboxedJSON
+function() {
+  mf <- file.path(ANNOTATIONS_DIR, "manifest.json")
+  if (!file.exists(mf)) return(list(organisms = list()))
+  manifest <- tryCatch(
+    jsonlite::fromJSON(mf, simplifyVector = FALSE),
+    error = function(e) list()
+  )
+  list(organisms = manifest)
+}
+
+#* @post /api/annotate/builtin
+#* @serializer unboxedJSON
+function(req, res) {
+  body     <- fromJSON(rawToChar(req$bodyRaw))
+  gene_ids <- body$gene_ids
+  org_id   <- body$organism_id
+
+  if (!length(gene_ids) || is.null(org_id) || !nzchar(org_id)) {
+    res$status <- 400
+    return(list(error = "gene_ids and organism_id are required"))
+  }
+  mf <- file.path(ANNOTATIONS_DIR, "manifest.json")
+  if (!file.exists(mf)) {
+    res$status <- 404
+    return(list(error = "No annotation database found on server"))
+  }
+  manifest <- jsonlite::fromJSON(mf, simplifyVector = TRUE)
+  entry    <- manifest[manifest$id == org_id, ]
+  if (nrow(entry) == 0) {
+    res$status <- 404
+    return(list(error = paste("Unknown organism:", org_id)))
+  }
+  tsv_path <- file.path(ANNOTATIONS_DIR, entry$file[1])
+  if (!file.exists(tsv_path)) {
+    res$status <- 404
+    return(list(error = paste("Annotation file missing:", entry$file[1])))
+  }
+
+  db  <- read.delim(tsv_path, stringsAsFactors = FALSE, na.strings = c("", "NA", "<none>"))
+  idx <- match(gene_ids, db$gene_id)
+
+  has_desc    <- "description"     %in% names(db)
+  has_biotype <- "biotype"         %in% names(db)
+  has_locus   <- "locus"           %in% names(db)
+  has_hid     <- "human_gene_id"   %in% names(db)
+  has_hname   <- "human_gene_name" %in% names(db)
+
+  col_val <- function(col, ri) {
+    v <- db[[col]][ri]
+    if (length(v) == 1 && !is.na(v) && nzchar(as.character(v))) unname(as.character(v)) else NULL
+  }
+
+  annotations <- setNames(vector("list", length(gene_ids)), gene_ids)
+  for (i in seq_along(gene_ids)) {
+    ri <- idx[i]
+    if (is.na(ri)) {
+      annotations[[i]] <- list(symbol = NULL, description = NULL, biotype = NULL, humanOrtholog = NULL)
+    } else {
+      annotations[[i]] <- list(
+        symbol        =                     col_val("symbol",          ri),
+        description   = if (has_desc)     col_val("description",      ri) else NULL,
+        biotype       = if (has_biotype)  col_val("biotype",          ri) else NULL,
+        locus         = if (has_locus)    col_val("locus",            ri) else NULL,
+        humanGeneId   = if (has_hid)      col_val("human_gene_id",    ri) else NULL,
+        humanOrtholog = if (has_hname)    col_val("human_gene_name",  ri) else NULL
+      )
+    }
+  }
+
+  message("[builtin] ", org_id, ": ", sum(!is.na(idx)), "/", length(gene_ids), " genes matched")
+  list(annotations = annotations, total = sum(!is.na(idx)), hasCoords = FALSE)
+}
+
 # ── GSEA: row-median distribution for filter density plot ─────────────────────
 #* @post /api/gsea/preview
 #* @serializer unboxedJSON

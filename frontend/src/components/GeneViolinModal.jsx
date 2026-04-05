@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 export default function GeneViolinModal({ gene, symbol: rawSymbol, session, contrast, column, onClose }) {
   const symbol = (rawSymbol && rawSymbol !== 'None' && rawSymbol !== 'N/A') ? rawSymbol : null
@@ -7,6 +7,33 @@ export default function GeneViolinModal({ gene, symbol: rawSymbol, session, cont
   const [error,        setError]        = useState(null)
   const [deseqStats,   setDeseqStats]   = useState(null)
   const [groupSummary, setGroupSummary] = useState(null)
+  const [size,         setSize]         = useState({ width: 560, height: 680 })
+  const modalRef = useRef(null)
+  const dragRef  = useRef(null)
+
+  function onResizeStart(e) {
+    e.preventDefault()
+    e.stopPropagation()
+    const startX = e.clientX
+    const startY = e.clientY
+    const startW = modalRef.current?.offsetWidth  ?? size.width
+    const startH = modalRef.current?.offsetHeight ?? size.height
+
+    function onMove(e) {
+      setSize({
+        width:  Math.min(Math.max(380, startW + e.clientX - startX), Math.floor(window.innerWidth  * 0.95)),
+        height: Math.max(300, startH + e.clientY - startY),
+      })
+    }
+    function onUp() {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup',   onUp)
+      // Swallow the stray click that fires after mouseup — prevents backdrop from closing modal
+      window.addEventListener('click', e => e.stopPropagation(), { capture: true, once: true })
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup',   onUp)
+  }
 
   // Fetch plot from R backend
   useEffect(() => {
@@ -62,20 +89,24 @@ export default function GeneViolinModal({ gene, symbol: rawSymbol, session, cont
     >
       {/* Modal card — stop click propagation so clicking inside doesn't close */}
       <div
+        ref={modalRef}
         onClick={e => e.stopPropagation()}
         style={{
+          position: 'relative',
           background: '#ffffff',
           border: '1px solid #e2e8f0',
           borderRadius: 16,
           padding: 20,
-          width: 600,
+          width: size.width,
+          height: size.height,
           maxWidth: '95vw',
-          maxHeight: '92vh',
-          overflowY: 'auto',
+          maxHeight: '95vh',
+          overflowY: 'hidden',
           boxShadow: '0 30px 80px rgba(0,0,0,0.5)',
           display: 'flex',
           flexDirection: 'column',
           gap: 12,
+          boxSizing: 'border-box',
         }}
       >
         {/* Header */}
@@ -149,19 +180,18 @@ export default function GeneViolinModal({ gene, symbol: rawSymbol, session, cont
 
         {/* Plot image — no padding/border so it blends flush with white card */}
         {imgSrc && (
-          <div className="resizable-plot" style={{ width: '100%', height: 460 }}>
+          <div style={{ flex: '1 1 0', minHeight: 180, overflow: 'hidden' }}>
             <img
               src={imgSrc}
               alt={`${gene} violin plot`}
-              style={{ width: '100%', height: '100%', objectFit: 'contain',
-                       display: 'block' }}
+              style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
             />
           </div>
         )}
 
         {/* DESeq2 stats + normalized count summary */}
         {(deseqStats || groupSummary) && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flexShrink: 0 }}>
 
             {/* DESeq2 results row */}
             {deseqStats && (
@@ -275,6 +305,21 @@ export default function GeneViolinModal({ gene, symbol: rawSymbol, session, cont
         <p style={{ margin: 0, fontSize: '0.68rem', color: '#94a3b8', textAlign: 'center' }}>
           log₂(counts + 1) · *** p&lt;0.001 · ** p&lt;0.01 · * p&lt;0.05 · ns p≥0.05
         </p>
+
+        {/* Resize handle */}
+        <div
+          ref={dragRef}
+          onMouseDown={onResizeStart}
+          title="Drag to resize"
+          style={{
+            position: 'absolute', bottom: 4, right: 4,
+            width: 14, height: 14, cursor: 'nwse-resize',
+            opacity: 0.35,
+            backgroundImage: 'radial-gradient(circle, #94a3b8 1.5px, transparent 1.5px)',
+            backgroundSize: '4px 4px',
+            backgroundRepeat: 'repeat',
+          }}
+        />
       </div>
 
       {/* Spin animation */}

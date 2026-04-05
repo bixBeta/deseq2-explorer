@@ -628,7 +628,7 @@ function LoadingsTable({ loadings, pcKeys, variance, annMap, rankByPC, setRankBy
           </thead>
           <tbody>
             {sorted.map((row, i) => {
-              const sym = hasAnn ? (annMap[row.gene] || null) : null
+              const sym = hasAnn ? (typeof annMap[row.gene] === 'string' && annMap[row.gene] ? annMap[row.gene] : null) : null
               return (
                 <tr key={row.gene}>
                   <td style={{ ...tdS, textAlign: 'center', color: 'var(--text-3)', width: 40 }}>{i + 1}</td>

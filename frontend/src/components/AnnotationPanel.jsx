@@ -98,6 +98,9 @@ export default function AnnotationPanel({ geneIds, annMap, onAnnotate }) {
   const [error,          setError]          = useState(null)
   const [preview,        setPreview]        = useState(null)
   const [dragging,       setDragging]       = useState(false)
+  const [builtinOrgs,    setBuiltinOrgs]    = useState([])
+  const [builtinOrgId,   setBuiltinOrgId]   = useState('')
+  const [builtinLoading, setBuiltinLoading] = useState(false)
   const fileRef      = useRef()
   const abortRef     = useRef(false)
   const progressTimer = useRef(null)
@@ -139,6 +142,21 @@ export default function AnnotationPanel({ geneIds, annMap, onAnnotate }) {
   useEffect(() => {
     if (method === 'biomart' && detectedOrg) setOrg(detectedOrg)
   }, [method, detectedOrg])
+
+  // Load built-in organism list when the tab is first selected
+  useEffect(() => {
+    if (method !== 'builtin' || builtinOrgs.length) return
+    setBuiltinLoading(true)
+    fetch(`${API}/api/annotate/builtin/list`)
+      .then(r => r.json())
+      .then(data => {
+        const orgs = data.organisms ?? []
+        setBuiltinOrgs(orgs)
+        if (orgs.length && !builtinOrgId) setBuiltinOrgId(orgs[0].id)
+      })
+      .catch(() => {})
+      .finally(() => setBuiltinLoading(false))
+  }, [method])
 
   function resetState() {
     setPreview(null); setError(null); setGtfFile(null); setProgress(0)
@@ -282,6 +300,65 @@ export default function AnnotationPanel({ geneIds, annMap, onAnnotate }) {
     }
   }
 
+  // ── Built-in annotation database ────────────────────────────────────────────
+  async function fetchBuiltin() {
+    if (!geneIds?.length || !builtinOrgId) return
+    setLoading(true); setError(null); setPreview(null); setProgress(20)
+    setStage('Looking up built-in database…')
+    try {
+      const resp = await fetch(`${API}/api/annotate/builtin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gene_ids: geneIds, organism_id: builtinOrgId }),
+      })
+      setProgress(80); setStage('Parsing…')
+      const data = await resp.json()
+      if (!resp.ok) throw new Error(data.error ?? `Server error ${resp.status}`)
+
+      // Unwrap R named-vector objects {"rowname": "value"} → "value", handle arrays, coerce to string
+      const safeStr = v => {
+        if (Array.isArray(v))                       v = v.length === 1 ? v[0] : null
+        else if (v !== null && typeof v === 'object') v = Object.values(v)[0] ?? null
+        if (v != null && typeof v !== 'object' && String(v).trim().length > 0) return String(v).trim()
+        return null
+      }
+
+      const map = {}; const details = {}
+      let hasOrtho = false, hasBiotype = false, hasDesc = false, hasLocus = false, hasHumanGeneId = false
+      const toStr = v => safeStr(v)
+      for (const [gid, ann] of Object.entries(data.annotations ?? {})) {
+        if (!ann || typeof ann !== 'object') continue
+        const sym = safeStr(ann.symbol)
+        if (sym) map[gid] = sym
+        details[gid] = {
+          description:   toStr(ann.description),
+          biotype:       toStr(ann.biotype),
+          locus:         toStr(ann.locus),
+          humanGeneId:   toStr(ann.humanGeneId),
+          humanOrtholog: toStr(ann.humanOrtholog),
+        }
+        if (ann.description)   hasDesc        = true
+        if (ann.biotype)       hasBiotype      = true
+        if (ann.locus)         hasLocus        = true
+        if (ann.humanGeneId)   hasHumanGeneId  = true
+        if (ann.humanOrtholog) hasOrtho        = true
+      }
+
+      setProgress(100); setStage('')
+      const selOrg = builtinOrgs.find(o => o.id === builtinOrgId)
+      setPreview({
+        mapped: Object.keys(map).length, total: geneIds.length,
+        map, detailsMap: Object.keys(details).length ? details : null,
+        hasOrthologs: hasOrtho, hasBiotype, hasDesc, hasCoords: false,
+        source: selOrg?.label ?? 'Built-in DB',
+      })
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false); setStage('')
+    }
+  }
+
   // ── GTF chunk-based parser ───────────────────────────────────────────────────
   function parseGTF(file) {
     abortRef.current = false
@@ -379,6 +456,7 @@ export default function AnnotationPanel({ geneIds, annMap, onAnnotate }) {
   const METHODS = [
     ['gprofiler', '⊹ g:Profiler'],
     ['biomart',   '⬡ BioMart'],
+    ['builtin',   '⊡ Built-in DB'],
     ['gtf',       '≋ GTF / GFF'],
   ]
 
@@ -523,6 +601,63 @@ export default function AnnotationPanel({ geneIds, annMap, onAnnotate }) {
         </div>
       )}
 
+      {/* ── Built-in DB ── */}
+      {method === 'builtin' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {builtinLoading ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
+                          borderRadius: 8, fontSize: '0.78rem', color: 'var(--text-3)',
+                          background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)' }}>
+              <div style={{ width: 14, height: 14, borderRadius: '50%', flexShrink: 0,
+                            border: '2px solid var(--border)', borderTopColor: 'var(--accent)',
+                            animation: 'spin 0.8s linear infinite' }} />
+              Loading organism list…
+            </div>
+          ) : builtinOrgs.length === 0 ? (
+            <div style={{ padding: '10px 14px', borderRadius: 8, fontSize: '0.78rem',
+                          color: 'var(--text-3)', background: 'rgba(255,255,255,0.03)',
+                          border: '1px solid var(--border)' }}>
+              No built-in annotations available on this server.
+            </div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <label style={{ fontSize: '0.78rem', color: 'var(--text-3)', whiteSpace: 'nowrap' }}>Organism</label>
+                <select value={builtinOrgId} onChange={e => { setBuiltinOrgId(e.target.value); resetState() }}
+                        style={{ flex: 1, fontSize: '0.8rem' }}>
+                  {builtinOrgs.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+                </select>
+              </div>
+              {(() => {
+                const sel = builtinOrgs.find(o => o.id === builtinOrgId)
+                return sel ? (
+                  <p style={{ margin: 0, fontSize: '0.73rem', color: 'var(--text-3)', lineHeight: 1.5 }}>
+                    {sel.genes?.toLocaleString()} genes · {sel.ncbi}
+                    {sel.hasSymbol ? ' · symbols ✓' : ''}
+                    {sel.hasCoords ? ' · coordinates ✓' : ''}
+                  </p>
+                ) : null
+              })()}
+              {loading && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.74rem', color: 'var(--text-3)' }}>{stage || 'Looking up…'}</span>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>{Math.round(progress)}%</span>
+                  </div>
+                  <div style={{ width: '100%', height: 6, borderRadius: 99,
+                                background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', borderRadius: 99, width: `${progress}%`,
+                                  background: 'linear-gradient(90deg,var(--accent),var(--accent2))',
+                                  transition: 'width 0.6s ease' }} />
+                  </div>
+                </div>
+              )}
+              <FetchButton loading={loading} onClick={fetchBuiltin} label="Fetch Annotations" />
+            </>
+          )}
+        </div>
+      )}
+
       {/* ── GTF upload ── */}
       {method === 'gtf' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -588,7 +723,11 @@ export default function AnnotationPanel({ geneIds, annMap, onAnnotate }) {
                       background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)',
                       color: '#f87171', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
           <span style={{ flex: 1 }}>⚠ {error}</span>
-          <button onClick={() => method === 'gtf' ? null : (method === 'gprofiler' ? fetchGprofiler() : fetchAnnotation())}
+          <button onClick={() => {
+            if (method === 'builtin')    fetchBuiltin()
+            else if (method === 'gprofiler') fetchGprofiler()
+            else if (method !== 'gtf')   fetchAnnotation()
+          }}
             style={{ flexShrink: 0, padding: '2px 10px', borderRadius: 5, fontSize: '0.72rem', fontWeight: 600,
                      background: 'rgba(248,113,113,0.15)', border: '1px solid rgba(248,113,113,0.35)',
                      color: '#f87171', cursor: 'pointer', whiteSpace: 'nowrap' }}>
@@ -612,7 +751,7 @@ export default function AnnotationPanel({ geneIds, annMap, onAnnotate }) {
               </span>
               {preview.source && (
                 <span style={{ fontSize: '0.7rem', color: 'var(--text-3)', marginLeft: 10, opacity: 0.7 }}>
-                  via {preview.source === 'ncbi' ? 'NCBI E-summary' : 'Ensembl BioMart'}
+                  via {preview.source === 'ncbi' ? 'NCBI E-summary' : preview.source === 'biomart' ? 'Ensembl BioMart' : preview.source}
                 </span>
               )}
             </div>
@@ -666,11 +805,14 @@ export default function AnnotationPanel({ geneIds, annMap, onAnnotate }) {
                     ...Object.keys(preview.map),
                     ...Object.keys(preview.detailsMap ?? {}),
                   ])].slice(0, 50)
+                  const toStr = v => (v == null || typeof v === 'object') ? null : String(v)
                   return ids.map(id => {
-                    const sym = preview.map[id] ?? null
+                    const rawSym = preview.map[id]
+                    const sym = toStr(rawSym)
                     const det = preview.detailsMap?.[id]
-                    const loc = det?.chr
-                      ? `${det.chr}:${det.start?.toLocaleString() ?? '?'}–${det.end?.toLocaleString() ?? '?'}`
+                    const chrStr = toStr(det?.chr)
+                    const loc = chrStr
+                      ? `${chrStr}:${det.start?.toLocaleString() ?? '?'}–${det.end?.toLocaleString() ?? '?'}`
                       : '—'
                     return (
                       <tr key={id} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
@@ -682,17 +824,17 @@ export default function AnnotationPanel({ geneIds, annMap, onAnnotate }) {
                         {preview.hasDesc && (
                           <td style={{ padding: '4px 10px', color: 'var(--text-3)', maxWidth: 180,
                                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {det?.description ?? '—'}
+                            {toStr(det?.description) ?? '—'}
                           </td>
                         )}
                         {preview.hasBiotype && (
                           <td style={{ padding: '4px 10px', color: 'var(--text-3)', fontSize: '0.7rem' }}>
-                            {det?.biotype ?? '—'}
+                            {toStr(det?.biotype) ?? '—'}
                           </td>
                         )}
                         {preview.hasOrthologs && (
                           <td style={{ padding: '4px 10px', color: '#7c3aed', fontWeight: 500 }}>
-                            {det?.humanOrtholog ?? '—'}
+                            {toStr(det?.humanOrtholog) ?? '—'}
                           </td>
                         )}
                       </tr>

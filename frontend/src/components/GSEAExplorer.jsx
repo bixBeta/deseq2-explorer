@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import Plotly from 'plotly.js-dist-min'
 
 // ── Ocean palette — green/red preserved for ±NES ─────────────────────────────
@@ -127,7 +128,7 @@ function SampleDensityChart({ histData, cutoffLog }) {
 // ── Distribution + filter modal ───────────────────────────────────────────────
 function DistributionModal({ histData, cutoffLog, cutoffOrig, filterMethod, filterValue, setFilterValue, setFilterMethod, nAbove, countMax, onClose }) {
   return (
-    <div style={{ position:'fixed', inset:0, zIndex:1100, background:'rgba(0,0,0,0.7)', backdropFilter:'blur(5px)', display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}
+    <div style={{ position:'fixed', inset:0, zIndex:101000, background:'rgba(0,0,0,0.7)', backdropFilter:'blur(5px)', display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}
       onClick={onClose}>
       <div style={{ background:'var(--bg-panel)', borderRadius:18, padding:28, width:'100%', maxWidth:880, border:`1px solid ${V.border}`, boxShadow:`0 0 60px rgba(11,68,111,0.2)` }}
         onClick={e=>e.stopPropagation()}>
@@ -137,7 +138,7 @@ function DistributionModal({ histData, cutoffLog, cutoffOrig, filterMethod, filt
           <div>
             <div style={{ fontSize:'1rem', fontWeight:700, color:V.text, marginBottom:3 }}>Count Distribution — All Samples</div>
             <div style={{ fontSize:'0.73rem', color:'var(--text-3)' }}>
-              Each curve = one sample (log₁p normalised counts) · Red dashed line = row-median filter cutoff
+              Each curve = one sample (log₁p normalised counts) · Red dashed line = baseMean cutoff (genes with baseMean &lt; cutoff excluded)
               {histData && ` · ${histData.n_samples} samples · ${histData.n_genes?.toLocaleString()} genes`}
             </div>
           </div>
@@ -165,7 +166,7 @@ function DistributionModal({ histData, cutoffLog, cutoffOrig, filterMethod, filt
             <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
               <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.82rem', color:'var(--text-2)' }}>
                 <span>Remove genes below the <b style={{ color:V.text }}>{(filterValue*100).toFixed(0)}th percentile</b></span>
-                <span style={{ fontFamily:'monospace', color:V.text }}>row-median cutoff ≥ {cutoffOrig.toFixed(1)}</span>
+                <span style={{ fontFamily:'monospace', color:V.text }}>baseMean ≥ {cutoffOrig.toFixed(1)}</span>
               </div>
               <input type="range" min={0} max={0.75} step={0.01} value={filterValue} onChange={e=>setFilterValue(+e.target.value)} style={{ width:'100%', accentColor:V.accent }} />
               <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.72rem', color:'var(--text-3)' }}>
@@ -174,9 +175,9 @@ function DistributionModal({ histData, cutoffLog, cutoffOrig, filterMethod, filt
             </div>
           ) : (
             <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-              <span style={{ fontSize:'0.82rem', color:'var(--text-2)', whiteSpace:'nowrap' }}>Min row median ≥</span>
+              <span style={{ fontSize:'0.82rem', color:'var(--text-2)', whiteSpace:'nowrap' }}>Min baseMean ≥</span>
               <input type="range" min={0} max={Math.max(countMax,100)} step={1} value={filterValue} onChange={e=>setFilterValue(+e.target.value)} style={{ flex:1, accentColor:V.accent }} />
-              <span style={{ fontSize:'0.85rem', fontFamily:'monospace', color:V.text, minWidth:52, textAlign:'right' }}>{filterValue} cts</span>
+              <span style={{ fontSize:'0.85rem', fontFamily:'monospace', color:V.text, minWidth:52, textAlign:'right' }}>{filterValue}</span>
             </div>
           )}
 
@@ -290,7 +291,7 @@ function RunChips({ runs, activeRunId, onSelect, onRemove }) {
 }
 
 // ── Results table ─────────────────────────────────────────────────────────────
-function ResultsTable({ run, onPathwayClick, selectedPathway }) {
+function ResultsTable({ run, onPathwayClick, selectedPathway, fullscreen, setFullscreen }) {
   const [sortKey,   setSortKey]   = useState('padj')
   const [sortAsc,   setSortAsc]   = useState(true)
   const [dirFilter, setDirFilter] = useState('all')
@@ -323,8 +324,13 @@ function ResultsTable({ run, onPathwayClick, selectedPathway }) {
     </th>
   )
 
-  return (
-    <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+  const _inner = (
+    <div style={fullscreen ? {
+      position: 'fixed', inset: 0, zIndex: 99999,
+      background: 'var(--bg-panel)', padding: '16px 20px',
+      display: 'flex', flexDirection: 'column', gap: 10,
+      overflow: 'hidden',
+    } : { display:'flex', flexDirection:'column', gap:10 }}>
       {/* Toolbar */}
       <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
         <div style={{ display:'flex', borderRadius:8, overflow:'hidden', border:`1px solid ${V.border}` }}>
@@ -337,10 +343,20 @@ function ResultsTable({ run, onPathwayClick, selectedPathway }) {
           style={{ flex:1, minWidth:160, padding:'4px 10px', fontSize:'0.78rem', background:'var(--bg-card2)', border:`1px solid ${V.border}`, borderRadius:8, color:'var(--text-1)' }} />
         <span style={{ fontSize:'0.7rem', color:'var(--text-3)' }}>{filtered.length} pathways</span>
         <button onClick={exportRows} style={{ padding:'4px 10px', borderRadius:7, border:`1px solid ${V.border}`, background:V.muted, color:V.text, fontSize:'0.72rem', fontWeight:600, cursor:'pointer' }}>↓ CSV</button>
+        {setFullscreen && (
+          <button
+            onClick={() => setFullscreen(v => !v)}
+            title={fullscreen ? 'Exit fullscreen (Esc)' : 'Expand to fullscreen'}
+            style={{ fontSize: '0.82rem', padding: '3px 8px', borderRadius: 6, cursor: 'pointer',
+                     background: 'transparent', border: '1px solid var(--border)',
+                     color: 'var(--text-3)' }}>
+            {fullscreen ? 'Collapse' : 'Expand'}
+          </button>
+        )}
       </div>
 
       {/* Table */}
-      <div style={{ overflowX:'auto', borderRadius:10, border:CB }}>
+      <div style={{ overflowX:'auto', borderRadius:10, border:CB, flex: fullscreen ? '1 1 0' : undefined }}>
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.78rem' }}>
           <thead><tr>{TH('pathway','Pathway')}{TH('NES','NES')}{TH('padj','padj')}{TH('size','Size')}
             <th style={{ padding:'7px 10px', fontSize:'0.65rem', fontWeight:700, letterSpacing:'0.05em', textTransform:'uppercase', color:'var(--text-3)', background:'var(--bg-card2)', border:CB }}>Leading Edge</th>
@@ -381,6 +397,7 @@ function ResultsTable({ run, onPathwayClick, selectedPathway }) {
       )}
     </div>
   )
+  return fullscreen ? createPortal(_inner, document.body) : _inner
 }
 
 // ── Ranked list panel ─────────────────────────────────────────────────────────
@@ -763,37 +780,20 @@ function PlotsPanel({ run, session, contrastLabel }) {
         )}
       </div>
 
-      {/* Fullscreen modal */}
-      {fullscreen && imgSrc && (
-        <div onClick={() => setFullscreen(false)}
-          style={{ position:'fixed', inset:0, zIndex:1000, background:'rgba(0,0,0,0.85)',
-            display:'flex', alignItems:'center', justifyContent:'center', backdropFilter:'blur(6px)' }}>
-          <div onClick={e => e.stopPropagation()}
-            style={{ position:'relative', maxWidth:'95vw', maxHeight:'95vh', borderRadius:12,
-              border:CB, background:'var(--bg-card)', overflow:'hidden', boxShadow:'0 24px 80px rgba(0,0,0,0.6)' }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
-              padding:'8px 14px', borderBottom:CB, background:'rgba(0,0,0,0.2)' }}>
-              <span style={{ fontSize:'0.78rem', color:'var(--text-2)', fontWeight:600 }}>
-                {PLOT_TYPES.find(p => p.key === plotType)?.label}
-              </span>
-              <div style={{ display:'flex', gap:8 }}>
-                <button onClick={downloadPng}
-                  style={{ fontSize:'0.7rem', padding:'3px 10px', borderRadius:5, border:`1px solid ${V.border}`,
-                    background:V.muted, color:'var(--text-1)', cursor:'pointer' }}>
-                  ↓ Download
-                </button>
-                <button onClick={() => setFullscreen(false)}
-                  style={{ fontSize:'0.8rem', padding:'3px 8px', borderRadius:5, border:`1px solid ${V.border}`,
-                    background:'rgba(255,255,255,0.07)', color:'var(--text-1)', cursor:'pointer' }}>
-                  ✕
-                </button>
-              </div>
-            </div>
-            <div style={{ padding:16, overflow:'auto', maxHeight:'calc(95vh - 52px)', maxWidth:'95vw', background:'#ffffff' }}>
-              <img src={imgSrc} alt={plotType} style={{ display:'block', maxHeight:'calc(95vh - 84px)' }} />
-            </div>
-          </div>
-        </div>
+      {/* Fullscreen portal */}
+      {fullscreen && imgSrc && createPortal(
+        <div style={{ position:'fixed', inset:0, zIndex:101000, background:'var(--bg-panel)',
+          display:'flex', alignItems:'center', justifyContent:'center',
+          flexDirection:'column', gap:12, padding:20 }}>
+          <button onClick={() => setFullscreen(false)}
+            style={{ position:'absolute', top:16, right:16, fontSize:'0.75rem', padding:'4px 12px',
+                     borderRadius:6, cursor:'pointer', background:'transparent',
+                     border:'1px solid var(--border)', color:'var(--text-3)', zIndex:1 }}>
+            Collapse
+          </button>
+          <img src={imgSrc} alt={plotType} style={{ maxWidth:'95vw', maxHeight:'90vh', objectFit:'contain' }} />
+        </div>,
+        document.body
       )}
     </div>
   )
@@ -842,7 +842,7 @@ function MountainModal({ pathway, result, curveData, curveLoading, curveError, o
   },[curveData,pathway,result])
 
   return (
-    <div style={{ position:'fixed', inset:0, zIndex:1000, background:'rgba(0,0,0,0.65)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', padding:24 }} onClick={onClose}>
+    <div style={{ position:'fixed', inset:0, zIndex:101000, background:'rgba(0,0,0,0.65)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', padding:24 }} onClick={onClose}>
       <div style={{ background:'var(--bg-panel)', borderRadius:16, padding:20, width:'100%', maxWidth:780, border:`1px solid ${V.border}`, boxShadow:`0 0 40px rgba(11,68,111,0.18)` }} onClick={e=>e.stopPropagation()}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
           <span style={{ ...LBL, fontSize:'0.7rem' }}>Enrichment Mountain Plot</span>
@@ -882,6 +882,7 @@ function MountainModal({ pathway, result, curveData, curveLoading, curveError, o
       <style>{`@keyframes gsea-spin { to { transform:rotate(360deg); } }`}</style>
     </div>
   )
+  return fsPanel ? createPortal(_panel, document.body) : _panel
 }
 
 // ── Main GSEAExplorer ─────────────────────────────────────────────────────────
@@ -916,6 +917,23 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
 
   // Bubble all runs up to App for the Console
   useEffect(() => { onRunsChange?.(runs) }, [runs, onRunsChange])
+
+  const [fullscreen,   setFullscreen]   = useState(false)
+  const [fsPanel,      setFsPanel]      = useState(false)
+
+  useEffect(() => {
+    if (!fullscreen) return
+    const handler = e => { if (e.key === 'Escape') setFullscreen(false) }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [fullscreen])
+
+  useEffect(() => {
+    if (!fsPanel) return
+    const handler = e => { if (e.key === 'Escape') setFsPanel(false) }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [fsPanel])
 
   const [contentTab,   setContentTab]  = useState('results')
   const [selPathway,   setSelPathway]   = useState(null)
@@ -1019,8 +1037,8 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
 
   if(!session?.sessionId) return <div style={{ padding:60, textAlign:'center', color:'var(--text-3)' }}>No session available.</div>
 
-  return (
-    <div data-accent="ocean" style={{ display:'flex', flexDirection:'column', gap:0 }}>
+  const _panel = (
+    <div data-accent="ocean" style={fsPanel ? { position:'fixed', inset:0, zIndex:99999, background:'var(--bg-panel)', padding:'16px 20px', display:'flex', flexDirection:'column', gap:12, overflow:'hidden' } : { display:'flex', flexDirection:'column', gap:0 }}>
 
       {/* Header */}
       <div style={{ background:`linear-gradient(135deg,rgba(11,68,111,0.12),rgba(26,106,159,0.04))`, border:`1px solid ${V.border}`, borderRadius:12, padding:'14px 20px', marginBottom:16, display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
@@ -1039,6 +1057,13 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
             ))}
           </div>
         )}
+        <button onClick={() => setFsPanel(v => !v)}
+                title={fsPanel ? 'Exit fullscreen (Esc)' : 'Expand panel'}
+                style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
+                         background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-3)',
+                         marginLeft: activeRun?.meta ? 0 : 'auto' }}>
+          {fsPanel ? 'Collapse' : 'Expand'}
+        </button>
       </div>
 
       <div style={{ display:'flex', gap:16, alignItems:'flex-start' }}>
@@ -1075,7 +1100,7 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
               </div>
             ) : (
               <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
-                <span style={{ fontSize:'0.7rem', color:'var(--text-3)', whiteSpace:'nowrap' }}>Min ≥</span>
+                <span style={{ fontSize:'0.7rem', color:'var(--text-3)', whiteSpace:'nowrap' }}>Min baseMean ≥</span>
                 <input type="range" min={0} max={Math.max(countMax,100)} step={1} value={filterValue} onChange={e=>setFilterValue(+e.target.value)} style={{ flex:1, accentColor:V.accent }} />
                 <span style={{ fontSize:'0.72rem', fontFamily:'monospace', color:V.text, minWidth:32 }}>{filterValue}</span>
               </div>
@@ -1198,7 +1223,7 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
                 ))}
               </div>
               <div style={{ paddingTop:4 }}>
-                {contentTab==='results' && <ResultsTable run={activeRun} onPathwayClick={handlePathwayClick} selectedPathway={selPathway?.pathway} />}
+                {contentTab==='results' && <ResultsTable run={activeRun} onPathwayClick={handlePathwayClick} selectedPathway={selPathway?.pathway} fullscreen={fullscreen} setFullscreen={setFullscreen} />}
                 {contentTab==='ranked'  && <RankedListPanel run={activeRun} />}
                 {contentTab==='plots'   && <PlotsPanel run={activeRun} session={session} contrastLabel={contrastLabel} />}
               </div>
@@ -1207,25 +1232,28 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
         </div>
       </div>
 
-      {/* Distribution modal */}
-      {showDistModal && (
+      {/* Distribution modal — portaled to body so it's above all fullscreen panels */}
+      {showDistModal && createPortal(
         <DistributionModal
           histData={histData} cutoffLog={cutoffLog} cutoffOrig={cutoffOrig}
           filterMethod={filterMethod} filterValue={filterValue}
           setFilterValue={setFilterValue} setFilterMethod={setFilterMethod}
           nAbove={nAbove} countMax={countMax}
           onClose={()=>setShowDistModal(false)}
-        />
+        />,
+        document.body
       )}
 
-      {/* Mountain plot modal */}
-      {selPathway && (
+      {/* Mountain plot modal — always portaled to body so it escapes any stacking context */}
+      {selPathway && createPortal(
         <MountainModal pathway={selPathway.pathway} result={selPathway} curveData={curveData} curveLoading={curveLoading} curveError={curveError}
           onClose={()=>{ setSelPathway(null); setCurveData(null); setCurveError(null) }}
-          onRetry={()=>fetchCurve(selPathway, activeRun)} />
+          onRetry={()=>fetchCurve(selPathway, activeRun)} />,
+        document.body
       )}
 
       <style>{`@keyframes gsea-spin { to { transform:rotate(360deg); } }`}</style>
     </div>
   )
+  return fsPanel ? createPortal(_panel, document.body) : _panel
 }

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 
 function extractSets(runs, padjCutoff, topN, searchQ) {
@@ -86,7 +86,7 @@ function useTooltip() {
   const hide = useCallback(() => setTip(prev => ({ ...prev, visible: false })), [])
   const node = tip.visible ? createPortal(
     <div style={{
-      position: 'fixed', left: tip.x, top: tip.y, zIndex: 99999, pointerEvents: 'none',
+      position: 'fixed', left: tip.x, top: tip.y, zIndex: 101000, pointerEvents: 'none',
       background: '#1e293b', color: '#f1f5f9', fontSize: '0.72rem', padding: '6px 10px',
       borderRadius: 6, boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
       border: '1px solid rgba(255,255,255,0.12)', maxWidth: 420, whiteSpace: 'pre-wrap',
@@ -102,7 +102,15 @@ function useTooltip() {
 // ── Pairwise overlap matrix ───────────────────────────────────────────────────
 function OverlapMatrix({ sets }) {
   const [metric, setMetric] = useState('count')
+  const [fsOverlap, setFsOverlap] = useState(false)
   const { show, move, hide, node: tipNode } = useTooltip()
+
+  useEffect(() => {
+    if (!fsOverlap) return
+    const h = e => { if (e.key === 'Escape') setFsOverlap(false) }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [fsOverlap])
 
   const matrix = useMemo(() => {
     return sets.map((a, i) =>
@@ -162,12 +170,16 @@ function OverlapMatrix({ sets }) {
     return `${a.pathway}\n∩ ${b.pathway}\n\n${cell.count} shared genes:\n${shared.slice(0, 20).join(', ')}${shared.length > 20 ? ` … +${shared.length - 20} more` : ''}`
   }
 
-  const COL_W = 110
-  const ROW_LBL_W = 160
+  const COL_W = 55
+  const ROW_LBL_W = 140
   const tdBase = { border: '1px solid var(--border)', fontSize: '0.68rem', padding: '5px 8px' }
 
-  return (
-    <div>
+  const _inner = (
+    <div style={fsOverlap ? {
+      position: 'fixed', inset: 0, zIndex: 100000, background: 'var(--bg-panel)',
+      backdropFilter: 'none', padding: '20px 24px',
+      display: 'flex', flexDirection: 'column', gap: 10, overflow: 'auto',
+    } : {}}>
       {tipNode}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
         <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-2)', letterSpacing: '0.05em' }}>
@@ -190,8 +202,14 @@ function OverlapMatrix({ sets }) {
                          background: 'rgba(99,102,241,0.08)', color: '#818cf8' }}>
           ↓ CSV
         </button>
+        <button onClick={() => setFsOverlap(v => !v)}
+                title={fsOverlap ? 'Exit fullscreen (Esc)' : 'Expand to fullscreen'}
+                style={{ fontSize: '0.75rem', padding: '2px 10px', borderRadius: 5, cursor: 'pointer',
+                         background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-3)' }}>
+          {fsOverlap ? 'Collapse' : 'Expand'}
+        </button>
       </div>
-      <div style={{ overflowX: 'auto' }}>
+      <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: fsOverlap ? 'calc(100vh - 100px)' : 520 }}>
         <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed',
                         width: ROW_LBL_W + sets.length * COL_W }}>
           <colgroup>
@@ -252,6 +270,7 @@ function OverlapMatrix({ sets }) {
       </div>
     </div>
   )
+  return fsOverlap ? createPortal(_inner, document.body) : _inner
 }
 
 // ── Methods info panel ────────────────────────────────────────────────────────
@@ -322,6 +341,14 @@ export default function GSEACompare({ session, gseaRuns }) {
   const [searchQ,    setSearchQ]    = useState('')
   const [selected,   setSelected]   = useState(new Set())
   const [expandedGenes, setExpandedGenes] = useState(new Set())
+  const [fsPathways, setFsPathways] = useState(false)
+
+  useEffect(() => {
+    if (!fsPathways) return
+    const h = e => { if (e.key === 'Escape') setFsPathways(false) }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [fsPathways])
 
   const allSets = useMemo(
     () => extractSets(runs, padjCutoff, topN, searchQ),
@@ -381,6 +408,124 @@ export default function GSEACompare({ session, gseaRuns }) {
   }
 
   const tdBase = { border: '1px solid var(--border)', padding: '6px 10px', fontSize: '0.75rem', verticalAlign: 'top' }
+
+  const pathwaysTable = (
+    <div className="glass" style={fsPathways ? {
+      position: 'fixed', inset: 0, zIndex: 99999,
+      background: 'var(--bg-panel)', padding: '20px 24px',
+      display: 'flex', flexDirection: 'column', gap: 10,
+      overflow: 'auto',
+    } : { padding: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-2)', letterSpacing: '0.06em' }}>
+          SELECTED PATHWAYS ({selectedSets.length})
+        </span>
+        <button onClick={exportTableCSV}
+                style={{ fontSize: '0.68rem', padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
+                         background: 'rgba(99,102,241,0.1)', color: '#818cf8',
+                         border: '1px solid rgba(99,102,241,0.25)' }}>
+          ↓ CSV
+        </button>
+        <button onClick={() => setFsPathways(v => !v)}
+                title={fsPathways ? 'Exit fullscreen (Esc)' : 'Expand to fullscreen'}
+                style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
+                         background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-3)' }}>
+          {fsPathways ? 'Collapse' : 'Expand'}
+        </button>
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '0.75rem' }}>
+          <thead>
+            <tr style={{ background: 'var(--bg-card2)' }}>
+              {['Pathway', 'Contrast', 'Collection', 'NES', 'padj', 'n genes', 'Leading edge'].map(h => (
+                <th key={h} style={{ ...tdBase, fontWeight: 700, color: 'var(--text-2)',
+                                     textAlign: h === 'NES' || h === 'padj' || h === 'n genes' ? 'right' : 'left',
+                                     whiteSpace: 'nowrap' }}>
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {tableRows.map((s, i) => {
+              const showAll = expandedGenes.has(s.id)
+              const preview = showAll ? s.genes : s.genes.slice(0, 2)
+              const remaining = s.genes.length - 2
+              return (
+                <tr key={s.id}
+                    style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', transition: 'background 0.1s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--accent-rgb),0.07)'}
+                    onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)'}>
+                  <td style={{ ...tdBase, whiteSpace: 'nowrap', maxWidth: 220, fontWeight: 500, cursor: 'default' }}
+                      onMouseEnter={e => showTip(s.pathway, e)}
+                      onMouseMove={moveTip}
+                      onMouseLeave={hideTip}>
+                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 220 }}>
+                      {s.pathway}
+                    </div>
+                  </td>
+                  <td style={{ ...tdBase, whiteSpace: 'nowrap', color: 'var(--text-2)' }}>{s.run.contrastLabel}</td>
+                  <td style={{ ...tdBase, whiteSpace: 'nowrap', color: 'var(--text-2)' }}>{s.run.collectionLabel}</td>
+                  <td style={{ ...tdBase, whiteSpace: 'nowrap', textAlign: 'right',
+                               color: (s.nes ?? 0) >= 0 ? '#10b981' : '#f43f5e', fontWeight: 600 }}>
+                    {s.nes != null ? s.nes.toFixed(3) : '—'}
+                  </td>
+                  <td style={{ ...tdBase, whiteSpace: 'nowrap', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.7rem' }}>
+                    {s.padj != null ? s.padj.toExponential(2) : '—'}
+                  </td>
+                  <td style={{ ...tdBase, whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 600 }}>
+                    {s.genes.length}
+                  </td>
+                  <td style={{ ...tdBase, whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                      {preview.map(g => (
+                        <span key={g} style={{
+                          fontSize: '0.65rem', padding: '1px 5px', borderRadius: 4,
+                          background: 'rgba(99,102,241,0.1)', color: '#818cf8',
+                          border: '1px solid rgba(99,102,241,0.2)', fontFamily: 'monospace',
+                        }}>{g}</span>
+                      ))}
+                      {remaining > 0 && (
+                        <button onClick={() => setExpandedGenes(prev => {
+                          const next = new Set(prev)
+                          showAll ? next.delete(s.id) : next.add(s.id)
+                          return next
+                        })} style={{
+                          fontSize: '0.65rem', padding: '1px 6px', borderRadius: 4,
+                          background: 'rgba(255,255,255,0.05)', color: 'var(--text-3)',
+                          border: '1px solid var(--border)', cursor: 'pointer', flexShrink: 0,
+                        }}>
+                          {showAll ? '▴ less' : `+${remaining} more`}
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      {tablePages > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 10 }}>
+          <button onClick={() => setTablePage(p => Math.max(0, p - 1))} disabled={tablePage === 0}
+                  style={{ padding: '3px 10px', borderRadius: 6, fontSize: '0.72rem', cursor: tablePage === 0 ? 'default' : 'pointer',
+                           background: 'var(--bg-card2)', border: '1px solid var(--border)', color: 'var(--text-2)', opacity: tablePage === 0 ? 0.4 : 1 }}>
+            ←
+          </button>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>
+            {tablePage + 1} / {tablePages}
+            <span style={{ marginLeft: 6, color: 'var(--text-4)' }}>({selectedSets.length} total)</span>
+          </span>
+          <button onClick={() => setTablePage(p => Math.min(tablePages - 1, p + 1))} disabled={tablePage === tablePages - 1}
+                  style={{ padding: '3px 10px', borderRadius: 6, fontSize: '0.72rem', cursor: tablePage === tablePages - 1 ? 'default' : 'pointer',
+                           background: 'var(--bg-card2)', border: '1px solid var(--border)', color: 'var(--text-2)', opacity: tablePage === tablePages - 1 ? 0.4 : 1 }}>
+            →
+          </button>
+        </div>
+      )}
+    </div>
+  )
 
   return (
     <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
@@ -449,110 +594,7 @@ export default function GSEACompare({ session, gseaRuns }) {
           </div>
         ) : <>
           {/* Pathway details table */}
-          <div className="glass" style={{ padding: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-2)', letterSpacing: '0.06em' }}>
-                SELECTED PATHWAYS ({selectedSets.length})
-              </span>
-              <button onClick={exportTableCSV}
-                      style={{ fontSize: '0.68rem', padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
-                               background: 'rgba(99,102,241,0.1)', color: '#818cf8',
-                               border: '1px solid rgba(99,102,241,0.25)' }}>
-                ↓ CSV
-              </button>
-            </div>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '0.75rem' }}>
-                <thead>
-                  <tr style={{ background: 'var(--bg-card2)' }}>
-                    {['Pathway', 'Contrast', 'Collection', 'NES', 'padj', 'n genes', 'Leading edge'].map(h => (
-                      <th key={h} style={{ ...tdBase, fontWeight: 700, color: 'var(--text-2)',
-                                           textAlign: h === 'NES' || h === 'padj' || h === 'n genes' ? 'right' : 'left',
-                                           whiteSpace: 'nowrap' }}>
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {tableRows.map((s, i) => {
-                    const showAll = expandedGenes.has(s.id)
-                    const preview = showAll ? s.genes : s.genes.slice(0, 2)
-                    const remaining = s.genes.length - 2
-                    return (
-                      <tr key={s.id}
-                          style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', transition: 'background 0.1s' }}
-                          onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--accent-rgb),0.07)'}
-                          onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)'}>
-                        <td style={{ ...tdBase, whiteSpace: 'nowrap', maxWidth: 220, fontWeight: 500, cursor: 'default' }}
-                            onMouseEnter={e => showTip(s.pathway, e)}
-                            onMouseMove={moveTip}
-                            onMouseLeave={hideTip}>
-                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 220 }}>
-                            {s.pathway}
-                          </div>
-                        </td>
-                        <td style={{ ...tdBase, whiteSpace: 'nowrap', color: 'var(--text-2)' }}>{s.run.contrastLabel}</td>
-                        <td style={{ ...tdBase, whiteSpace: 'nowrap', color: 'var(--text-2)' }}>{s.run.collectionLabel}</td>
-                        <td style={{ ...tdBase, whiteSpace: 'nowrap', textAlign: 'right',
-                                     color: (s.nes ?? 0) >= 0 ? '#10b981' : '#f43f5e', fontWeight: 600 }}>
-                          {s.nes != null ? s.nes.toFixed(3) : '—'}
-                        </td>
-                        <td style={{ ...tdBase, whiteSpace: 'nowrap', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.7rem' }}>
-                          {s.padj != null ? s.padj.toExponential(2) : '—'}
-                        </td>
-                        <td style={{ ...tdBase, whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 600 }}>
-                          {s.genes.length}
-                        </td>
-                        <td style={{ ...tdBase, whiteSpace: 'nowrap' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                            {preview.map(g => (
-                              <span key={g} style={{
-                                fontSize: '0.65rem', padding: '1px 5px', borderRadius: 4,
-                                background: 'rgba(99,102,241,0.1)', color: '#818cf8',
-                                border: '1px solid rgba(99,102,241,0.2)', fontFamily: 'monospace',
-                              }}>{g}</span>
-                            ))}
-                            {remaining > 0 && (
-                              <button onClick={() => setExpandedGenes(prev => {
-                                const next = new Set(prev)
-                                showAll ? next.delete(s.id) : next.add(s.id)
-                                return next
-                              })} style={{
-                                fontSize: '0.65rem', padding: '1px 6px', borderRadius: 4,
-                                background: 'rgba(255,255,255,0.05)', color: 'var(--text-3)',
-                                border: '1px solid var(--border)', cursor: 'pointer', flexShrink: 0,
-                              }}>
-                                {showAll ? '▴ less' : `+${remaining} more`}
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-            {tablePages > 1 && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 10 }}>
-                <button onClick={() => setTablePage(p => Math.max(0, p - 1))} disabled={tablePage === 0}
-                        style={{ padding: '3px 10px', borderRadius: 6, fontSize: '0.72rem', cursor: tablePage === 0 ? 'default' : 'pointer',
-                                 background: 'var(--bg-card2)', border: '1px solid var(--border)', color: 'var(--text-2)', opacity: tablePage === 0 ? 0.4 : 1 }}>
-                  ←
-                </button>
-                <span style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>
-                  {tablePage + 1} / {tablePages}
-                  <span style={{ marginLeft: 6, color: 'var(--text-4)' }}>({selectedSets.length} total)</span>
-                </span>
-                <button onClick={() => setTablePage(p => Math.min(tablePages - 1, p + 1))} disabled={tablePage === tablePages - 1}
-                        style={{ padding: '3px 10px', borderRadius: 6, fontSize: '0.72rem', cursor: tablePage === tablePages - 1 ? 'default' : 'pointer',
-                                 background: 'var(--bg-card2)', border: '1px solid var(--border)', color: 'var(--text-2)', opacity: tablePage === tablePages - 1 ? 0.4 : 1 }}>
-                  →
-                </button>
-              </div>
-            )}
-          </div>
+          {fsPathways ? createPortal(pathwaysTable, document.body) : pathwaysTable}
 
           {/* Pairwise overlap matrix + methods */}
           {selectedSets.length >= 2 && (

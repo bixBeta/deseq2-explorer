@@ -1,5 +1,29 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import Plotly from 'plotly.js-dist-min'
+
+// ── Mouse-follow tooltip (portaled to body to escape stacking contexts) ────────
+function useTooltip() {
+  const [tip, setTip] = useState({ text: '', x: 0, y: 0, visible: false })
+  const show = useCallback((text, e) => {
+    setTip({ text, x: e.clientX + 14, y: e.clientY + 14, visible: true })
+  }, [])
+  const move = useCallback(e => {
+    setTip(prev => prev.visible ? { ...prev, x: e.clientX + 14, y: e.clientY + 14 } : prev)
+  }, [])
+  const hide = useCallback(() => setTip(prev => ({ ...prev, visible: false })), [])
+  const node = tip.visible ? createPortal(
+    <div style={{
+      position: 'fixed', left: tip.x, top: tip.y, zIndex: 99999, pointerEvents: 'none',
+      background: '#1e293b', color: '#f1f5f9', fontSize: '0.72rem', padding: '6px 10px',
+      borderRadius: 6, boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+      border: '1px solid rgba(255,255,255,0.12)', maxWidth: 420, whiteSpace: 'pre-wrap',
+      lineHeight: 1.5,
+    }}>{tip.text}</div>,
+    document.body
+  ) : null
+  return { show, move, hide, node }
+}
 
 function useDebounce(value, delay) {
   const [debounced, setDebounced] = useState(value)
@@ -626,12 +650,9 @@ function GeneExplorer({ session, contrasts, annMap }) {
 
 // ── Table Explorer (pivot: gene rows × contrast-grouped stat columns) ─────────
 const STAT_COLS = [
-  { key: 'baseMean',      label: 'baseMean'    },
-  { key: 'meanTreatment', label: 'Avg: trt'    },
-  { key: 'meanReference', label: 'Avg: ref'    },
-  { key: 'log2FC',        label: 'log₂FC'      },
-  { key: 'pvalue',        label: 'pvalue'      },
-  { key: 'padj',          label: 'padj'        },
+  { key: 'log2FC',  label: 'log₂FC'  },
+  { key: 'pvalue',  label: 'pvalue'  },
+  { key: 'padj',    label: 'padj'    },
 ]
 
 const PAGE_SIZES = [25, 50, 100, 200]
@@ -643,6 +664,17 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
   const [sortStat,      setSortStat]      = useState('padj')
   const [sortDir,       setSortDir]       = useState(1)      // 1 asc, -1 desc
   const [page,          setPage]          = useState(1)
+  const [showAnnGroup,  setShowAnnGroup]  = useState(false)
+  const [fullscreen,    setFullscreen]    = useState(false)
+  const { show: showTip, move: moveTip, hide: hideTip, node: tipNode } = useTooltip()
+
+  // Exit fullscreen on Escape
+  useEffect(() => {
+    if (!fullscreen) return
+    const handler = e => { if (e.key === 'Escape') setFullscreen(false) }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [fullscreen])
   const [pageSize,      setPageSize]      = useState(50)
   const [showAdvanced,  setShowAdvanced]  = useState(false)
   const [minBaseMean,    setMinBaseMean]    = useState('')
@@ -653,23 +685,52 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
 
   // Single-pass scan of annDetails to determine which optional columns are available.
   // Wrapped in useMemo so it only re-runs when annDetails changes, not on every render.
-  const { hasCoords, hasDesc, hasBiotype, hasOrthologs } = useMemo(() => {
-    if (!annDetails) return { hasCoords: false, hasDesc: false, hasBiotype: false, hasOrthologs: false }
-    let hasCoords = false, hasDesc = false, hasBiotype = false, hasOrthologs = false
+  const { hasCoords, hasDesc, hasBiotype, hasOrthologs, hasLocus, hasHumanGeneId } = useMemo(() => {
+    if (!annDetails) return { hasCoords: false, hasDesc: false, hasBiotype: false, hasOrthologs: false, hasLocus: false, hasHumanGeneId: false }
+    let hasCoords = false, hasDesc = false, hasBiotype = false, hasOrthologs = false, hasLocus = false, hasHumanGeneId = false
     for (const d of Object.values(annDetails)) {
-      if (d?.chr)           hasCoords    = true
-      if (d?.description)   hasDesc      = true
-      if (d?.biotype)       hasBiotype   = true
-      if (d?.humanOrtholog) hasOrthologs = true
-      if (hasCoords && hasDesc && hasBiotype && hasOrthologs) break
+      if (d?.chr)           hasCoords      = true
+      if (d?.description)   hasDesc        = true
+      if (d?.biotype)       hasBiotype     = true
+      if (d?.humanOrtholog) hasOrthologs   = true
+      if (d?.locus)         hasLocus       = true
+      if (d?.humanGeneId)   hasHumanGeneId = true
+      if (hasCoords && hasDesc && hasBiotype && hasOrthologs && hasLocus && hasHumanGeneId) break
     }
-    return { hasCoords, hasDesc, hasBiotype, hasOrthologs }
+    return { hasCoords, hasDesc, hasBiotype, hasOrthologs, hasLocus, hasHumanGeneId }
   }, [annDetails])
+
+  // Annotation columns are all gated behind the Expand toggle
+  const hasAnnGroup = hasCoords || hasLocus || hasDesc || hasBiotype || hasOrthologs || hasHumanGeneId
+  const visCoords   = hasCoords      && showAnnGroup
+  const visLocus    = hasLocus       && showAnnGroup
+  const visDesc     = hasDesc        && showAnnGroup
+  const visBiotype  = hasBiotype     && showAnnGroup
+  const visOrtho    = hasOrthologs   && showAnnGroup
+  const visHGid     = hasHumanGeneId && showAnnGroup
+
   const contrastLabels = useMemo(() =>
     contrasts.map(c => c.label ?? c.treatment ?? 'Contrast'), [contrasts])
 
+  // Unique group names across all contrasts — deduplicated, preserving order
+  const uniqueGroups = useMemo(() => {
+    const seen = new Set()
+    const groups = []
+    contrasts.forEach(ct => {
+      const lbl = ct.label ?? ct.treatment ?? 'Contrast'
+      const trt = ct.treatment ?? 'trt'
+      const ref = ct.reference ?? 'ref'
+      if (!seen.has(trt)) { seen.add(trt); groups.push({ name: trt, contrastLabel: lbl, which: 'meanTreatment' }) }
+      if (!seen.has(ref)) { seen.add(ref); groups.push({ name: ref, contrastLabel: lbl, which: 'meanReference' }) }
+    })
+    return groups
+  }, [contrasts])
+
   // Build pivot: one row per gene
   const pivotRows = useMemo(() => {
+    // Guard: coerce a value to a plain string; returns '' for objects/null/undefined
+    const toStr = v => (v == null || typeof v === 'object') ? '' : String(v)
+
     const map = {}
     contrasts.forEach(c => {
       const lbl = c.label ?? c.treatment ?? 'Contrast'
@@ -678,15 +739,19 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
         if (!map[r.gene]) {
           const sym = annMap?.[r.gene]
           const det = annDetails?.[r.gene]
+          const symStr = toStr(sym)
           map[r.gene] = {
             gene:          r.gene,
-            symbol:        sym && sym !== 'N/A' && sym !== 'None' ? sym : '',
-            description:   det?.description   ?? '',
-            chr:           det?.chr           ?? '',
-            start:         det?.start         ?? null,
-            end:           det?.end           ?? null,
-            biotype:       det?.biotype       ?? '',
-            humanOrtholog: det?.humanOrtholog ?? '',
+            symbol:        symStr && symStr !== 'N/A' && symStr !== 'None' ? symStr : '',
+            description:   toStr(det?.description),
+            chr:           toStr(det?.chr),
+            start:         det?.start ?? null,
+            end:           det?.end   ?? null,
+            biotype:       toStr(det?.biotype),
+            locus:         toStr(det?.locus),
+            humanGeneId:   toStr(det?.humanGeneId),
+            humanOrtholog: toStr(det?.humanOrtholog),
+            baseMean:      r.baseMean ?? null,
             contrasts:     {},
           }
         }
@@ -760,32 +825,36 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
   function downloadCSV() {
     const geneHdr = [
       'gene_id', 'symbol',
-      ...(hasCoords    ? ['chr', 'start', 'end']                              : []),
-      ...(hasDesc      ? ['description']                                       : []),
-      ...(hasBiotype   ? ['biotype']                                           : []),
-      ...(hasOrthologs ? ['human_ortholog']                                   : []),
+      ...(hasCoords      ? ['chr', 'start', 'end']  : []),
+      ...(hasLocus       ? ['locus']               : []),
+      ...(hasDesc        ? ['description']         : []),
+      ...(hasBiotype     ? ['biotype']             : []),
+      ...(hasOrthologs   ? ['human_ortholog']      : []),
+      ...(hasHumanGeneId ? ['human_gene_id']       : []),
     ]
+    const FULL_STAT_KEYS = ['baseMean', 'meanTreatment', 'meanReference', 'log2FC', 'pvalue', 'padj']
     const statHdrs = contrasts.flatMap(ct => {
       const l = ct.label ?? ct.treatment ?? 'Contrast'
-      return STAT_COLS.map(s => {
-        const colName = s.key === 'meanTreatment' ? `${l}__mean_${ct.treatment ?? 'trt'}`
-                      : s.key === 'meanReference' ? `${l}__mean_${ct.reference ?? 'ref'}`
-                      : `${l}__${s.key}`
-        return colName
+      return FULL_STAT_KEYS.map(k => {
+        if (k === 'meanTreatment') return `${l}__mean_${ct.treatment ?? 'trt'}`
+        if (k === 'meanReference') return `${l}__mean_${ct.reference ?? 'ref'}`
+        return `${l}__${k}`
       })
     })
     const hdr      = [...geneHdr, ...statHdrs].join(',')
     const body     = sorted.map(r => {
       const gene = [
         r.gene, r.symbol,
-        ...(hasCoords    ? [r.chr ?? '', r.start ?? '', r.end ?? '']          : []),
-        ...(hasDesc      ? [`"${(r.description || '').replace(/"/g,'""')}"`]  : []),
-        ...(hasBiotype   ? [r.biotype ?? '']                                  : []),
-        ...(hasOrthologs ? [r.humanOrtholog ?? '']                            : []),
+        ...(hasCoords      ? [r.chr ?? '', r.start ?? '', r.end ?? '']         : []),
+        ...(hasLocus       ? [r.locus ?? '']                                  : []),
+        ...(hasDesc        ? [`"${(r.description || '').replace(/"/g,'""')}"` ] : []),
+        ...(hasBiotype     ? [r.biotype ?? '']                                : []),
+        ...(hasOrthologs   ? [r.humanOrtholog ?? '']                          : []),
+        ...(hasHumanGeneId ? [r.humanGeneId ?? '']                            : []),
       ]
       const stats = contrasts.flatMap(ct => {
         const l = ct.label ?? ct.treatment ?? 'Contrast'
-        return STAT_COLS.map(s => r.contrasts[l]?.[s.key] ?? '')
+        return FULL_STAT_KEYS.map(k => r.contrasts[l]?.[k] ?? '')
       })
       return [...gene, ...stats].join(',')
     }).join('\n')
@@ -798,32 +867,36 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
   function downloadFilteredCSV() {
     const geneHdr = [
       'gene_id', 'symbol',
-      ...(hasCoords    ? ['chr', 'start', 'end']                              : []),
-      ...(hasDesc      ? ['description']                                       : []),
-      ...(hasBiotype   ? ['biotype']                                           : []),
-      ...(hasOrthologs ? ['human_ortholog']                                   : []),
+      ...(hasCoords      ? ['chr', 'start', 'end']  : []),
+      ...(hasLocus       ? ['locus']               : []),
+      ...(hasDesc        ? ['description']         : []),
+      ...(hasBiotype     ? ['biotype']             : []),
+      ...(hasOrthologs   ? ['human_ortholog']      : []),
+      ...(hasHumanGeneId ? ['human_gene_id']       : []),
     ]
+    const FULL_STAT_KEYS = ['baseMean', 'meanTreatment', 'meanReference', 'log2FC', 'pvalue', 'padj']
     const statHdrs = contrasts.flatMap(ct => {
       const l = ct.label ?? ct.treatment ?? 'Contrast'
-      return STAT_COLS.map(s => {
-        const colName = s.key === 'meanTreatment' ? `${l}__mean_${ct.treatment ?? 'trt'}`
-                      : s.key === 'meanReference' ? `${l}__mean_${ct.reference ?? 'ref'}`
-                      : `${l}__${s.key}`
-        return colName
+      return FULL_STAT_KEYS.map(k => {
+        if (k === 'meanTreatment') return `${l}__mean_${ct.treatment ?? 'trt'}`
+        if (k === 'meanReference') return `${l}__mean_${ct.reference ?? 'ref'}`
+        return `${l}__${k}`
       })
     })
     const hdr  = [...geneHdr, ...statHdrs].join(',')
     const body = sorted.map(r => {
       const gene = [
         r.gene, r.symbol,
-        ...(hasCoords    ? [r.chr ?? '', r.start ?? '', r.end ?? '']          : []),
-        ...(hasDesc      ? [`"${(r.description || '').replace(/"/g,'""')}"`]  : []),
-        ...(hasBiotype   ? [r.biotype ?? '']                                  : []),
-        ...(hasOrthologs ? [r.humanOrtholog ?? '']                            : []),
+        ...(hasCoords      ? [r.chr ?? '', r.start ?? '', r.end ?? '']         : []),
+        ...(hasLocus       ? [r.locus ?? '']                                  : []),
+        ...(hasDesc        ? [`"${(r.description || '').replace(/"/g,'""')}"` ] : []),
+        ...(hasBiotype     ? [r.biotype ?? '']                                : []),
+        ...(hasOrthologs   ? [r.humanOrtholog ?? '']                          : []),
+        ...(hasHumanGeneId ? [r.humanGeneId ?? '']                            : []),
       ]
       const stats = contrasts.flatMap(ct => {
         const l = ct.label ?? ct.treatment ?? 'Contrast'
-        return STAT_COLS.map(s => r.contrasts[l]?.[s.key] ?? '')
+        return FULL_STAT_KEYS.map(k => r.contrasts[l]?.[k] ?? '')
       })
       return [...gene, ...stats].join(',')
     }).join('\n')
@@ -860,22 +933,36 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
   const ACCENT_TEXT = 'var(--accent-text)'
 
   // Column widths (px) — left offsets computed dynamically below
-  const COL_W = { id: 140, sym: 90, chr: 150, desc: 160, biotype: 110, ortho: 90 }
+  const COL_W = { id: 140, sym: 90, chr: 150, locus: 140, desc: 160, biotype: 110, ortho: 130, hgid: 140 }
 
   // Compute left offsets based on which optional columns are actually present
-  const { COL, lastFrozenKey, frozenColCount } = useMemo(() => {
+  const { COL, lastFrozenKey, frozenColCount, tableWidth } = useMemo(() => {
     let off = 0
     const C = {}
     C.id  = { w: COL_W.id,   left: off }; off += COL_W.id
     C.sym = { w: COL_W.sym,  left: off }; off += COL_W.sym
-    if (hasCoords)    { C.chr     = { w: COL_W.chr,     left: off }; off += COL_W.chr     }
-    if (hasDesc)      { C.desc    = { w: COL_W.desc,    left: off }; off += COL_W.desc    }
-    if (hasBiotype)   { C.biotype = { w: COL_W.biotype, left: off }; off += COL_W.biotype }
-    if (hasOrthologs) { C.ortho   = { w: COL_W.ortho,   left: off } }
-    const lastKey = hasOrthologs ? 'ortho' : hasBiotype ? 'biotype' : hasDesc ? 'desc' : hasCoords ? 'chr' : 'sym'
-    const colCnt  = 2 + (hasCoords?1:0) + (hasDesc?1:0) + (hasBiotype?1:0) + (hasOrthologs?1:0)
-    return { COL: C, lastFrozenKey: lastKey, frozenColCount: colCnt }
-  }, [hasCoords, hasDesc, hasBiotype, hasOrthologs])
+    if (visCoords)  { C.chr     = { w: COL_W.chr,     left: off }; off += COL_W.chr     }
+    if (visLocus)   { C.locus   = { w: COL_W.locus,   left: off }; off += COL_W.locus   }
+    if (visDesc)    { C.desc    = { w: COL_W.desc,    left: off }; off += COL_W.desc    }
+    if (visBiotype) { C.biotype = { w: COL_W.biotype, left: off }; off += COL_W.biotype }
+    if (visOrtho)   { C.ortho   = { w: COL_W.ortho,   left: off }; off += COL_W.ortho   }
+    if (visHGid)    { C.hgid    = { w: COL_W.hgid,    left: off }; off += COL_W.hgid    }
+
+    // baseMean — once per gene (frozen)
+    C.bm = { w: 80, left: off }; off += 80
+
+    // per-contrast group averages — frozen
+    uniqueGroups.forEach((g, gi) => {
+      C[`avg_${gi}`] = { w: 105, left: off }; off += 105
+    })
+
+    const lastKey    = uniqueGroups.length > 0 ? `avg_${uniqueGroups.length - 1}` : 'bm'
+    const colCnt     = 2 + (visCoords?1:0) + (visLocus?1:0) + (visDesc?1:0) + (visBiotype?1:0) + (visOrtho?1:0) + (visHGid?1:0) + 1 + uniqueGroups.length
+    // Total table width = all frozen cols + scrollable stat cols (80px each)
+    const statColPx  = contrasts.length * STAT_COLS.length * 80
+    const tableWidth = off + statColPx
+    return { COL: C, lastFrozenKey: lastKey, frozenColCount: colCnt, tableWidth }
+  }, [visCoords, visLocus, visDesc, visBiotype, visOrtho, visHGid, uniqueGroups, contrasts])
 
   // Build sticky-left style for a gene column cell
   // zIndex: 20 body / caller overrides to 22 for header cells
@@ -885,9 +972,6 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
     overflow: 'hidden', textOverflow: 'ellipsis',
     zIndex: 20, background: bg, ...extra,
   })
-  // Box-shadow used on the right edge of the last frozen column
-  const freezeShadow = { boxShadow: '3px 0 6px rgba(0,0,0,0.10)' }
-
   const TH = ({ children, style = {} }) => (
     <th style={{ padding: '5px 8px', whiteSpace: 'nowrap', fontWeight: 500,
                  fontSize: '0.7rem', borderBottom: GRID, borderRight: GRID,
@@ -897,8 +981,13 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
     </th>
   )
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+  const _inner = (
+    <div style={fullscreen ? {
+      position: 'fixed', inset: 0, zIndex: 99999,
+      background: 'var(--bg-panel)', padding: '16px 20px',
+      display: 'flex', flexDirection: 'column', gap: 10,
+      overflow: 'hidden',
+    } : { display: 'flex', flexDirection: 'column', gap: 10 }}>
       {/* ── Main controls bar ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <input value={search} onChange={e => setSearch(e.target.value)}
@@ -942,6 +1031,11 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
                   title={`Download filtered view (${sorted.length.toLocaleString()} genes)`}
                   disabled={sorted.length === 0}>
             ↓ Filtered CSV
+          </button>
+          <button className="btn-ghost" onClick={() => setFullscreen(v => !v)}
+                  title={fullscreen ? 'Exit fullscreen (Esc)' : 'Expand to fullscreen'}
+                  style={{ fontSize: '0.82rem', padding: '3px 8px' }}>
+            {fullscreen ? 'Collapse' : 'Expand'}
           </button>
         </div>
       </div>
@@ -996,31 +1090,68 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
       )}
 
       {/* Two-level pivot table */}
-      <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 580,
+      <div style={{ overflowX: 'auto', overflowY: 'auto',
+                    maxHeight: fullscreen ? 'calc(100vh - 120px)' : 580,
+                    flex: fullscreen ? '1 1 0' : undefined,
                     border: '1px solid var(--border)', borderRadius: 8 }}>
-        <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: '0.76rem', tableLayout: 'fixed', width: '100%' }}>
+        <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: '0.76rem', tableLayout: 'fixed', width: tableWidth, minWidth: '100%' }}>
           <colgroup>
             <col style={{ width: COL.id.w }} />
             <col style={{ width: COL.sym.w }} />
-            {hasCoords    && <col style={{ width: COL.chr?.w     ?? 150 }} />}
-            {hasDesc      && <col style={{ width: COL.desc?.w    ?? 160 }} />}
-            {hasBiotype   && <col style={{ width: COL.biotype?.w ?? 110 }} />}
-            {hasOrthologs && <col style={{ width: COL.ortho?.w   ??  90 }} />}
-            {contrastLabels.flatMap(lbl => STAT_COLS.map(s => <col key={`${lbl}_${s.key}`} style={{ width: s.key === 'meanTreatment' || s.key === 'meanReference' ? 120 : 80 }} />))}
+            {visCoords  && <col style={{ width: COL.chr?.w     ?? 150 }} />}
+            {visLocus   && <col style={{ width: COL.locus?.w   ?? 140 }} />}
+            {visDesc    && <col style={{ width: COL.desc?.w    ?? 160 }} />}
+            {visBiotype && <col style={{ width: COL.biotype?.w ?? 110 }} />}
+            {visOrtho   && <col style={{ width: COL.ortho?.w   ?? 130 }} />}
+            {visHGid    && <col style={{ width: COL.hgid?.w    ?? 140 }} />}
+            <col style={{ width: COL.bm?.w ?? 80 }} />
+            {uniqueGroups.map((_, gi) => (
+              <col key={`avg_${gi}`} style={{ width: COL[`avg_${gi}`]?.w ?? 105 }} />
+            ))}
+            {contrastLabels.flatMap(lbl => STAT_COLS.map(s => <col key={`${lbl}_${s.key}`} style={{ width: 80 }} />))}
           </colgroup>
           <thead style={{ position: 'sticky', top: 0, zIndex: 22, background: 'var(--bg-panel)' }}>
             {/* Row 1: frozen Gene banner + contrast group headers.
                 The tr background fills any gap when contrast headers scroll behind the frozen pane. */}
             <tr style={{ background: 'rgba(var(--accent-rgb),0.06)' }}>
-              <th colSpan={frozenColCount}
+              {/* Gene ID + Symbol (+ annotation cols when expanded) */}
+              <th colSpan={2 + (visCoords?1:0)+(visLocus?1:0)+(visDesc?1:0)+(visBiotype?1:0)+(visOrtho?1:0)+(visHGid?1:0)}
                   style={{ ...freeze('id', 'var(--bg-panel)'), zIndex: 22,
                            backgroundImage: 'linear-gradient(rgba(var(--accent-rgb),0.06),rgba(var(--accent-rgb),0.06))',
-                           padding: '6px 10px', textAlign: 'left', fontWeight: 600,
+                           padding: '4px 10px', textAlign: 'left', fontWeight: 600,
                            fontSize: '0.72rem', color: 'var(--text-3)',
-                           borderBottom: GRID,
-                           borderRight: '2px solid var(--border)',
-                           ...freezeShadow }}>
-                Gene
+                           borderBottom: GRID, borderRight: GRID }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  Gene
+                  {hasAnnGroup && (
+                    <button
+                      onClick={() => setShowAnnGroup(v => !v)}
+                      title={showAnnGroup ? 'Collapse annotation columns' : 'Expand annotation columns'}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 5,
+                        padding: '2px 7px', borderRadius: 4, cursor: 'pointer',
+                        fontSize: '0.68rem', fontWeight: 600,
+                        background: showAnnGroup ? 'rgba(var(--accent-rgb),0.1)' : 'rgba(255,255,255,0.06)',
+                        color: showAnnGroup ? 'var(--accent-text)' : 'var(--text-3)',
+                        border: `1px solid ${showAnnGroup ? 'rgba(var(--accent-rgb),0.3)' : 'var(--border)'}`,
+                      }}>
+                      {showAnnGroup ? '⊟ Collapse' : '⊞ Expand'}
+                    </button>
+                  )}
+                </span>
+              </th>
+              {/* Expression banner — covers baseMean + unique group averages */}
+              <th colSpan={1 + uniqueGroups.length}
+                  style={{
+                    position: 'sticky', left: COL.bm?.left ?? 0,
+                    zIndex: 22, background: 'var(--bg-panel)',
+                    backgroundImage: 'linear-gradient(rgba(var(--accent-rgb),0.06),rgba(var(--accent-rgb),0.06))',
+                    padding: '6px 10px', textAlign: 'center', fontWeight: 600,
+                    fontSize: '0.72rem', color: 'var(--text-3)',
+                    borderBottom: GRID, borderRight: '2px solid var(--border)',
+                    boxShadow: '3px 0 6px rgba(0,0,0,0.10)',
+                  }}>
+                Expression
               </th>
               {contrasts.map((ct, ci) => {
                 const lbl = ct.label ?? ct.treatment ?? 'Contrast'
@@ -1036,42 +1167,43 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
                 )
               })}
             </tr>
-            {/* Row 2: frozen gene sub-headers + sortable stat sub-headers */}
+            {/* Row 2: frozen gene sub-headers + frozen expression sub-headers + sortable stat sub-headers */}
             <tr>
               <TH style={{ ...freeze('id', FREEZE_BG), zIndex: 22, borderRight: GRID }}>Gene ID</TH>
-              <TH style={{ ...freeze('sym', FREEZE_BG), zIndex: 22,
-                           ...(lastFrozenKey === 'sym' ? { borderRight: '2px solid var(--border)', ...freezeShadow } : { borderRight: GRID }) }}>
+              <TH style={{ ...freeze('sym', FREEZE_BG), zIndex: 22, borderRight: GRID }}>
                 Symbol
               </TH>
-              {hasCoords && <TH style={{ ...freeze('chr', FREEZE_BG), zIndex: 22, borderRight: GRID }}>Chr</TH>}
-              {hasDesc && <TH style={{ ...freeze('desc', FREEZE_BG), zIndex: 22,
-                                        ...(hasBiotype || hasOrthologs ? { borderRight: GRID } : { borderRight: '2px solid var(--border)', ...freezeShadow }) }}>
-                Description
-              </TH>}
-              {hasBiotype && <TH style={{ ...freeze('biotype', FREEZE_BG), zIndex: 22,
-                                          ...(hasOrthologs ? { borderRight: GRID } : { borderRight: '2px solid var(--border)', ...freezeShadow }),
-                                          color: '#0369a1' }}>
-                Biotype
-              </TH>}
-              {hasOrthologs && <TH style={{ ...freeze('ortho', FREEZE_BG), zIndex: 22,
-                                            borderRight: '2px solid var(--border)', ...freezeShadow,
-                                            color: '#7c3aed' }}>
-                Human Ortholog
-              </TH>}
+              {visCoords  && <TH style={{ ...freeze('chr',     FREEZE_BG), zIndex: 22, borderRight: GRID }}>Chr</TH>}
+              {visLocus   && <TH style={{ ...freeze('locus',   FREEZE_BG), zIndex: 22,
+                                          ...(visDesc||visBiotype||visOrtho||visHGid ? {borderRight:GRID} : {borderRight:GRID}) }}>Locus</TH>}
+              {visDesc    && <TH style={{ ...freeze('desc',    FREEZE_BG), zIndex: 22,
+                                          ...(visBiotype||visOrtho||visHGid ? {borderRight:GRID} : {borderRight:GRID}) }}>Description</TH>}
+              {visBiotype && <TH style={{ ...freeze('biotype', FREEZE_BG), zIndex: 22, color: '#0369a1',
+                                          ...(visOrtho||visHGid ? {borderRight:GRID} : {borderRight:GRID}) }}>Biotype</TH>}
+              {visOrtho   && <TH style={{ ...freeze('ortho',   FREEZE_BG), zIndex: 22, color: '#7c3aed',
+                                          ...(visHGid ? {borderRight:GRID} : {borderRight:GRID}) }}>Human Ortholog</TH>}
+              {visHGid    && <TH style={{ ...freeze('hgid',    FREEZE_BG), zIndex: 22, color: '#7c3aed',
+                                          borderRight: GRID }}>Human Gene ID</TH>}
+              {/* Frozen expression sub-headers */}
+              <TH style={{ ...freeze('bm', FREEZE_BG), zIndex: 22, borderRight: GRID }}>baseMean</TH>
+              {uniqueGroups.map((g, gi) => (
+                <TH key={`avg_${gi}`} style={{ ...freeze(`avg_${gi}`, FREEZE_BG), zIndex: 22,
+                  ...(gi === uniqueGroups.length - 1
+                    ? { borderRight: '2px solid var(--border)', boxShadow: '3px 0 6px rgba(0,0,0,0.10)' }
+                    : { borderRight: GRID }) }}>
+                  Avg: {g.name}
+                </TH>
+              ))}
               {contrasts.map((ct, ci) => {
                 const lbl = ct.label ?? ct.treatment ?? 'Contrast'
                 return STAT_COLS.map((s, si) => {
                   const active  = sortContrast === lbl && sortStat === s.key
                   const isLast  = si === STAT_COLS.length - 1
-                  // Show actual group names for mean columns
-                  const display = s.key === 'meanTreatment' ? `Avg: ${ct.treatment ?? 'trt'}`
-                                : s.key === 'meanReference' ? `Avg: ${ct.reference ?? 'ref'}`
-                                : s.label
                   return (
                     <th key={`${lbl}_${s.key}`}
                         onClick={() => toggleSort(lbl, s.key)}
                         style={{ padding: '4px 8px',
-                                 whiteSpace: (s.key === 'meanTreatment' || s.key === 'meanReference') ? 'normal' : 'nowrap',
+                                 whiteSpace: 'nowrap',
                                  wordBreak: 'break-word', cursor: 'pointer',
                                  fontWeight: active ? 700 : 400, fontSize: '0.68rem',
                                  color: active ? ACCENT_TEXT : 'var(--text-3)',
@@ -1079,7 +1211,7 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
                                  borderBottom: GRID,
                                  borderRight: isLast && ci < contrasts.length - 1 ? '2px solid var(--border)' : GRID,
                                  userSelect: 'none' }}>
-                      {display}{active ? (sortDir === 1 ? ' ↑' : ' ↓') : ''}
+                      {s.label}{active ? (sortDir === 1 ? ' ↑' : ' ↓') : ''}
                     </th>
                   )
                 })
@@ -1105,13 +1237,10 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
                 <td className="frozen-cell" style={{ ...freeze('sym', FREEZE_BG), padding: '4px 8px',
                              fontWeight: symStr ? 500 : 400,
                              color: symStr ? 'var(--text-1)' : 'var(--text-3)', whiteSpace: 'nowrap',
-                             borderBottom: GRID,
-                             ...(lastFrozenKey === 'sym'
-                               ? { borderRight: '2px solid var(--border)', ...freezeShadow }
-                               : { borderRight: GRID }) }}>
+                             borderBottom: GRID, borderRight: GRID }}>
                   {symStr || '—'}
                 </td>
-                {hasCoords && (
+                {visCoords && (
                   <td className="frozen-cell" style={{ ...freeze('chr', FREEZE_BG), padding: '4px 8px', color: 'var(--text-3)',
                                whiteSpace: 'nowrap', fontSize: '0.68rem', borderRight: GRID, borderBottom: GRID }}>
                     {chrStr
@@ -1119,32 +1248,72 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
                       : '—'}
                   </td>
                 )}
-                {hasDesc && (
-                  <td className="frozen-cell" style={{ ...freeze('desc', FREEZE_BG), padding: '4px 8px', color: 'var(--text-3)',
+                {visLocus && (
+                  <td className="frozen-cell"
+                      onMouseEnter={r.locus ? e => showTip(r.locus, e) : undefined}
+                      onMouseMove={r.locus ? moveTip : undefined}
+                      onMouseLeave={r.locus ? hideTip : undefined}
+                      style={{ ...freeze('locus', FREEZE_BG), padding: '4px 8px', color: 'var(--text-3)',
+                               whiteSpace: 'nowrap', fontSize: '0.68rem', borderBottom: GRID,
+                               cursor: r.locus ? 'default' : undefined, borderRight: GRID }}>
+                    {typeof r.locus === 'string' && r.locus ? r.locus : '—'}
+                  </td>
+                )}
+                {visDesc && (
+                  <td className="frozen-cell"
+                      onMouseEnter={descStr ? e => showTip(descStr, e) : undefined}
+                      onMouseMove={descStr ? moveTip : undefined}
+                      onMouseLeave={descStr ? hideTip : undefined}
+                      style={{ ...freeze('desc', FREEZE_BG), padding: '4px 8px', color: 'var(--text-3)',
                                fontSize: '0.69rem', overflow: 'hidden', textOverflow: 'ellipsis',
-                               whiteSpace: 'nowrap', borderBottom: GRID,
-                               ...(hasBiotype || hasOrthologs ? { borderRight: GRID } : { borderRight: '2px solid var(--border)', ...freezeShadow }) }}
-                      title={descStr}>
+                               whiteSpace: 'nowrap', borderBottom: GRID, borderRight: GRID }}>
                     {descStr || '—'}
                   </td>
                 )}
-                {hasBiotype && (
+                {visBiotype && (
                   <td className="frozen-cell" style={{ ...freeze('biotype', FREEZE_BG), padding: '4px 8px',
                                fontSize: '0.68rem', color: '#0369a1', whiteSpace: 'nowrap',
                                overflow: 'hidden', textOverflow: 'ellipsis', borderBottom: GRID,
-                               ...(hasOrthologs ? { borderRight: GRID } : { borderRight: '2px solid var(--border)', ...freezeShadow }) }}>
+                               borderRight: GRID }}>
                     {typeof r.biotype === 'string' && r.biotype ? r.biotype.replace(/_/g, ' ') : '—'}
                   </td>
                 )}
-                {hasOrthologs && (
+                {visOrtho && (
                   <td className="frozen-cell" style={{ ...freeze('ortho', FREEZE_BG), padding: '4px 8px',
                                fontSize: '0.7rem', fontWeight: r.humanOrtholog ? 500 : 400,
                                color: r.humanOrtholog ? '#7c3aed' : 'var(--text-3)',
-                               whiteSpace: 'nowrap', borderBottom: GRID,
-                               borderRight: '2px solid var(--border)', ...freezeShadow }}>
+                               whiteSpace: 'nowrap', borderBottom: GRID, borderRight: GRID }}>
                     {typeof r.humanOrtholog === 'string' && r.humanOrtholog ? r.humanOrtholog : '—'}
                   </td>
                 )}
+                {visHGid && (
+                  <td className="frozen-cell" style={{ ...freeze('hgid', FREEZE_BG), padding: '4px 8px',
+                               fontSize: '0.68rem', fontFamily: 'monospace',
+                               color: r.humanGeneId ? '#7c3aed' : 'var(--text-3)',
+                               whiteSpace: 'nowrap', borderBottom: GRID, borderRight: GRID }}>
+                    {typeof r.humanGeneId === 'string' && r.humanGeneId ? r.humanGeneId : '—'}
+                  </td>
+                )}
+                {/* ── Frozen expression columns: baseMean + per-contrast averages ── */}
+                <td className="frozen-cell" style={{ ...freeze('bm', FREEZE_BG), padding: '4px 8px',
+                    color: 'var(--text-2)', textAlign: 'right', fontSize: '0.7rem',
+                    whiteSpace: 'nowrap', borderBottom: GRID, borderRight: GRID }}>
+                  {fmtN(r.baseMean, 4)}
+                </td>
+                {uniqueGroups.map((g, gi) => {
+                  const s = r.contrasts[g.contrastLabel]
+                  return (
+                    <td key={`avg_${gi}`} className="frozen-cell"
+                        style={{ ...freeze(`avg_${gi}`, FREEZE_BG), padding: '4px 8px',
+                                 color: 'var(--text-2)', textAlign: 'right', fontSize: '0.7rem',
+                                 whiteSpace: 'nowrap', borderBottom: GRID,
+                                 ...(gi === uniqueGroups.length - 1
+                                   ? { borderRight: '2px solid var(--border)', boxShadow: '3px 0 6px rgba(0,0,0,0.10)' }
+                                   : { borderRight: GRID }) }}>
+                      {fmtN(s?.[g.which], 4)}
+                    </td>
+                  )
+                })}
                 {/* ── Contrast stat columns ── */}
                 {contrastLabels.map((lbl, ci) => {
                   const s = r.contrasts[lbl]
@@ -1152,20 +1321,28 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
                     ? { borderRight: '2px solid var(--border)' }
                     : { borderRight: GRID }
                   const lfcColor = s?.log2FC > 0 ? '#16a34a' : s?.log2FC < 0 ? '#dc2626' : 'var(--text-2)'
-                  return [
-                    <td key={`${lbl}_bm`}  style={{ ...base }}>{fmtN(s?.baseMean, 4)}</td>,
-                    <td key={`${lbl}_mt`}  style={{ ...base, color: 'var(--text-2)' }}>{fmtN(s?.meanTreatment, 4)}</td>,
-                    <td key={`${lbl}_mr`}  style={{ ...base, color: 'var(--text-2)' }}>{fmtN(s?.meanReference,  4)}</td>,
-                    <td key={`${lbl}_lfc`} style={{ ...base, fontWeight: 500, color: lfcColor }}>{s ? fmtLFC(s.log2FC) : '—'}</td>,
-                    <td key={`${lbl}_pv`}  style={{ ...base, color: 'var(--text-3)' }}>{fmtP(s?.pvalue)}</td>,
-                    <td key={`${lbl}_pa`}  style={{ ...base, ...groupRight, color: padjColor(s?.padj) }}>{fmtP(s?.padj)}</td>,
-                  ]
+                  return STAT_COLS.map((sc, si) => {
+                    const isLast = si === STAT_COLS.length - 1
+                    const cellStyle = {
+                      ...base,
+                      ...(isLast ? groupRight : {}),
+                      ...(sc.key === 'log2FC' ? { fontWeight: 500, color: lfcColor } : {}),
+                      ...(sc.key === 'padj'   ? { color: padjColor(s?.padj) }        : {}),
+                      ...(sc.key === 'pvalue' ? { color: 'var(--text-3)' }           : {}),
+                    }
+                    const val =
+                      sc.key === 'log2FC' ? (s ? fmtLFC(s.log2FC) : '—') :
+                      sc.key === 'pvalue' ? fmtP(s?.pvalue)               :
+                      sc.key === 'padj'   ? fmtP(s?.padj)                 : '—'
+                    return <td key={`${lbl}_${sc.key}`} style={cellStyle}>{val}</td>
+                  })
                 })}
               </tr>
               )
             })}
           </tbody>
         </table>
+        {tipNode}
         {sorted.length === 0 && (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: '0.82rem' }}>
             No genes match current filters
@@ -1210,6 +1387,7 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
       </div>
     </div>
   )
+  return fullscreen ? createPortal(_inner, document.body) : _inner
 }
 
 // ── Small helpers ──────────────────────────────────────────────────────────────

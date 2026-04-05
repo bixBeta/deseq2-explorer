@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useTransition } from 'react'
+import { createPortal } from 'react-dom'
 import GeneViolinModal from './GeneViolinModal'
 
 const PAGE_SIZE = 25
@@ -26,6 +27,14 @@ export default function ResultsTable({ results, label, session, contrast, column
   const [page,    setPage]    = useState(1)
   const [selectedGene, setSelectedGene] = useState(null)
   const [isPending, startTransition] = useTransition()
+  const [fullscreen, setFullscreen] = useState(false)
+
+  useEffect(() => {
+    if (!fullscreen) return
+    const handler = e => { if (e.key === 'Escape') setFullscreen(false) }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [fullscreen])
 
   const sigCount = useMemo(
     () => (results || []).filter(r => r.padj != null && r.padj < 0.05).length,
@@ -100,8 +109,14 @@ export default function ResultsTable({ results, label, session, contrast, column
     fontWeight: disabled ? 600 : 400,
   })
 
-  return (
-    <div className="flex flex-col gap-3 h-full">
+  const _inner = (
+    <div className="flex flex-col gap-3 h-full"
+      style={fullscreen ? {
+        position: 'fixed', inset: 0, zIndex: 99999,
+        background: 'var(--bg-panel)', padding: '16px 20px',
+        display: 'flex', flexDirection: 'column', gap: 10,
+        overflow: 'hidden',
+      } : undefined}>
 
       {/* Controls */}
       <div className="flex items-center gap-3">
@@ -120,6 +135,14 @@ export default function ResultsTable({ results, label, session, contrast, column
           </span>
         )}
         <button className="btn-ghost" onClick={downloadCSV}>⬇ CSV</button>
+        <button
+          onClick={() => setFullscreen(v => !v)}
+          title={fullscreen ? 'Exit fullscreen (Esc)' : 'Expand to fullscreen'}
+          style={{ fontSize: '0.82rem', padding: '3px 8px', borderRadius: 6, cursor: 'pointer',
+                   background: 'transparent', border: '1px solid var(--border)',
+                   color: 'var(--text-3)' }}>
+          {fullscreen ? 'Collapse' : 'Expand'}
+        </button>
       </div>
 
       {/* Table */}
@@ -184,8 +207,8 @@ export default function ResultsTable({ results, label, session, contrast, column
                     <td style={{ padding: '6px 12px', color: 'var(--text-3)', borderRight: '1px solid var(--border)',
                                  maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                  fontSize: '0.74rem' }}
-                        title={annDetails[r.gene]?.description ?? ''}>
-                      {annDetails[r.gene]?.description ?? '—'}
+                        title={typeof annDetails[r.gene]?.description === 'string' ? annDetails[r.gene].description : ''}>
+                      {typeof annDetails[r.gene]?.description === 'string' ? (annDetails[r.gene].description || '—') : '—'}
                     </td>
                   )}
                   <td style={{ padding: '6px 12px', color: 'var(--text-2)', borderRight: '1px solid var(--border)' }}>{fmt(r.baseMean)}</td>
@@ -249,4 +272,5 @@ export default function ResultsTable({ results, label, session, contrast, column
       )}
     </div>
   )
+  return fullscreen ? createPortal(_inner, document.body) : _inner
 }

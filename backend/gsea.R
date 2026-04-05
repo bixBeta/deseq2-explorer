@@ -48,16 +48,16 @@
     as.matrix(readRDS(upload_path)$counts)
   }
 
-  # Row medians for pre-filtering
-  row_meds        <- rowMedians(counts)
-  names(row_meds) <- rownames(counts)
+  # baseMean per gene (mean of normalised counts across all samples) — filter on this
+  base_means        <- rowMeans(counts)
+  names(base_means) <- rownames(counts)
 
   cutoff <- if (filter_method == "quantile") {
-    as.numeric(quantile(row_meds, as.numeric(filter_value), na.rm = TRUE))
+    as.numeric(quantile(base_means, as.numeric(filter_value), na.rm = TRUE))
   } else {
     as.numeric(filter_value)
   }
-  genes_pass <- names(row_meds)[!is.na(row_meds) & row_meds >= cutoff]
+  genes_pass <- names(base_means)[!is.na(base_means) & base_means >= cutoff]
 
   ct_obj <- .get_contrast(saved, contrast_label)
   res_df <- ct_obj$results
@@ -128,24 +128,24 @@ gsea_preview <- function(session_id, contrast_label) {
     )
   })
 
-  # Row medians of normalised counts — used for the filter cutoff
-  row_meds        <- rowMedians(counts)
-  names(row_meds) <- rownames(counts)
+  # baseMean per gene (mean of normalised counts across all samples)
+  base_means        <- rowMeans(counts)
+  names(base_means) <- rownames(counts)
 
   # 101-point quantile table (0%…100%) for slider interpolation
   q_probs <- seq(0, 1, by = 0.01)
-  q_vals  <- quantile(row_meds, q_probs, na.rm = TRUE)
+  q_vals  <- quantile(base_means, q_probs, na.rm = TRUE)
 
-  # Downsampled sorted row medians (up to 2000 pts) for accurate gene-count calc in JS
-  all_meds  <- sort(row_meds, na.last = FALSE)
-  n_total   <- length(all_meds)
+  # Downsampled sorted baseMeans (up to 2000 pts) for gene-count calc in JS
+  all_bm    <- sort(base_means, na.last = FALSE)
+  n_total   <- length(all_bm)
   ds_idx    <- unique(round(seq(1, n_total, length.out = min(2000L, n_total))))
-  meds_ds   <- round(as.numeric(all_meds[ds_idx]), 2)
+  bm_ds     <- round(as.numeric(all_bm[ds_idx]), 2)
 
   list(
     kdes           = kdes,
     quantileValues = round(as.numeric(q_vals), 2),
-    mediansSample  = meds_ds,          # sorted, for JS binary-search gene count
+    mediansSample  = bm_ds,            # sorted baseMeans, for JS binary-search gene count
     quartiles = list(
       q25 = round(as.numeric(q_vals[26]), 2),
       q50 = round(as.numeric(q_vals[51]), 2),
