@@ -805,11 +805,60 @@ function PlotsPanel({ run, session, contrastLabel }) {
   )
 }
 
-// ── Enrichment mountain plot modal ────────────────────────────────────────────
+// ── Enrichment mountain plot modal (draggable + resizable) ───────────────────
 function MountainModal({ pathway, result, curveData, curveLoading, curveError, onClose, onRetry }) {
-  const ref=useRef(null)
+  const plotRef = useRef(null)
+  const cardRef = useRef(null)
+  const [size, setSize] = useState({ width: 800, height: 560 })
+  const [pos,  setPos]  = useState(null) // null until centred on first render
+
+  // Centre on mount
+  useEffect(() => {
+    setPos({
+      x: Math.max(0, Math.round((window.innerWidth  - 800) / 2)),
+      y: Math.max(0, Math.round((window.innerHeight - 560) / 2)),
+    })
+  }, [])
+
+  // Drag — header acts as handle
+  function onDragStart(e) {
+    if (e.button !== 0) return
+    e.preventDefault()
+    const startX = e.clientX - (pos?.x ?? 0)
+    const startY = e.clientY - (pos?.y ?? 0)
+    function onMove(e) {
+      setPos({
+        x: Math.max(0, Math.min(window.innerWidth  - size.width,  e.clientX - startX)),
+        y: Math.max(0, Math.min(window.innerHeight - 60,           e.clientY - startY)),
+      })
+    }
+    function onUp() { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup',   onUp)
+  }
+
+  // Resize — bottom-right corner handle
+  function onResizeStart(e) {
+    e.preventDefault(); e.stopPropagation()
+    const startX = e.clientX, startY = e.clientY
+    const startW = cardRef.current?.offsetWidth  ?? size.width
+    const startH = cardRef.current?.offsetHeight ?? size.height
+    function onMove(e) {
+      setSize({
+        width:  Math.min(Math.max(480, startW + e.clientX - startX), Math.floor(window.innerWidth * 0.97)),
+        height: Math.max(320, startH + e.clientY - startY),
+      })
+    }
+    function onUp() {
+      window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp)
+      window.addEventListener('click', e => e.stopPropagation(), { capture: true, once: true })
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup',   onUp)
+  }
+
   useEffect(()=>{
-    if(!curveData||!ref.current) return
+    if(!curveData||!plotRef.current) return
     const { x, y, hits, hitGenes, nHits }=curveData
     const nes=result?.NES??0
     const color=nes>=0?V.up:V.down
@@ -820,7 +869,7 @@ function MountainModal({ pathway, result, curveData, curveLoading, curveError, o
     const gridColor=getComputedStyle(document.documentElement).getPropertyValue('--border').trim()||'#334155'
     const fmtName=(pathway||'').replace(/_/g,' ')
 
-    Plotly.react(ref.current, [
+    Plotly.react(plotRef.current, [
       { x, y, type:'scatter', mode:'lines', fill:'tozeroy', fillcolor:colorFade, line:{ color, width:2.5 }, name:'Running ES', hovertemplate:'Rank: %{x:.4f}<br>ES: %{y:.4f}<extra></extra>' },
       { x:hits, y:Array(hits.length).fill(-0.08), customdata:hitGenes??[],
         type:'scatter', mode:'markers',
@@ -847,48 +896,73 @@ function MountainModal({ pathway, result, curveData, curveLoading, curveError, o
          toImageButtonOptions:{ filename:'enrichment_'+pathway, scale:2, format:'png' } })
   },[curveData,pathway,result])
 
+  // Resize Plotly when modal size changes
+  useEffect(()=>{
+    if(plotRef.current && curveData) Plotly.Plots.resize(plotRef.current)
+  },[size, curveData])
+
+  if (!pos) return null
+
   return (
-    <div style={{ position:'fixed', inset:0, zIndex:101000, background:'rgba(0,0,0,0.65)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', padding:24 }} onClick={onClose}>
-      <div style={{ background:'var(--bg-panel)', borderRadius:16, padding:20, width:'100%', maxWidth:780, border:`1px solid ${V.border}`, boxShadow:`0 0 40px rgba(11,68,111,0.18)` }} onClick={e=>e.stopPropagation()}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+    <div style={{ position:'fixed', inset:0, zIndex:101000, pointerEvents:'none' }}>
+      {/* Backdrop */}
+      <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,0.55)', backdropFilter:'blur(4px)', pointerEvents:'auto' }}
+        onClick={onClose} />
+
+      {/* Modal card */}
+      <div ref={cardRef}
+        style={{ position:'absolute', left:pos.x, top:pos.y, width:size.width, height:size.height,
+                 background:'var(--bg-panel)', borderRadius:16, border:`1px solid ${V.border}`,
+                 boxShadow:`0 0 40px rgba(11,68,111,0.22)`, display:'flex', flexDirection:'column',
+                 pointerEvents:'auto', overflow:'hidden', boxSizing:'border-box' }}
+        onClick={e=>e.stopPropagation()}>
+
+        {/* Header — drag handle */}
+        <div onMouseDown={onDragStart}
+          style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
+                   padding:'10px 16px', cursor:'grab', flexShrink:0, userSelect:'none',
+                   borderBottom:`1px solid ${V.border}`, background:'rgba(255,255,255,0.02)' }}>
           <span style={{ ...LBL, fontSize:'0.7rem' }}>Enrichment Mountain Plot</span>
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-            <span style={{ fontSize:'0.67rem', color:'var(--text-3)' }}>Camera icon in toolbar → export PNG · Hover rug marks for gene names</span>
+            <span style={{ fontSize:'0.67rem', color:'var(--text-3)' }}>Camera → export PNG · Hover rug marks for gene names</span>
             <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text-3)', fontSize:'1.3rem', lineHeight:1 }}>×</button>
           </div>
         </div>
-        {curveLoading ? (
-          <div style={{ height:400, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:14 }}>
-            <div style={{ width:40, height:40, borderRadius:'50%', border:`3px solid ${V.muted}`, borderTopColor:V.accent, animation:'gsea-spin 0.7s linear infinite' }} />
-            <span style={{ fontSize:'0.8rem', color:'var(--text-3)' }}>Computing enrichment curve…</span>
-          </div>
-        ) : curveError ? (
-          <div style={{ height:200, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:14 }}>
-            <div style={{ fontSize:'0.85rem', color:'#f87171', textAlign:'center', maxWidth:480, lineHeight:1.6 }}>
-              ⚠ {curveError}
+
+        {/* Content */}
+        <div style={{ flex:'1 1 0', minHeight:0, display:'flex', flexDirection:'column', padding:'8px 16px 12px', gap:6 }}>
+          {curveLoading ? (
+            <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:14 }}>
+              <div style={{ width:40, height:40, borderRadius:'50%', border:`3px solid ${V.muted}`, borderTopColor:V.accent, animation:'gsea-spin 0.7s linear infinite' }} />
+              <span style={{ fontSize:'0.8rem', color:'var(--text-3)' }}>Computing enrichment curve…</span>
             </div>
-            {onRetry && (
-              <button onClick={onRetry}
-                style={{ padding:'6px 18px', borderRadius:7, border:`1px solid ${V.border}`, background:V.muted, color:V.text, fontSize:'0.78rem', fontWeight:600, cursor:'pointer' }}>
-                ↺ Retry
-              </button>
-            )}
-          </div>
-        ) : curveData ? (
-          <>
-            <div ref={ref} style={{ width:'100%' }} />
-            <div style={{ marginTop:8, fontSize:'0.72rem', color:'var(--text-3)', lineHeight:1.6 }}>
-              <b style={{ color:'var(--text-1)' }}>Leading edge ({result?.leadingEdgeN}):</b>{' '}
-              {(result?.leadingEdge||'').split(',').slice(0,15).join(', ')}
-              {result?.leadingEdgeN>15?` … +${result.leadingEdgeN-15} more`:''}
+          ) : curveError ? (
+            <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:14 }}>
+              <div style={{ fontSize:'0.85rem', color:'#f87171', textAlign:'center', maxWidth:480, lineHeight:1.6 }}>⚠ {curveError}</div>
+              {onRetry && <button onClick={onRetry} style={{ padding:'6px 18px', borderRadius:7, border:`1px solid ${V.border}`, background:V.muted, color:V.text, fontSize:'0.78rem', fontWeight:600, cursor:'pointer' }}>↺ Retry</button>}
             </div>
-          </>
-        ) : null}
+          ) : curveData ? (
+            <>
+              <div ref={plotRef} style={{ flex:'1 1 0', minHeight:0 }} />
+              <div style={{ flexShrink:0, fontSize:'0.72rem', color:'var(--text-3)', lineHeight:1.6 }}>
+                <b style={{ color:'var(--text-1)' }}>Leading edge ({result?.leadingEdgeN}):</b>{' '}
+                {(result?.leadingEdge||'').split(',').slice(0,15).join(', ')}
+                {result?.leadingEdgeN>15?` … +${result.leadingEdgeN-15} more`:''}
+              </div>
+            </>
+          ) : null}
+        </div>
+
+        {/* Resize handle */}
+        <div onMouseDown={onResizeStart}
+          style={{ position:'absolute', bottom:4, right:4, width:16, height:16,
+                   cursor:'nwse-resize', opacity:0.35,
+                   backgroundImage:'radial-gradient(circle, var(--text-3) 1.2px, transparent 1.2px)',
+                   backgroundSize:'4px 4px' }} />
       </div>
       <style>{`@keyframes gsea-spin { to { transform:rotate(360deg); } }`}</style>
     </div>
   )
-  return fsPanel ? createPortal(_panel, document.body) : _panel
 }
 
 // ── Main GSEAExplorer ─────────────────────────────────────────────────────────
