@@ -4,6 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Data Prep · DESeq2 ExploreR</title>
+  <!-- Blocking theme script: runs before first paint to prevent dark→light flash -->
+  <script>
+    (function(){
+      var saved = localStorage.getItem('prep-theme');
+      var light = saved ? saved === 'light' : true;
+      if (light) document.documentElement.classList.add('light');
+    })();
+  </script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -31,7 +39,7 @@
     }
 
     /* ── Light mode ── */
-    body.light {
+    html.light {
       --bg:      #f8fafc;
       --bg2:     #f1f5f9;
       --surface: rgba(0,0,0,0.04);
@@ -525,14 +533,14 @@ import { WebR } from 'https://webr.r-wasm.org/latest/webr.mjs';
 (function() {
   const saved = localStorage.getItem('prep-theme');
   const isLight = saved ? saved === 'light' : true; // default: light
-  if (isLight) document.body.classList.add('light');
+  // Class already applied to <html> by the blocking head script; no flash here.
 
-  const btn     = document.getElementById('theme-toggle');
+  const btn      = document.getElementById('theme-toggle');
   const iconSun  = document.getElementById('icon-sun');
   const iconMoon = document.getElementById('icon-moon');
 
   function applyTheme(light) {
-    document.body.classList.toggle('light', light);
+    document.documentElement.classList.toggle('light', light);
     iconSun.style.display  = light ? 'none'  : '';
     iconMoon.style.display = light ? ''      : 'none';
     localStorage.setItem('prep-theme', light ? 'light' : 'dark');
@@ -541,7 +549,7 @@ import { WebR } from 'https://webr.r-wasm.org/latest/webr.mjs';
   applyTheme(isLight); // set icons correctly on load
 
   btn.addEventListener('click', () => {
-    applyTheme(!document.body.classList.contains('light'));
+    applyTheme(!document.documentElement.classList.contains('light'));
   });
 })();
 
