@@ -420,18 +420,20 @@ export default function GSEACompare({ session, gseaRuns }) {
         <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-2)', letterSpacing: '0.06em' }}>
           SELECTED PATHWAYS ({selectedSets.length})
         </span>
-        <button onClick={exportTableCSV}
-                style={{ fontSize: '0.68rem', padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
-                         background: 'rgba(99,102,241,0.1)', color: '#818cf8',
-                         border: '1px solid rgba(99,102,241,0.25)' }}>
-          ↓ CSV
-        </button>
-        <button onClick={() => setFsPathways(v => !v)}
-                title={fsPathways ? 'Exit fullscreen (Esc)' : 'Expand to fullscreen'}
-                style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
-                         background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-3)' }}>
-          {fsPathways ? 'Collapse' : 'Expand'}
-        </button>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <button onClick={exportTableCSV}
+                  style={{ fontSize: '0.68rem', padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
+                           background: 'rgba(99,102,241,0.1)', color: '#818cf8',
+                           border: '1px solid rgba(99,102,241,0.25)' }}>
+            ↓ CSV
+          </button>
+          <button onClick={() => setFsPathways(v => !v)}
+                  title={fsPathways ? 'Exit fullscreen (Esc)' : 'Expand to fullscreen'}
+                  style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
+                           background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-3)' }}>
+            {fsPathways ? 'Collapse' : 'Expand'}
+          </button>
+        </div>
       </div>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '0.75rem' }}>
