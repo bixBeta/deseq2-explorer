@@ -149,7 +149,7 @@ Distributions are visualised as violin plots with embedded box plots using Plotl
 
 ## Gene Violin Plot
 
-Single-gene expression is visualised as a violin + jitter + box plot using [`ggpubr`](https://cran.r-project.org/package=ggpubr) (`ggviolin()`). Expression values are log₂-transformed raw integer counts (`log2(counts + 1)`). A Wilcoxon rank-sum test (`wilcox.test`) is applied between the two contrast groups using `stat_compare_means()`, with significance annotations (`ns / * / ** / *** / ****`) and exact p-value label. DESeq2 statistics (baseMean, log₂FC, lfcSE, p-value, padj) for the gene in the selected contrast are displayed alongside the plot.
+Single-gene expression is visualised as a violin + jitter + box plot using [`ggpubr`](https://cran.r-project.org/package=ggpubr) (`ggviolin()`). Expression values are log₂-transformed raw integer counts (`log2(counts + 1)`). A Wilcoxon rank-sum test (`wilcox.test`) is applied between the two contrast groups using `stat_compare_means()`, with significance annotations (`*** p<0.001 · ** p<0.01 · * p<0.05 · ns p≥0.05`) and exact p-value label. DESeq2 statistics (baseMean, log₂FC, lfcSE, p-value, padj) for the gene in the selected contrast are displayed alongside the plot.
 
 ```r
 p <- ggviolin(df, x = "group", y = "expr", fill = "group",
