@@ -665,6 +665,7 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
   const [sortDir,       setSortDir]       = useState(1)      // 1 asc, -1 desc
   const [page,          setPage]          = useState(1)
   const [showAnnGroup,  setShowAnnGroup]  = useState(false)
+  const [pinnedExpr,    setPinnedExpr]    = useState(false)  // pin expression block to frozen pane
   const [fullscreen,    setFullscreen]    = useState(false)
   const { show: showTip, move: moveTip, hide: hideTip, node: tipNode } = useTooltip()
 
@@ -972,6 +973,12 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
     overflow: 'hidden', textOverflow: 'ellipsis',
     zIndex: 20, background: bg, ...extra,
   })
+  // Expression columns (baseMean + avg group cols) are only sticky when user has pinned them
+  const exprFreeze = (key, bg = FREEZE_BG, extra = {}) =>
+    pinnedExpr
+      ? freeze(key, bg, extra)
+      : { width: COL[key]?.w, minWidth: COL[key]?.w, maxWidth: COL[key]?.w,
+          overflow: 'hidden', textOverflow: 'ellipsis', ...extra }
   const TH = ({ children, style = {} }) => (
     <th style={{ padding: '5px 8px', whiteSpace: 'nowrap', fontWeight: 500,
                  fontSize: '0.7rem', borderBottom: GRID, borderRight: GRID,
@@ -1120,7 +1127,10 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
                            backgroundImage: 'linear-gradient(rgba(var(--accent-rgb),0.06),rgba(var(--accent-rgb),0.06))',
                            padding: '4px 10px', textAlign: 'left', fontWeight: 600,
                            fontSize: '0.72rem', color: 'var(--text-3)',
-                           borderBottom: GRID, borderRight: GRID }}>
+                           borderBottom: GRID,
+                           ...(!pinnedExpr
+                             ? { borderRight: '2px solid var(--border)', boxShadow: '3px 0 6px rgba(0,0,0,0.10)' }
+                             : { borderRight: GRID }) }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   Gene
                   {hasAnnGroup && (
@@ -1143,15 +1153,31 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
               {/* Expression banner — covers baseMean + unique group averages */}
               <th colSpan={1 + uniqueGroups.length}
                   style={{
-                    position: 'sticky', left: COL.bm?.left ?? 0,
-                    zIndex: 22, background: 'var(--bg-panel)',
+                    ...(pinnedExpr ? { position: 'sticky', left: COL.bm?.left ?? 0, zIndex: 22 } : {}),
+                    background: 'var(--bg-panel)',
                     backgroundImage: 'linear-gradient(rgba(var(--accent-rgb),0.06),rgba(var(--accent-rgb),0.06))',
                     padding: '6px 10px', textAlign: 'center', fontWeight: 600,
                     fontSize: '0.72rem', color: 'var(--text-3)',
-                    borderBottom: GRID, borderRight: '2px solid var(--border)',
-                    boxShadow: '3px 0 6px rgba(0,0,0,0.10)',
+                    borderBottom: GRID,
+                    ...(pinnedExpr
+                      ? { borderRight: '2px solid var(--border)', boxShadow: '3px 0 6px rgba(0,0,0,0.10)' }
+                      : { borderRight: GRID }),
                   }}>
-                Expression
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                  Expression
+                  <button
+                    onClick={() => setPinnedExpr(v => !v)}
+                    title={pinnedExpr ? 'Unpin expression columns' : 'Pin expression columns to frozen pane'}
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px',
+                      fontSize: '0.72rem', lineHeight: 1, opacity: pinnedExpr ? 1 : 0.45,
+                      color: pinnedExpr ? 'var(--accent-text)' : 'var(--text-3)',
+                      transition: 'opacity 0.15s',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.opacity = '1' }}
+                    onMouseLeave={e => { e.currentTarget.style.opacity = pinnedExpr ? '1' : '0.45' }}
+                  >📌</button>
+                </span>
               </th>
               {contrasts.map((ct, ci) => {
                 const lbl = ct.label ?? ct.treatment ?? 'Contrast'
@@ -1170,7 +1196,10 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
             {/* Row 2: frozen gene sub-headers + frozen expression sub-headers + sortable stat sub-headers */}
             <tr>
               <TH style={{ ...freeze('id', FREEZE_BG), zIndex: 22, borderRight: GRID }}>Gene ID</TH>
-              <TH style={{ ...freeze('sym', FREEZE_BG), zIndex: 22, borderRight: GRID }}>
+              <TH style={{ ...freeze('sym', FREEZE_BG), zIndex: 22,
+                           ...(!pinnedExpr
+                             ? { borderRight: '2px solid var(--border)', boxShadow: '3px 0 6px rgba(0,0,0,0.10)' }
+                             : { borderRight: GRID }) }}>
                 Symbol
               </TH>
               {visCoords  && <TH style={{ ...freeze('chr',     FREEZE_BG), zIndex: 22, borderRight: GRID }}>Chr</TH>}
@@ -1184,11 +1213,11 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
                                           ...(visHGid ? {borderRight:GRID} : {borderRight:GRID}) }}>Human Ortholog</TH>}
               {visHGid    && <TH style={{ ...freeze('hgid',    FREEZE_BG), zIndex: 22, color: '#7c3aed',
                                           borderRight: GRID }}>Human Gene ID</TH>}
-              {/* Frozen expression sub-headers */}
-              <TH style={{ ...freeze('bm', FREEZE_BG), zIndex: 22, borderRight: GRID }}>baseMean</TH>
+              {/* Expression sub-headers — sticky only when pinned */}
+              <TH style={{ ...exprFreeze('bm', FREEZE_BG), zIndex: pinnedExpr ? 22 : 0, borderRight: GRID }}>baseMean</TH>
               {uniqueGroups.map((g, gi) => (
-                <TH key={`avg_${gi}`} style={{ ...freeze(`avg_${gi}`, FREEZE_BG), zIndex: 22,
-                  ...(gi === uniqueGroups.length - 1
+                <TH key={`avg_${gi}`} style={{ ...exprFreeze(`avg_${gi}`, FREEZE_BG), zIndex: pinnedExpr ? 22 : 0,
+                  ...(gi === uniqueGroups.length - 1 && pinnedExpr
                     ? { borderRight: '2px solid var(--border)', boxShadow: '3px 0 6px rgba(0,0,0,0.10)' }
                     : { borderRight: GRID }) }}>
                   Avg: {g.name}
@@ -1237,7 +1266,10 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
                 <td className="frozen-cell" style={{ ...freeze('sym', FREEZE_BG), padding: '4px 8px',
                              fontWeight: symStr ? 500 : 400,
                              color: symStr ? 'var(--text-1)' : 'var(--text-3)', whiteSpace: 'nowrap',
-                             borderBottom: GRID, borderRight: GRID }}>
+                             borderBottom: GRID,
+                             ...(!pinnedExpr
+                               ? { borderRight: '2px solid var(--border)', boxShadow: '3px 0 6px rgba(0,0,0,0.10)' }
+                               : { borderRight: GRID }) }}>
                   {symStr || '—'}
                 </td>
                 {visCoords && (
@@ -1294,8 +1326,8 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
                     {typeof r.humanGeneId === 'string' && r.humanGeneId ? r.humanGeneId : '—'}
                   </td>
                 )}
-                {/* ── Frozen expression columns: baseMean + per-contrast averages ── */}
-                <td className="frozen-cell" style={{ ...freeze('bm', FREEZE_BG), padding: '4px 8px',
+                {/* ── Expression columns: baseMean + per-contrast averages — sticky only when pinned ── */}
+                <td style={{ ...exprFreeze('bm', FREEZE_BG), padding: '4px 8px',
                     color: 'var(--text-2)', textAlign: 'right', fontSize: '0.7rem',
                     whiteSpace: 'nowrap', borderBottom: GRID, borderRight: GRID }}>
                   {fmtN(r.baseMean, 4)}
@@ -1303,11 +1335,11 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
                 {uniqueGroups.map((g, gi) => {
                   const s = r.contrasts[g.contrastLabel]
                   return (
-                    <td key={`avg_${gi}`} className="frozen-cell"
-                        style={{ ...freeze(`avg_${gi}`, FREEZE_BG), padding: '4px 8px',
+                    <td key={`avg_${gi}`}
+                        style={{ ...exprFreeze(`avg_${gi}`, FREEZE_BG), padding: '4px 8px',
                                  color: 'var(--text-2)', textAlign: 'right', fontSize: '0.7rem',
                                  whiteSpace: 'nowrap', borderBottom: GRID,
-                                 ...(gi === uniqueGroups.length - 1
+                                 ...(gi === uniqueGroups.length - 1 && pinnedExpr
                                    ? { borderRight: '2px solid var(--border)', boxShadow: '3px 0 6px rgba(0,0,0,0.10)' }
                                    : { borderRight: GRID }) }}>
                       {fmtN(s?.[g.which], 4)}

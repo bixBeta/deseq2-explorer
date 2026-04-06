@@ -323,8 +323,9 @@ function buildHtmlExport(md, sessionRows, contrasts, gseaRuns, alpha) {
   const gseaHtml = gseaRuns?.length ? `
 <section>
   <h2>GSEA Runs (${gseaRuns.length})</h2>
-  <table>
-    <thead><tr><th>Contrast</th><th>Collection</th><th>Rank by</th><th>padj method</th><th>padj cutoff</th><th>Filter</th><th>Gene set size</th><th>Species</th><th>Pathways</th><th>Time</th></tr></thead>
+  <div style="overflow-x:auto">
+  <table style="width:auto;min-width:100%;white-space:nowrap">
+    <thead><tr><th>Contrast</th><th>Collection</th><th>Rank by</th><th>padj method</th><th>padj cutoff</th><th>Filter</th><th>Gene set size</th><th>Species</th><th>Pathways</th></tr></thead>
     <tbody>${gseaRuns.map(r => {
       const p = r.params ?? r
       return `<tr><td><code>${escHtml(r.contrastLabel ?? '')}</code></td>` +
@@ -335,11 +336,11 @@ function buildHtmlExport(md, sessionRows, contrasts, gseaRuns, alpha) {
         `<td>${escHtml((FILTER_LABELS_EXP[p.filterMethod] ?? p.filterMethod ?? '')+' > '+(p.filterValue ?? ''))}</td>` +
         `<td>${escHtml(String(p.minSize ?? ''))}–${escHtml(String(p.maxSize ?? ''))}</td>` +
         `<td>${escHtml(p.species ?? '')}</td>` +
-        `<td>${r.meta?.n_pathways ?? '—'}</td>` +
-        `<td>${escHtml(r.timestamp ?? '')}</td></tr>`
+        `<td>${r.meta?.n_pathways ?? '—'}</td></tr>`
     }).join('')}
     </tbody>
   </table>
+  </div>
 </section>` : ''
 
   const hasParams = sessionHtml || contrastsHtml || gseaHtml

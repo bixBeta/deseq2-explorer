@@ -302,6 +302,10 @@ export default function App() {
     const newLabels = ms.labels || {}
     setMetaState(ms)
     setSampleLabels(newLabels)
+    // Propagate user-added/deleted columns so DesignPanel sees the updated column list
+    if (ms.columns) {
+      setParseInfo(prev => prev ? { ...prev, columns: ms.columns } : prev)
+    }
     setStep('design')
     // Auto-persist edits so they survive logout/resume
     if (session && auth && !session.isExample) {

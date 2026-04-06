@@ -1,18 +1,48 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 
 export default function MetadataEditor({ parseInfo, metaState, sampleLabels = {}, onConfirm, onBack }) {
   const _cols = parseInfo?.columns
-  const columns = Array.isArray(_cols) ? _cols
-                : typeof _cols === 'string' ? [_cols]
-                : (_cols && typeof _cols === 'object') ? Object.values(_cols)
-                : []
+  const baseCols = Array.isArray(_cols) ? _cols
+                 : typeof _cols === 'string' ? [_cols]
+                 : (_cols && typeof _cols === 'object') ? Object.values(_cols)
+                 : []
   const { geneCount, sampleCount } = parseInfo || {}
 
   const [rows, setRows]         = useState(metaState?.rows || [])
   const [selected, setSelected] = useState(metaState?.selected || new Set(rows.map(r => r.sample)))
   const [labels, setLabels]     = useState(sampleLabels)
   const [undoStack, setUndoStack] = useState(null)
+  const [extraCols, setExtraCols] = useState([])   // user-added columns
+  const [deletedCols, setDeletedCols] = useState(new Set())  // user-deleted base columns
+  const [newColName, setNewColName] = useState('')
+  const [addingCol, setAddingCol]   = useState(false)
+  const [expanded, setExpanded] = useState(false)
   const undoTimerRef = useRef(null)
+  const newColRef    = useRef(null)
+
+  // Escape key collapses fullscreen
+  useEffect(() => {
+    if (!expanded) return
+    const handler = e => { if (e.key === 'Escape') setExpanded(false) }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [expanded])
+
+  // All visible columns = base (minus deleted) + user-added
+  const columns = useMemo(
+    () => [...baseCols.filter(c => !deletedCols.has(c)), ...extraCols],
+    [baseCols, deletedCols, extraCols]
+  )
+
+  // Per-column unique value lists for autocomplete
+  const colSuggestions = useMemo(() => {
+    const map = {}
+    columns.forEach(col => {
+      map[col] = [...new Set(rows.map(r => String(r[col] ?? '')).filter(Boolean))]
+    })
+    return map
+  }, [columns, rows])
 
   const allChecked = rows.length > 0 && rows.every(r => selected.has(r.sample))
   const nSelected  = rows.filter(r => selected.has(r.sample)).length
@@ -60,8 +90,26 @@ export default function MetadataEditor({ parseInfo, metaState, sampleLabels = {}
     })
   }
 
+  function addColumn() {
+    const name = newColName.trim()
+    if (!name || columns.includes(name)) return
+    setExtraCols(prev => [...prev, name])
+    setRows(prev => prev.map(r => ({ ...r, [name]: '' })))
+    setNewColName('')
+    setAddingCol(false)
+  }
+
+  function deleteColumn(col) {
+    if (baseCols.includes(col)) {
+      setDeletedCols(prev => new Set([...prev, col]))
+    } else {
+      setExtraCols(prev => prev.filter(c => c !== col))
+      setRows(prev => prev.map(r => { const next = { ...r }; delete next[col]; return next }))
+    }
+  }
+
   function confirm() {
-    onConfirm({ rows, selected, labels })
+    onConfirm({ rows, selected, labels, columns })
   }
 
   // ── Styles ──────────────────────────────────────────────────────────────────
@@ -89,8 +137,13 @@ export default function MetadataEditor({ parseInfo, metaState, sampleLabels = {}
     fontSize: '0.81rem', outline: 'none', minWidth: 90,
   }
 
-  return (
-    <div style={{ width: '100%', maxWidth: 960, display: 'flex', flexDirection: 'column', gap: 16 }}>
+  const inner = (
+    <div style={expanded ? {
+      position: 'fixed', inset: 0, zIndex: 99999,
+      background: 'var(--bg-panel)', padding: '16px 20px',
+      display: 'flex', flexDirection: 'column', gap: 16,
+      overflow: 'hidden',
+    } : { width: '100%', maxWidth: 960, display: 'flex', flexDirection: 'column', gap: 16 }}>
 
       {/* Header */}
       <div>
@@ -120,14 +173,74 @@ export default function MetadataEditor({ parseInfo, metaState, sampleLabels = {}
             ↩ Undo remove ({undoStack.removed.length})
           </button>
         )}
+
+        {/* Add column */}
+        {addingCol ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <input
+              ref={newColRef}
+              autoFocus
+              value={newColName}
+              onChange={e => setNewColName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') addColumn(); if (e.key === 'Escape') { setAddingCol(false); setNewColName('') } }}
+              placeholder="Column name…"
+              style={{
+                padding: '4px 8px', fontSize: '0.78rem', borderRadius: 5,
+                border: '1px solid var(--accent)', background: 'var(--bg-card)',
+                color: 'var(--text-1)', outline: 'none', width: 140,
+              }}
+            />
+            <button onClick={addColumn} style={{
+              padding: '4px 10px', fontSize: '0.78rem', borderRadius: 5, cursor: 'pointer',
+              background: 'rgba(var(--accent-rgb),0.15)', border: '1px solid var(--accent)',
+              color: 'var(--accent-text)',
+            }}>Add</button>
+            <button onClick={() => { setAddingCol(false); setNewColName('') }} style={{
+              padding: '4px 8px', fontSize: '0.78rem', borderRadius: 5, cursor: 'pointer',
+              background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-3)',
+            }}>✕</button>
+          </div>
+        ) : (
+          <button onClick={() => setAddingCol(true)} style={{
+            padding: '5px 12px', fontSize: '0.78rem', borderRadius: 6, cursor: 'pointer',
+            background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)',
+            color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 4,
+          }}>
+            + Add Column
+          </button>
+        )}
+
         <span className="flex-1" />
+        <button
+          onClick={() => setExpanded(v => !v)}
+          title={expanded ? 'Exit fullscreen (Esc)' : 'Expand to fullscreen'}
+          style={{
+            padding: '5px 12px', fontSize: '0.78rem', borderRadius: 6, cursor: 'pointer',
+            background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)',
+            color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 4,
+          }}
+        >
+          {expanded ? '⊠ Collapse' : '⛶ Expand'}
+        </button>
         <button className="btn-primary" onClick={confirm} disabled={rows.length === 0}>
           Continue to Design →
         </button>
       </div>
 
+      {/* Autocomplete datalists — one per column */}
+      {columns.map(col => (
+        <datalist key={col} id={`dl-${col}`}>
+          {(colSuggestions[col] || []).map(v => <option key={v} value={v} />)}
+        </datalist>
+      ))}
+
       {/* Table */}
-      <div className="glass" style={{ overflow: 'auto', maxHeight: 'calc(100vh - 280px)', borderRadius: 10 }}>
+      <div className="glass" style={{
+        overflow: 'auto',
+        maxHeight: expanded ? 'calc(100vh - 200px)' : 'calc(100vh - 280px)',
+        flex: expanded ? '1 1 0' : undefined,
+        borderRadius: 10,
+      }}>
         <table style={{ borderCollapse: 'collapse', minWidth: '100%', fontSize: '0.81rem' }}>
           <thead>
             <tr>
@@ -145,9 +258,23 @@ export default function MetadataEditor({ parseInfo, metaState, sampleLabels = {}
                 <div style={{ ...thLabel, color: 'var(--accent)' }}>Display Name</div>
               </th>
               {/* Metadata cols */}
-              {columns.map(col => (
-                <th key={col} style={{ ...thBase, ...(col === columns[columns.length - 1] ? { borderRight: 'none' } : {}) }}>
-                  <div style={{ ...thLabel }}>{col}</div>
+              {columns.map((col, ci) => (
+                <th key={col} style={{ ...thBase, ...(ci === columns.length - 1 ? { borderRight: 'none' } : {}) }}>
+                  <div style={{ ...thLabel, display: 'flex', alignItems: 'center', gap: 4, paddingRight: 6 }}>
+                    <span style={{ flex: 1 }}>{col}</span>
+                    <button
+                      onClick={() => deleteColumn(col)}
+                      title={`Delete column "${col}"`}
+                      style={{
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        color: 'var(--text-3)', fontSize: '0.7rem', lineHeight: 1,
+                        padding: '1px 3px', borderRadius: 3, opacity: 0.6,
+                        flexShrink: 0,
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = '#f87171' }}
+                      onMouseLeave={e => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.color = 'var(--text-3)' }}
+                    >✕</button>
+                  </div>
                 </th>
               ))}
             </tr>
@@ -195,13 +322,14 @@ export default function MetadataEditor({ parseInfo, metaState, sampleLabels = {}
                     />
                   </td>
 
-                  {/* Metadata cells — editable inputs */}
+                  {/* Metadata cells — editable inputs with autocomplete */}
                   {columns.map((col, ci) => (
                     <td key={col} style={{
                       ...tdBase,
                       ...(ci === columns.length - 1 ? { borderRight: 'none' } : {}),
                     }}>
                       <input
+                        list={`dl-${col}`}
                         style={{ ...cellInp, cursor: isChecked ? 'text' : 'default' }}
                         value={row[col] ?? ''}
                         disabled={!isChecked}
@@ -222,8 +350,10 @@ export default function MetadataEditor({ parseInfo, metaState, sampleLabels = {}
       <p className="text-xs" style={{ color: 'var(--text-3)' }}>
         Tip: uncheck samples to exclude them · click{' '}
         <span style={{ color: 'var(--accent)' }}>Display Name</span>{' '}
-        to rename a sample in all plots · click any metadata cell to edit
+        to rename a sample in all plots · click any metadata cell to edit · type to autocomplete from existing values
       </p>
     </div>
   )
+
+  return expanded ? createPortal(inner, document.body) : inner
 }

@@ -20,7 +20,7 @@ function CopyIdBadge({ sessionId }) {
 
 /* ── helpers ── */
 function statusBadge(s) {
-  if (s.hasResults) return { label: 'Results ready', color: '#22c55e', bg: 'rgba(34,197,94,0.1)',   border: 'rgba(34,197,94,0.2)' }
+  if (s.hasResults) return { label: 'Results ready', color: '#15803d', bg: 'rgba(34,197,94,0.1)',   border: 'rgba(34,197,94,0.2)' }
   if (s.hasData)    return { label: 'Data uploaded',  color: 'var(--accent)', bg: 'rgba(var(--accent-rgb),0.1)', border: 'rgba(var(--accent-rgb),0.2)' }
   return              { label: 'Empty',               color: 'var(--text-3)', bg: 'rgba(148,163,184,0.08)', border: 'rgba(148,163,184,0.15)' }
 }
