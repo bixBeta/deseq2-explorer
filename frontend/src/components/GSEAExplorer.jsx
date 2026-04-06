@@ -858,7 +858,8 @@ function MountainModal({ pathway, result, curveData, curveLoading, curveError, o
   }
 
   useEffect(()=>{
-    if(!curveData||!plotRef.current) return
+    // pos is null on first render (modal returns null); wait until the div is in the DOM
+    if(!curveData||!plotRef.current||!pos) return
     const { x, y, hits, hitGenes, nHits }=curveData
     const nes=result?.NES??0
     const color=nes>=0?V.up:V.down
@@ -893,8 +894,9 @@ function MountainModal({ pathway, result, curveData, curveLoading, curveError, o
         { type:'line', x0:0, x1:1, xref:'paper', y0:-0.055, y1:-0.055, line:{ color:'var(--border)', width:0.8 } },
       ],
     }, { responsive:true, displaylogo:false, modeBarButtonsToRemove:['select2d','lasso2d'],
-         toImageButtonOptions:{ filename:'enrichment_'+pathway, scale:2, format:'png' } })
-  },[curveData,pathway,result])
+         toImageButtonOptions:{ filename:'enrichment_'+pathway, scale:2, format:'png' } }
+    ).then(()=>{ if(plotRef.current) Plotly.Plots.resize(plotRef.current) })
+  },[curveData, pathway, result, pos])
 
   // Resize Plotly when modal size changes
   useEffect(()=>{
