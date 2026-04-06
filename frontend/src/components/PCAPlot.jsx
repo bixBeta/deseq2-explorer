@@ -8,6 +8,9 @@ function triggerDownload(csv, name) {
   URL.revokeObjectURL(url)
 }
 
+const SYMBOLS_2D = ['circle','square','diamond','triangle-up','cross','x','triangle-down','pentagon','hexagon','star','bowtie','hourglass']
+const SYMBOLS_3D = ['circle','square','diamond','cross','x']
+
 const PALETTES = {
   'Spectrum':  ['#6366f1','#8b5cf6','#ec4899','#14b8a6','#f59e0b','#3b82f6','#10b981','#f97316'],
   'Clinical':  ['#1565C0','#B71C1C','#2E7D32','#F57F17','#6A1B9A','#00838F','#D84315','#558B2F'],
@@ -57,6 +60,7 @@ export default function PCAPlot({ pca, design, sampleLabels = {}, annMap = {} })
   const [opacity,     setOpacity]     = useState(0.85)
   const [paletteName, setPaletteName] = useState('Clinical')
   const [colorBy,     setColorBy]     = useState(design?.column ?? null)
+  const [shapeBy,     setShapeBy]     = useState(null)
   const [rankByPC,    setRankByPC]    = useState('PC1')
   const [topN,        setTopN]        = useState(20)
 
@@ -78,6 +82,7 @@ export default function PCAPlot({ pca, design, sampleLabels = {}, annMap = {} })
     setZPC('PC3')
     setIs3D(false)
     setColorBy(design?.column ?? null)
+    setShapeBy(null)
   }, [pca])
 
   // Compute group summary for the bottom bar
@@ -163,6 +168,12 @@ export default function PCAPlot({ pca, design, sampleLabels = {}, annMap = {} })
 
     const palette = PALETTES[paletteName] || PALETTES['Clinical']
 
+    // Build shape map: unique shapeBy values → Plotly symbols
+    const shapeVals = shapeBy ? [...new Set(scores.map(s => s[shapeBy] ?? 'Unknown'))] : []
+    const shapeMap  = shapeBy
+      ? Object.fromEntries(shapeVals.map((v, i) => [v, (is3D ? SYMBOLS_3D : SYMBOLS_2D)[i % (is3D ? SYMBOLS_3D : SYMBOLS_2D).length]]))
+      : null
+
     const commonHover = {
       bgcolor: 'rgba(13,20,36,0.9)',
       bordercolor: 'rgba(var(--accent-rgb),0.4)',
@@ -180,7 +191,8 @@ export default function PCAPlot({ pca, design, sampleLabels = {}, annMap = {} })
         name: grp,
         textposition: 'top center',
         textfont: { size: 9, color: c.textfont },
-        marker: { color: palette[i % palette.length], size: ptSize * 0.6, opacity },
+        marker: { color: palette[i % palette.length], size: ptSize * 0.6, opacity,
+                  symbol: shapeMap ? pts.map(s => shapeMap[s[shapeBy] ?? 'Unknown']) : 'circle' },
         hovertemplate: '%{text}<extra></extra>',
       }))
 
@@ -219,7 +231,8 @@ export default function PCAPlot({ pca, design, sampleLabels = {}, annMap = {} })
         name: grp,
         textposition: 'top center',
         textfont: { size: 9, color: c.textfont },
-        marker: { color: palette[i % palette.length], size: ptSize, opacity },
+        marker: { color: palette[i % palette.length], size: ptSize, opacity,
+                  symbol: shapeMap ? pts.map(s => shapeMap[s[shapeBy] ?? 'Unknown']) : 'circle' },
         hovertemplate: '%{text}<extra></extra>',
       }))
 
@@ -254,7 +267,7 @@ export default function PCAPlot({ pca, design, sampleLabels = {}, annMap = {} })
           .forEach(el => el.style.setProperty('background', 'transparent', 'important'))
       })
     }
-  }, [pca, design, xPC, yPC, zPC, is3D, showLabels, ptSize, opacity, plotTab, pcKeys, variance, paletteName, colorBy, sampleLabels])
+  }, [pca, design, xPC, yPC, zPC, is3D, showLabels, ptSize, opacity, plotTab, pcKeys, variance, paletteName, colorBy, shapeBy, sampleLabels])
 
   // Draw scree plot
   useEffect(() => {
@@ -428,6 +441,24 @@ export default function PCAPlot({ pca, design, sampleLabels = {}, annMap = {} })
                 value={colorBy || ''}
                 onChange={e => setColorBy(e.target.value || null)}
                 style={{ fontSize: '0.78rem', padding: '2px 6px', minWidth: 90 }}>
+                {metaCols.map(col => (
+                  <option key={col} value={col}>
+                    {col}{col === design?.column ? ' (group)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {/* Shape by */}
+          {metaCols.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-3)',
+                             letterSpacing: '0.04em', textTransform: 'uppercase' }}>Shape by</span>
+              <select
+                value={shapeBy || ''}
+                onChange={e => setShapeBy(e.target.value || null)}
+                style={{ fontSize: '0.78rem', padding: '2px 6px', minWidth: 90 }}>
+                <option value=''>None</option>
                 {metaCols.map(col => (
                   <option key={col} value={col}>
                     {col}{col === design?.column ? ' (group)' : ''}
