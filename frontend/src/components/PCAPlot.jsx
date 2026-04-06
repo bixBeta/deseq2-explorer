@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
 import Plotly from 'plotly.js-dist-min'
 
+function triggerDownload(csv, name) {
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url  = URL.createObjectURL(blob)
+  Object.assign(document.createElement('a'), { href: url, download: name }).click()
+  URL.revokeObjectURL(url)
+}
+
 const PALETTES = {
   'Spectrum':  ['#6366f1','#8b5cf6','#ec4899','#14b8a6','#f59e0b','#3b82f6','#10b981','#f97316'],
   'Clinical':  ['#1565C0','#B71C1C','#2E7D32','#F57F17','#6A1B9A','#00838F','#D84315','#558B2F'],
@@ -87,6 +94,31 @@ export default function PCAPlot({ pca, design, sampleLabels = {}, annMap = {} })
       name, count, color: palette[i % palette.length],
     }))
   }, [pca, colorBy, design, paletteName])
+
+  // ── Export helpers ────────────────────────────────────────────────────────────
+  function exportScores() {
+    if (!pca?.scores?.length) return
+    const pcHeaders = pcKeys.map((k, i) =>
+      variance[i] != null ? `${k} (${Number(variance[i]).toFixed(1)}%)` : k
+    )
+    const header = ['sample', ...metaCols, ...pcHeaders].join(',')
+    const rows = pca.scores.map(s => {
+      const meta = metaCols.map(c => { const v = String(s[c] ?? ''); return v.includes(',') ? `"${v}"` : v })
+      const pcs  = pcKeys.map(k => (s[k] ?? 0).toFixed(6))
+      return [s.sample ?? '', ...meta, ...pcs].join(',')
+    })
+    triggerDownload([header, ...rows].join('\n'), 'pca_scores.csv')
+  }
+
+  function exportScree() {
+    if (!variance?.length) return
+    let cum = 0
+    const rows = pcKeys.slice(0, variance.length).map((k, i) => {
+      const v = Number(variance[i] ?? 0); cum += v
+      return `${k},${v.toFixed(4)},${cum.toFixed(4)}`
+    })
+    triggerDownload(['PC,Variance_Pct,Cumulative_Pct', ...rows].join('\n'), 'pca_scree.csv')
+  }
 
   // Resize observer (scatter plot)
   useEffect(() => {
@@ -433,8 +465,13 @@ export default function PCAPlot({ pca, design, sampleLabels = {}, annMap = {} })
         <>
           <div ref={outerRef}
                className="resizable-plot"
-               style={{ width: '100%', height: 660 }}>
+               style={{ width: '100%', height: 660, position: 'relative' }}>
             <div ref={plotRef} style={{ width: '100%', height: '100%' }} />
+            {/* Export buttons */}
+            <div style={{ position: 'absolute', top: 8, right: 8, display: 'flex', gap: 6, zIndex: 10 }}>
+              <ExportBtn onClick={exportScores} label="Scores + Metadata" />
+              {variance?.length > 0 && <ExportBtn onClick={exportScree} label="Scree" />}
+            </div>
           </div>
 
           {/* ── Summary bar ── */}
@@ -478,8 +515,11 @@ export default function PCAPlot({ pca, design, sampleLabels = {}, annMap = {} })
       {plotTab === 'scree' && (
         <div ref={screeOuterRef}
              className="resizable-plot"
-             style={{ width: '100%', height: 960 }}>
+             style={{ width: '100%', height: 960, position: 'relative' }}>
           <div ref={screeRef} style={{ width: '100%', height: '100%' }} />
+          <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 10 }}>
+            <ExportBtn onClick={exportScree} label="Scree" />
+          </div>
         </div>
       )}
 
@@ -497,6 +537,29 @@ export default function PCAPlot({ pca, design, sampleLabels = {}, annMap = {} })
         />
       )}
     </div>
+  )
+}
+
+// ── Shared export button ──────────────────────────────────────────────────────
+function ExportBtn({ onClick, label }) {
+  return (
+    <button onClick={onClick} title={`Download ${label} as CSV`}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 5,
+        padding: '4px 10px', borderRadius: 7,
+        fontSize: '0.7rem', fontWeight: 600,
+        background: 'var(--bg-card)',
+        border: '1px solid var(--border)',
+        color: 'var(--text-2)', cursor: 'pointer',
+        backdropFilter: 'blur(8px)',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.18)',
+      }}>
+      <svg width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      {label}
+    </button>
   )
 }
 
