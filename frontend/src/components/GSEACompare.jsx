@@ -345,7 +345,8 @@ export default function GSEACompare({ session, gseaRuns }) {
   const [fsPathways, setFsPathways] = useState(false)
   const [selWarning, setSelWarning] = useState('')
 
-  const SEL_LIMIT = 50
+  const SEL_LIMIT   = 100
+  const MATRIX_LIMIT = 50   // overlap matrix hidden above this — too dense to read and slow to render
 
   useEffect(() => {
     if (!fsPathways) return
@@ -664,12 +665,22 @@ export default function GSEACompare({ session, gseaRuns }) {
 
           {/* Pairwise overlap matrix + methods */}
           {selectedSets.length >= 2 && (
-            <>
-              <MethodsPanel />
-              <div className="glass" style={{ padding: 14 }}>
-                <OverlapMatrix sets={selectedSets} />
+            selectedSets.length > MATRIX_LIMIT ? (
+              <div style={{
+                padding: '10px 14px', borderRadius: 8, fontSize: '0.75rem', color: 'var(--text-3)',
+                background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)',
+              }}>
+                Overlap matrix hidden — too dense to display with {selectedSets.length} pathways selected (limit: {MATRIX_LIMIT}).
+                Reduce your selection to see pairwise overlaps.
               </div>
-            </>
+            ) : (
+              <>
+                <MethodsPanel />
+                <div className="glass" style={{ padding: 14 }}>
+                  <OverlapMatrix sets={selectedSets} />
+                </div>
+              </>
+            )
           )}
         </>}
       </div>
