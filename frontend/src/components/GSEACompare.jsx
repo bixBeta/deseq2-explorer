@@ -665,22 +665,17 @@ export default function GSEACompare({ session, gseaRuns }) {
 
           {/* Pairwise overlap matrix + methods */}
           {selectedSets.length >= 2 && (
-            selectedSets.length > MATRIX_LIMIT ? (
-              <div style={{
-                padding: '10px 14px', borderRadius: 8, fontSize: '0.75rem', color: 'var(--text-3)',
-                background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)',
-              }}>
-                Overlap matrix hidden — too dense to display with {selectedSets.length} pathways selected (limit: {MATRIX_LIMIT}).
-                Reduce your selection to see pairwise overlaps.
+            <>
+              <MethodsPanel />
+              <div className="glass" style={{ padding: 14 }}>
+                {selectedSets.length > MATRIX_LIMIT && (
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-3)', marginBottom: 8 }}>
+                    Showing first {MATRIX_LIMIT} of {selectedSets.length} selected pathways in the overlap matrix.
+                  </div>
+                )}
+                <OverlapMatrix sets={selectedSets.slice(0, MATRIX_LIMIT)} />
               </div>
-            ) : (
-              <>
-                <MethodsPanel />
-                <div className="glass" style={{ padding: 14 }}>
-                  <OverlapMatrix sets={selectedSets} />
-                </div>
-              </>
-            )
+            </>
           )}
         </>}
       </div>
