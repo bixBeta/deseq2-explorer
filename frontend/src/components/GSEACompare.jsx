@@ -342,6 +342,9 @@ export default function GSEACompare({ session, gseaRuns }) {
   const [selected,   setSelected]   = useState(new Set())
   const [expandedGenes, setExpandedGenes] = useState(new Set())
   const [fsPathways, setFsPathways] = useState(false)
+  const [selWarning, setSelWarning] = useState('')
+
+  const SEL_LIMIT = 50
 
   useEffect(() => {
     if (!fsPathways) return
@@ -363,12 +366,30 @@ export default function GSEACompare({ session, gseaRuns }) {
   function toggleItem(id) {
     setSelected(prev => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (next.has(id)) {
+        next.delete(id)
+        setSelWarning('')
+      } else {
+        if (next.size >= SEL_LIMIT) {
+          setSelWarning(`Selection capped at ${SEL_LIMIT} pathways to prevent browser crashes. Use filters or search to narrow the list.`)
+          return prev
+        }
+        next.add(id)
+        setSelWarning('')
+      }
       return next
     })
   }
-  function selectAll() { setSelected(new Set(allSets.map(s => s.id))) }
-  function clearAll()  { setSelected(new Set()) }
+  function selectAll() {
+    if (allSets.length > SEL_LIMIT) {
+      setSelected(new Set(allSets.slice(0, SEL_LIMIT).map(s => s.id)))
+      setSelWarning(`${allSets.length} pathways found — only the first ${SEL_LIMIT} were selected to prevent browser crashes. Use filters or search to narrow the list.`)
+    } else {
+      setSelected(new Set(allSets.map(s => s.id)))
+      setSelWarning('')
+    }
+  }
+  function clearAll()  { setSelected(new Set()); setSelWarning('') }
 
   function exportTableCSV() {
     const rows = selectedSets.map(s => ({
@@ -576,6 +597,17 @@ export default function GSEACompare({ session, gseaRuns }) {
             ))}
           </div>
         </div>
+
+        {selWarning && (
+          <div style={{
+            padding: '7px 10px', borderRadius: 7, fontSize: '0.7rem', lineHeight: 1.5,
+            background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)',
+            color: '#fbbf24', display: 'flex', gap: 7, alignItems: 'flex-start',
+          }}>
+            <span style={{ flexShrink: 0, marginTop: 1 }}>⚠</span>
+            <span>{selWarning}</span>
+          </div>
+        )}
 
         <div style={{ overflowY: 'auto', maxHeight: 460, display: 'flex', flexDirection: 'column', gap: 2 }}>
           {allSets.length === 0 ? (
