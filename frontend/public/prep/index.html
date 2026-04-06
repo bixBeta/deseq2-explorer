@@ -388,7 +388,7 @@
       <small>
         <strong>Single file</strong>: full matrix (genes × samples) &nbsp;·&nbsp;
         <strong>Multiple files</strong>: one file per sample, merged automatically
-        &nbsp;·&nbsp; <code>.rawCounts*</code> suffixes stripped from names
+        &nbsp;·&nbsp; tool suffixes stripped from names (<code>.rawCounts</code>, <code>.ReadsPerGene.out.tab</code>, <code>.featureCounts</code>, <code>.htseq-count</code>, <code>.counts</code>, …)
       </small>
     </div>
     <input type="file" id="file-inp" accept=".txt,.tsv,.csv" multiple />
@@ -431,7 +431,8 @@
       <br /><br />
       <strong>Multiple files (one per sample):</strong> Each file has a gene-ID column and a counts column.
       Files are merged by gene ID (union); missing values filled with 0.
-      <code>.rawCounts*</code> suffixes are stripped from file names to form column headers.
+      Common tool suffixes are stripped from file names to form column headers:
+      <code>.rawCounts</code>, <code>.ReadsPerGene.out.tab</code> (STAR), <code>.featureCounts</code> (featureCounts), <code>.htseq-count</code> / <code>.htseq</code> (HTSeq), <code>.counts</code>.
     </div>
   </div>
 
@@ -592,11 +593,23 @@ function setBadge(state, text) {
 }
 
 // ── Name cleaning ─────────────────────────────────────────────────────────────
-// Strip .rawCounts* suffix (and file extension) from a sample name or filename
+// Strip common tool-generated suffixes from sample names / filenames.
+// Handles output from STAR, featureCounts, HTSeq-count and generic *.counts files.
 function stripRawCounts(name) {
   return name
-    .replace(/\.(txt|tsv|csv)$/i, '')   // remove file extension first
-    .replace(/\.rawCounts.*/i, '');      // strip .rawCounts and everything after
+    // 1. Remove file extension
+    .replace(/\.(txt|tsv|csv|tab|out)$/i, '')
+    // 2. STAR: .ReadsPerGene.out.tab  /  .ReadsPerGene.out  (with . or _)
+    .replace(/[._]ReadsPerGene\.out.*/i, '')
+    // 3. Generic: .rawCounts* / _rawCounts*
+    .replace(/[._]rawCounts.*/i, '')
+    // 4. featureCounts: .featureCounts* / _featureCounts*
+    .replace(/[._]featureCounts.*/i, '')
+    // 5. HTSeq-count: .htseq-count* / _htseq* / .htseq*
+    .replace(/[._]htseq[-_]?count.*/i, '')
+    .replace(/[._]htseq.*/i, '')
+    // 6. Generic trailing .counts / _counts / .count / _count
+    .replace(/[._]counts?$/i, '');
 }
 
 // ── Drag / file input ─────────────────────────────────────────────────────────
@@ -747,7 +760,7 @@ function parseMatrix(text, fileName) {
   }
   if (rawSampleNames.length === 0) throw new Error('No sample columns detected.');
 
-  // Strip .rawCounts* from each column header
+  // Strip tool-generated suffixes from each column header
   const sampleNames = rawSampleNames.map(stripRawCounts);
   const nSamples = sampleNames.length;
 
