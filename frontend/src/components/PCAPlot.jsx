@@ -457,6 +457,12 @@ export default function PCAPlot({ pca, design, sampleLabels = {}, annMap = {} })
               </button>
             ))}
           </div>
+
+          {/* Export buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
+            <ExportBtn onClick={exportScores} label="Scores + Metadata" />
+            {variance?.length > 0 && <ExportBtn onClick={exportScree} label="Scree" />}
+          </div>
         </div>
       )}
 
@@ -465,13 +471,8 @@ export default function PCAPlot({ pca, design, sampleLabels = {}, annMap = {} })
         <>
           <div ref={outerRef}
                className="resizable-plot"
-               style={{ width: '100%', height: 660, position: 'relative' }}>
+               style={{ width: '100%', height: 660 }}>
             <div ref={plotRef} style={{ width: '100%', height: '100%' }} />
-            {/* Export buttons */}
-            <div style={{ position: 'absolute', top: 8, right: 8, display: 'flex', gap: 6, zIndex: 10 }}>
-              <ExportBtn onClick={exportScores} label="Scores + Metadata" />
-              {variance?.length > 0 && <ExportBtn onClick={exportScree} label="Scree" />}
-            </div>
           </div>
 
           {/* ── Summary bar ── */}
@@ -515,11 +516,8 @@ export default function PCAPlot({ pca, design, sampleLabels = {}, annMap = {} })
       {plotTab === 'scree' && (
         <div ref={screeOuterRef}
              className="resizable-plot"
-             style={{ width: '100%', height: 960, position: 'relative' }}>
+             style={{ width: '100%', height: 960 }}>
           <div ref={screeRef} style={{ width: '100%', height: '100%' }} />
-          <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 10 }}>
-            <ExportBtn onClick={exportScree} label="Scree" />
-          </div>
         </div>
       )}
 
