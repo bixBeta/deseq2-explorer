@@ -41,7 +41,7 @@ function downloadCSV(rows, filename) {
   a.click(); URL.revokeObjectURL(a.href)
 }
 
-function SetRow({ item, selected, onToggle }) {
+function SetRow({ item, selected, onToggle, dimmed }) {
   return (
     <label style={{
       display: 'grid', gridTemplateColumns: '16px 1fr', gap: 8, padding: '6px 8px',
@@ -49,6 +49,7 @@ function SetRow({ item, selected, onToggle }) {
       background: selected ? 'rgba(99,102,241,0.1)' : 'transparent',
       border: `1px solid ${selected ? 'rgba(99,102,241,0.3)' : 'transparent'}`,
       transition: 'background 0.12s',
+      opacity: dimmed ? 0.65 : 1,
     }}>
       <input type="checkbox" checked={selected} onChange={() => onToggle(item.id)}
              style={{ marginTop: 3, accentColor: '#6366f1' }} />
@@ -573,9 +574,18 @@ export default function GSEACompare({ session, gseaRuns }) {
                      onChange={e => setTopN(+e.target.value)} style={inputStyle} />
             </label>
           </div>
-          <input type="text" placeholder="Search pathways…" value={searchQ}
-                 onChange={e => setSearchQ(e.target.value)}
-                 style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', outline: 'none' }} />
+          <div style={{ position: 'relative', width: '100%' }}>
+            <input type="text" placeholder="Search pathways… (select, then search again to add more)"
+                   value={searchQ} onChange={e => setSearchQ(e.target.value)}
+                   style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', outline: 'none', paddingRight: searchQ ? 24 : 8 }} />
+            {searchQ && (
+              <button onClick={() => setSearchQ('')}
+                      style={{ position: 'absolute', right: 5, top: '50%', transform: 'translateY(-50%)',
+                               background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)',
+                               fontSize: '0.85rem', lineHeight: 1, padding: '0 2px' }}
+                      title="Clear search">×</button>
+            )}
+          </div>
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 2px' }}>
@@ -610,6 +620,28 @@ export default function GSEACompare({ session, gseaRuns }) {
         )}
 
         <div style={{ overflowY: 'auto', maxHeight: 460, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {/* Pinned: selected items not in current search results */}
+          {(() => {
+            const visibleIds = new Set(allSets.map(s => s.id))
+            const hiddenSelected = [...selected].filter(id => !visibleIds.has(id))
+            if (!hiddenSelected.length) return null
+            // Reconstruct item objects from all runs for pinned display
+            const allItems = extractSets(runs, padjCutoff, 0, '')
+            const pinnedItems = hiddenSelected.map(id => allItems.find(s => s.id === id)).filter(Boolean)
+            if (!pinnedItems.length) return null
+            return (
+              <>
+                <div style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--text-3)',
+                              letterSpacing: '0.06em', padding: '4px 2px 2px', textTransform: 'uppercase' }}>
+                  ✓ Selected ({hiddenSelected.length}) — hidden by search
+                </div>
+                {pinnedItems.map(item => (
+                  <SetRow key={item.id} item={item} selected={true} onToggle={toggleItem} dimmed />
+                ))}
+                <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+              </>
+            )
+          })()}
           {allSets.length === 0 ? (
             <div style={{ color: 'var(--text-3)', fontSize: '0.78rem', textAlign: 'center', padding: '20px 0' }}>
               No significant pathways match filters.
