@@ -384,10 +384,15 @@
         <polyline points="17 8 12 3 7 8"/>
         <line x1="12" y1="3" x2="12" y2="15"/>
       </svg>
-      <p>Drag &amp; drop your count matrix here, or click to browse</p>
-      <small>.txt or .tsv &nbsp;·&nbsp; tab-delimited &nbsp;·&nbsp; genes as rows, samples as columns</small>
+      <p>Drag &amp; drop count file(s) here, or click to browse</p>
+      <small>
+        <strong>Single file</strong>: full matrix (genes × samples) &nbsp;·&nbsp;
+        <strong>Multiple files</strong>: one file per sample, merged automatically
+        &nbsp;·&nbsp; <code>.rawCounts*</code> suffixes stripped from names
+      </small>
     </div>
-    <input type="file" id="file-inp" accept=".txt,.tsv,.csv" />
+    <input type="file" id="file-inp" accept=".txt,.tsv,.csv" multiple />
+    <div id="file-list" style="display:none;margin-top:10px;display:none"></div>
 
     <div id="matrix-stats" style="display:none">
       <div class="chips">
@@ -419,11 +424,14 @@
     </div>
 
     <div class="tip">
-      <strong>Expected format:</strong> The first column contains gene identifiers (e.g. Ensembl IDs or gene symbols).
-      All remaining columns are samples — their column headers become sample names.
-      Values must be <strong>raw integer counts</strong> (no normalisation). Example:
+      <strong>Single file:</strong> First column = gene identifiers; remaining columns = samples (headers become sample names).
+      Values must be <strong>raw integer counts</strong> (no normalisation).
       <br /><code>gene&nbsp;&nbsp;&nbsp;sample1&nbsp;&nbsp;sample2</code><br />
       <code>ENSG001&nbsp;142&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;87</code>
+      <br /><br />
+      <strong>Multiple files (one per sample):</strong> Each file has a gene-ID column and a counts column.
+      Files are merged by gene ID (union); missing values filled with 0.
+      <code>.rawCounts*</code> suffixes are stripped from file names to form column headers.
     </div>
   </div>
 
@@ -583,6 +591,14 @@ function setBadge(state, text) {
     : `<div class="dot"></div><span>${text}</span>`;
 }
 
+// ── Name cleaning ─────────────────────────────────────────────────────────────
+// Strip .rawCounts* suffix (and file extension) from a sample name or filename
+function stripRawCounts(name) {
+  return name
+    .replace(/\.(txt|tsv|csv)$/i, '')   // remove file extension first
+    .replace(/\.rawCounts.*/i, '');      // strip .rawCounts and everything after
+}
+
 // ── Drag / file input ─────────────────────────────────────────────────────────
 const dz   = document.getElementById('dropzone');
 const fInp = document.getElementById('file-inp');
@@ -591,11 +607,20 @@ dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('ov
 dz.addEventListener('dragleave', () => dz.classList.remove('over'));
 dz.addEventListener('drop', e => {
   e.preventDefault(); dz.classList.remove('over');
-  const f = e.dataTransfer.files[0];
-  if (f) readCountFile(f);
+  const files = e.dataTransfer.files;
+  if (!files.length) return;
+  if (files.length === 1) { readCountFile(files[0]); }
+  else                    { handleMultipleFiles(files); }
 });
-fInp.addEventListener('change', () => { if (fInp.files[0]) readCountFile(fInp.files[0]); fInp.value = ''; });
+fInp.addEventListener('change', () => {
+  const files = fInp.files;
+  if (!files.length) return;
+  if (files.length === 1) { readCountFile(files[0]); }
+  else                    { handleMultipleFiles(files); }
+  fInp.value = '';
+});
 
+// Single file — existing behaviour (full matrix, any number of samples)
 function readCountFile(file) {
   const reader = new FileReader();
   reader.onload = e => {
@@ -603,6 +628,101 @@ function readCountFile(file) {
     catch (err) { alert('Could not parse file:\n' + err.message); }
   };
   reader.readAsText(file);
+}
+
+// Multiple files — each file = one sample; first column is always gene key
+function handleMultipleFiles(files) {
+  const fileArr = Array.from(files);
+  showFileList(fileArr);
+
+  const readers = fileArr.map(f => new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload  = e => res({ name: f.name, text: e.target.result });
+    r.onerror = rej;
+    r.readAsText(f);
+  }));
+
+  Promise.all(readers).then(loaded => {
+    try {
+      const merged = mergeCountFiles(loaded);
+      applyMatrix(merged);
+    } catch (err) {
+      alert('Could not merge files:\n' + err.message);
+    }
+  }).catch(err => alert('File read error:\n' + err.message));
+}
+
+// Show a small list of the loaded file names under the dropzone
+function showFileList(files) {
+  const el = document.getElementById('file-list');
+  el.style.display = 'flex';
+  el.style.flexWrap = 'wrap';
+  el.style.gap = '6px';
+  el.innerHTML = files.map(f => {
+    const label = stripRawCounts(f.name);
+    return `<span style="font-size:.72rem;padding:2px 8px;border-radius:5px;
+              background:var(--surface);border:1px solid var(--border);color:var(--t2)">
+              ${esc(label)}</span>`;
+  }).join('');
+}
+
+// Merge an array of { name, text } single-sample count files into one matrix.
+// First column of each file is treated as the gene key (no header assumption).
+// Genes are unioned in the order first encountered; missing values → 0.
+// STAR-style summary rows (__no_feature, N_unmapped, etc.) are skipped.
+function mergeCountFiles(loaded) {
+  const samples = [];   // [{ sampleName, counts: Map<gene, count> }]
+
+  for (const { name, text } of loaded) {
+    const sampleName = stripRawCounts(name);
+    const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+                      .trim().split('\n').filter(l => l.trim());
+    if (lines.length < 1) continue;
+
+    const sep = lines[0].includes('\t') ? '\t' : ',';
+
+    // Detect whether line[0] is a header (all fields non-numeric) or data.
+    // We always use the first column as gene key regardless of its label.
+    const firstFields = splitLine(lines[0], sep);
+    const looksLikeHeader = firstFields.length >= 2 && isNaN(Number(firstFields[1]));
+    const dataStart = looksLikeHeader ? 1 : 0;
+
+    const counts = new Map();
+    for (let i = dataStart; i < lines.length; i++) {
+      const cols = splitLine(lines[i], sep);
+      const geneId = cols[0];
+      if (!geneId) continue;
+      // Skip STAR / HTSeq summary lines
+      if (/^(__|\bN_)/i.test(geneId)) continue;
+      // Use the second column as the count; skip if not numeric
+      const raw = cols[1] ?? '';
+      const n   = Number(raw);
+      counts.set(geneId, isNaN(n) ? 0 : n);
+    }
+    if (counts.size === 0) throw new Error(`No data rows found in "${name}".`);
+    samples.push({ sampleName, counts });
+  }
+  if (samples.length === 0) throw new Error('No valid count files loaded.');
+
+  // Union of gene IDs, ordered by first appearance
+  const seen = new Set();
+  const geneNames = [];
+  for (const { counts } of samples) {
+    for (const g of counts.keys()) {
+      if (!seen.has(g)) { seen.add(g); geneNames.push(g); }
+    }
+  }
+
+  const sampleNames = samples.map(s => s.sampleName);
+  const rows = geneNames.map(g => samples.map(s => s.counts.get(g) ?? 0));
+
+  return {
+    geneNames,
+    sampleNames,
+    rows,
+    sep: '\t',
+    fileName: `${samples.length} files merged`,
+  };
 }
 
 function parseMatrix(text, fileName) {
@@ -614,25 +734,27 @@ function parseMatrix(text, fileName) {
   const sep = lines[0].includes('\t') ? '\t' : ',';
   const header = splitLine(lines[0], sep);
 
-  // Detect R's write.table default format: header has N fields, data rows have
-  // N+1 fields (gene ID in col 0 of data, no corresponding label in header).
-  // In that case ALL header fields are sample names.
-  // Standard format: header[0] is a gene-ID label (or blank) → skip it.
+  // Always use the first column as the gene key.
+  // Detect R's write.table format: header has N fields, data rows have N+1
+  // (gene ID in col 0 has no matching header label) → all header fields are samples.
+  // Otherwise first header field is the gene-col label → skip it.
   const firstDataCols = splitLine(lines[1], sep);
-  let sampleNames;
+  let rawSampleNames;
   if (firstDataCols.length === header.length + 1) {
-    sampleNames = header;          // R no-rowname-label format
+    rawSampleNames = header;          // R no-rowname-label format
   } else {
-    sampleNames = header.slice(1); // standard: first field is gene col label
+    rawSampleNames = header.slice(1); // standard: skip gene-col label
   }
-  if (sampleNames.length === 0) throw new Error('No sample columns detected.');
+  if (rawSampleNames.length === 0) throw new Error('No sample columns detected.');
+
+  // Strip .rawCounts* from each column header
+  const sampleNames = rawSampleNames.map(stripRawCounts);
   const nSamples = sampleNames.length;
 
   const geneNames = [], rows = [];
   for (let i = 1; i < lines.length; i++) {
     const cols = splitLine(lines[i], sep);
     geneNames.push(cols[0]);
-    // Take exactly nSamples values from col 1 onward; pad with 0 if row is short
     const vals = [];
     for (let j = 0; j < nSamples; j++) {
       const v = cols[j + 1];
@@ -643,6 +765,11 @@ function parseMatrix(text, fileName) {
   }
   if (geneNames.length === 0) throw new Error('No data rows found.');
 
+  applyMatrix({ geneNames, sampleNames, rows, sep, fileName });
+}
+
+// ── Shared matrix → state + UI ────────────────────────────────────────────────
+function applyMatrix({ geneNames, sampleNames, rows, sep, fileName }) {
   matrix = { geneNames, sampleNames, rows, sep, fileName };
 
   // Reinit metadata
