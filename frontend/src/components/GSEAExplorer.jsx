@@ -359,14 +359,28 @@ function DistributionModal({ histData, cutoffLog, cutoffOrig, filterMethod, filt
 
         {/* ── Tab bar ── */}
         <div style={{ display:'flex', gap:2, padding:'8px 20px 0', flexShrink:0, borderBottom:`1px solid ${V.border}` }}>
-          {[['distribution','📊 Distribution'],['medians','📋 Sample Medians']].map(([id,label]) => (
+          {[
+            ['distribution',
+              <><svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{display:'inline',verticalAlign:'middle',marginRight:5}}>
+                <path d="M1 11 Q3 4 5 7 Q7 10 9 3 Q11 0 12 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                <line x1="4" y1="0" x2="4" y2="13" stroke="currentColor" strokeWidth="1" strokeDasharray="2 2" opacity="0.5"/>
+              </svg>Distribution</>
+            ],
+            ['medians',
+              <><svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{display:'inline',verticalAlign:'middle',marginRight:5}}>
+                <rect x="1" y="1" width="11" height="2.5" rx="0.5" fill="currentColor" opacity="0.8"/>
+                <rect x="1" y="5" width="7"  height="2.5" rx="0.5" fill="currentColor" opacity="0.55"/>
+                <rect x="1" y="9" width="9"  height="2.5" rx="0.5" fill="currentColor" opacity="0.55"/>
+              </svg>Sample Medians</>
+            ],
+          ].map(([id,label]) => (
             <button key={id} onClick={()=>setActiveTab(id)} style={{
               padding:'5px 14px', borderRadius:'6px 6px 0 0', border:`1px solid ${activeTab===id?V.border:'transparent'}`,
               borderBottom: activeTab===id ? '1px solid var(--bg-panel)' : `1px solid ${V.border}`,
               cursor:'pointer', fontSize:'0.78rem', fontWeight: activeTab===id ? 700 : 400,
               background: activeTab===id ? 'var(--bg-panel)' : 'transparent',
               color: activeTab===id ? V.text : 'var(--text-3)',
-              marginBottom: -1,
+              marginBottom: -1, display:'flex', alignItems:'center',
             }}>{label}</button>
           ))}
         </div>
