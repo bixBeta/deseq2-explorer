@@ -442,7 +442,7 @@ function DistributionModal({ histData, cutoffLog, cutoffOrig, filterMethod, filt
               ) : (
                 <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                   <span style={{ fontSize:'0.8rem', color:'var(--text-2)', whiteSpace:'nowrap' }}>Min baseMean ≥</span>
-                  <input type="range" min={0} max={500} step={1} value={Math.min(filterValue, 500)}
+                  <input type="range" min={0} max={500} step={0.5} value={Math.min(filterValue, 500)}
                     onChange={e=>setFilterValue(+e.target.value)} style={{ flex:1, accentColor:V.accent }} />
                   <input type="number" min={0} value={filterValue}
                     onChange={e=>setFilterValue(Math.max(0,+e.target.value))}
@@ -1466,7 +1466,7 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
             ) : (
               <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
                 <span style={{ fontSize:'0.7rem', color:'var(--text-3)', whiteSpace:'nowrap' }}>baseMean ≥</span>
-                <input type="range" min={0} max={Math.max(countMax, 100)} step={1} value={filterValue}
+                <input type="range" min={0} max={Math.max(countMax, 100)} step={0.5} value={filterValue}
                   onChange={e=>setFilterValue(+e.target.value)} style={{ flex:1, accentColor:V.accent }} />
                 <input type="number" min={0} value={filterValue}
                   onChange={e=>setFilterValue(Math.max(0,+e.target.value))}
