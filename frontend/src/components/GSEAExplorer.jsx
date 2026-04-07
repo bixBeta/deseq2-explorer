@@ -75,135 +75,387 @@ function SectionLabel({ children }) {
   )
 }
 
-// ── Per-sample overlapping KDE chart ─────────────────────────────────────────
-function SampleDensityChart({ histData, cutoffLog }) {
-  const ref = useRef(null)
-  useEffect(() => {
-    if (!histData?.kdes || !ref.current) return
-    const { kdes } = histData
-    const showLegend = kdes.length <= 24
-
-    const traces = kdes.map((kde, i) => ({
-      x: kde.x, y: kde.y,
-      type:'scatter', mode:'lines',
-      name: kde.sample,
-      line:{ color:SAMPLE_COLORS[i%SAMPLE_COLORS.length], width:1.6, shape:'spline' },
-      opacity:0.72, showlegend:showLegend,
-      hovertemplate:`<b>${kde.sample}</b><br>log₁p(norm count): %{x:.2f}<extra></extra>`,
-    }))
-
-    const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-3').trim()||'#94a3b8'
-    const isLight   = document.body.classList.contains('light')
-    const gridColor = isLight ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.12)'
-
-    const layout = {
-      height: 380,
-      margin:{ t:10, r:showLegend?130:14, b:44, l:52 },
-      xaxis:{ title:{ text:'log₁p(normalised count)', font:{size:10} }, color:textColor, gridcolor:gridColor, showgrid:true, zeroline:false, tickfont:{size:9}, autorange:true },
-      yaxis:{ title:{ text:'Density', font:{size:10} }, color:textColor, gridcolor:gridColor, showgrid:true, zeroline:false, tickfont:{size:9}, autorange:true },
-      plot_bgcolor:'transparent', paper_bgcolor:'transparent',
-      legend:{ font:{size:9,color:textColor}, bgcolor:'transparent', x:1.01, y:1, xanchor:'left' },
-      hovermode:'x',
-      shapes:[{
-        type:'line', x0:cutoffLog, x1:cutoffLog, y0:0, y1:1, yref:'paper',
-        line:{ color:'#f43f5e', width:2, dash:'dash' },
-      }],
-      annotations:[{
-        x:cutoffLog, y:0.97, yref:'paper', xanchor:'left',
-        text:' filter cutoff', font:{size:9,color:'#f87171'}, showarrow:false,
-      }],
+// ── KDE utility: find approximate percentile from a KDE ─────────────────────
+function kdePercentile(kde, p = 0.5) {
+  const { x, y } = kde
+  if (!x?.length) return 0
+  let total = 0
+  const steps = x.length - 1
+  for (let i = 0; i < steps; i++) total += (y[i] + y[i+1]) * (x[i+1]-x[i]) / 2
+  let cumul = 0, target = total * p
+  for (let i = 0; i < steps; i++) {
+    const trap = (y[i] + y[i+1]) * (x[i+1]-x[i]) / 2
+    cumul += trap
+    if (cumul >= target) {
+      const frac = trap > 0 ? (target-(cumul-trap))/trap : 0
+      return x[i] + frac * (x[i+1]-x[i])
     }
-    const modebarBg    = isLight ? 'rgba(255,255,255,0.85)' : 'rgba(15,23,42,0.85)'
-    const modebarColor = isLight ? '#444444' : '#94a3b8'
-    layout.modebar = { bgcolor:modebarBg, color:modebarColor, activecolor:isLight?'#000':'#fff' }
-    Plotly.react(ref.current, traces, layout, {
-      responsive:true, displaylogo:false,
-      modeBarButtonsToRemove:['select2d','lasso2d'],
-      toImageButtonOptions:{ filename:'count_distributions', scale:2, format:'png' },
-    })
-  }, [histData, cutoffLog])
-  return <div ref={ref} style={{ width:'100%' }} />
+  }
+  return x[x.length-1]
 }
 
-// ── Distribution + filter modal ───────────────────────────────────────────────
-function DistributionModal({ histData, cutoffLog, cutoffOrig, filterMethod, filterValue, setFilterValue, setFilterMethod, nAbove, countMax, onClose }) {
+// ── Dual-panel KDE chart (pre & post filter) ─────────────────────────────────
+function DualDensityChart({ histData, cutoffLog, height = 300 }) {
+  const preRef  = useRef(null)
+  const postRef = useRef(null)
+
+  useEffect(() => {
+    if (!histData?.kdes || !preRef.current || !postRef.current) return
+    const { kdes } = histData
+    const showLegend = kdes.length <= 16
+    const textColor  = getComputedStyle(document.documentElement).getPropertyValue('--text-3').trim() || '#94a3b8'
+    const isLight    = document.body.classList.contains('light')
+    const gridColor  = isLight ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.12)'
+    const modebarBg  = isLight ? 'rgba(255,255,255,0.85)' : 'rgba(15,23,42,0.85)'
+
+    const baseLayout = {
+      height,
+      margin:{ t:28, r: showLegend ? 120 : 14, b:44, l:52 },
+      plot_bgcolor:'transparent', paper_bgcolor:'transparent',
+      xaxis:{ title:{ text:'log₁p(norm count)', font:{size:9} }, color:textColor, gridcolor:gridColor, showgrid:true, zeroline:false, tickfont:{size:8} },
+      yaxis:{ title:{ text:'Density', font:{size:9} }, color:textColor, gridcolor:gridColor, showgrid:true, zeroline:false, tickfont:{size:8} },
+      legend:{ font:{size:8,color:textColor}, bgcolor:'transparent', x:1.01, y:1, xanchor:'left' },
+      hovermode:'x',
+      modebar:{ bgcolor:modebarBg, color:textColor, activecolor:isLight?'#000':'#fff' },
+    }
+    const plotCfg = { responsive:true, displaylogo:false, modeBarButtonsToRemove:['select2d','lasso2d'] }
+
+    // Pre-filter traces (all genes)
+    const preTraces = kdes.map((kde, i) => ({
+      x:kde.x, y:kde.y, type:'scatter', mode:'lines', name:kde.sample,
+      line:{ color:SAMPLE_COLORS[i%SAMPLE_COLORS.length], width:1.5, shape:'spline' },
+      opacity:0.7, showlegend:showLegend,
+      hovertemplate:`<b>${kde.sample}</b><br>%{x:.2f}<extra></extra>`,
+    }))
+    const preLayout = {
+      ...baseLayout,
+      title:{ text:'Pre-filter (all genes)', font:{size:11,color:textColor}, x:0.5, xanchor:'center', y:0.97 },
+      shapes:[{ type:'line', x0:cutoffLog, x1:cutoffLog, y0:0, y1:1, yref:'paper', line:{ color:'#f43f5e', width:2, dash:'dash' } }],
+      annotations:[{ x:cutoffLog, y:0.96, yref:'paper', xanchor:'left', text:' cutoff', font:{size:8,color:'#f87171'}, showarrow:false }],
+    }
+
+    // Post-filter traces: clip x < cutoffLog
+    const postTraces = kdes.map((kde, i) => {
+      const startIdx = kde.x.findIndex(v => v >= cutoffLog)
+      const xs = startIdx >= 0 ? kde.x.slice(startIdx) : []
+      const ys = startIdx >= 0 ? kde.y.slice(startIdx) : []
+      return {
+        x:xs, y:ys, type:'scatter', mode:'lines', name:kde.sample,
+        line:{ color:SAMPLE_COLORS[i%SAMPLE_COLORS.length], width:1.5, shape:'spline' },
+        opacity:0.7, showlegend:showLegend,
+        hovertemplate:`<b>${kde.sample}</b><br>%{x:.2f}<extra></extra>`,
+      }
+    })
+    const postLayout = {
+      ...baseLayout,
+      title:{ text:'Post-filter (genes above cutoff)', font:{size:11,color:textColor}, x:0.5, xanchor:'center', y:0.97 },
+    }
+
+    Plotly.react(preRef.current,  preTraces,  preLayout,  plotCfg)
+    Plotly.react(postRef.current, postTraces, postLayout, plotCfg)
+  }, [histData, cutoffLog, height])
+
   return (
-    <div style={{ position:'fixed', inset:0, zIndex:101000, background:'rgba(0,0,0,0.7)', backdropFilter:'blur(5px)', display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}
-      onClick={onClose}>
-      <div style={{ background:'var(--bg-panel)', borderRadius:18, padding:28, width:'100%', maxWidth:880, border:`1px solid ${V.border}`, boxShadow:`0 0 60px rgba(11,68,111,0.2)` }}
-        onClick={e=>e.stopPropagation()}>
-
-        {/* Header */}
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:18 }}>
-          <div>
-            <div style={{ fontSize:'1rem', fontWeight:700, color:V.text, marginBottom:3 }}>Count Distribution — All Samples</div>
-            <div style={{ fontSize:'0.73rem', color:'var(--text-3)' }}>
-              Each curve = one sample · log₁p(normalised counts) · Red dashed line = baseMean cutoff · genes with baseMean &lt; cutoff are excluded
-              {histData && ` · ${histData.n_samples} samples · ${histData.n_genes?.toLocaleString()} genes`}
-            </div>
-          </div>
-          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text-3)', fontSize:'1.4rem', lineHeight:1, marginTop:-4 }}>×</button>
-        </div>
-
-        {/* Density chart */}
-        {histData
-          ? <SampleDensityChart histData={histData} cutoffLog={cutoffLog} />
-          : <div style={{ height:380, display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text-3)' }}>Loading…</div>
-        }
-
-        {/* Controls */}
-        <div style={{ marginTop:20, display:'flex', flexDirection:'column', gap:12 }}>
-          {/* Mode toggle */}
-          <div style={{ display:'flex', gap:0, borderRadius:9, overflow:'hidden', border:`1px solid ${V.border}`, alignSelf:'flex-start' }}>
-            {[['count','baseMean cutoff'],['quantile','Quantile (% of genes)']].map(([v,l])=>(
-              <button key={v} onClick={()=>{ setFilterMethod(v); setFilterValue(v==='quantile'?0.25:10) }}
-                style={{ padding:'6px 16px', border:'none', cursor:'pointer', fontSize:'0.78rem', fontWeight:600,
-                         background:filterMethod===v?V.accent:'var(--bg-card2)', color:filterMethod===v?'#fff':'var(--text-2)', transition:'background 0.12s' }}>{l}</button>
-            ))}
-          </div>
-
-          {/* Slider */}
-          {filterMethod==='quantile' ? (
-            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-              <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.82rem', color:'var(--text-2)' }}>
-                <span>Remove genes below the <b style={{ color:V.text }}>{(filterValue*100).toFixed(0)}th percentile</b></span>
-                <span style={{ fontFamily:'monospace', color:V.text }}>baseMean ≥ {cutoffOrig.toFixed(1)}</span>
-              </div>
-              <input type="range" min={0} max={0.75} step={0.01} value={filterValue}
-                onChange={e=>setFilterValue(+e.target.value)} style={{ width:'100%', accentColor:V.accent }} />
-              <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.72rem', color:'var(--text-3)' }}>
-                <span>0% (no filter)</span><span>75%</span>
-              </div>
-            </div>
-          ) : (
-            <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-              <span style={{ fontSize:'0.82rem', color:'var(--text-2)', whiteSpace:'nowrap' }}>Min baseMean ≥</span>
-              <input type="range" min={0} max={Math.max(countMax, 100)} step={1} value={filterValue}
-                onChange={e=>setFilterValue(+e.target.value)} style={{ flex:1, accentColor:V.accent }} />
-              <input type="number" min={0} value={filterValue}
-                onChange={e=>setFilterValue(Math.max(0,+e.target.value))}
-                style={{ width:70, padding:'3px 6px', fontSize:'0.85rem', fontFamily:'monospace',
-                         background:'var(--bg-card2)', border:`1px solid ${V.border}`, borderRadius:6,
-                         color:V.text, textAlign:'right' }} />
-            </div>
-          )}
-
-          {/* Stats row */}
-          <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-            {[
-              [`~${nAbove.toLocaleString()}`, 'genes pass filter'],
-              [histData?.n_genes ? `${(histData.n_genes-nAbove).toLocaleString()}` : '—', 'genes removed'],
-              [histData?.n_genes ? `${((nAbove/(histData.n_genes||1))*100).toFixed(1)}%` : '—', 'retained'],
-            ].map(([v,l])=>(
-              <div key={l} style={{ padding:'6px 14px', borderRadius:8, background:V.muted, border:`1px solid ${V.border}`, textAlign:'center' }}>
-                <div style={{ fontSize:'1rem', fontWeight:700, color:V.text }}>{v}</div>
-                <div style={{ fontSize:'0.65rem', color:'var(--text-3)', textTransform:'uppercase', letterSpacing:'0.05em' }}>{l}</div>
-              </div>
-            ))}
-          </div>
-        </div>
+    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+      <div style={{ border:`1px solid ${V.border}`, borderRadius:10, overflow:'hidden' }}>
+        <div ref={preRef} style={{ width:'100%' }} />
+      </div>
+      <div style={{ border:`1px solid ${V.border}`, borderRadius:10, overflow:'hidden' }}>
+        <div ref={postRef} style={{ width:'100%' }} />
       </div>
     </div>
+  )
+}
+
+// ── Per-sample medians table ──────────────────────────────────────────────────
+function MediansTable({ histData, cutoffLog }) {
+  const rows = useMemo(() => {
+    if (!histData?.kdes?.length) return []
+    const computed = histData.kdes.map((kde, i) => {
+      const medLog = kdePercentile(kde, 0.5)
+      const p25Log = kdePercentile(kde, 0.25)
+      const p75Log = kdePercentile(kde, 0.75)
+      return {
+        sample:   kde.sample,
+        color:    SAMPLE_COLORS[i % SAMPLE_COLORS.length],
+        medLog,
+        medOrig:  Math.expm1(medLog),
+        p25:      Math.expm1(p25Log),
+        p75:      Math.expm1(p75Log),
+        passes:   medLog >= cutoffLog,
+      }
+    })
+    return computed.sort((a,b) => b.medLog - a.medLog)
+  }, [histData, cutoffLog])
+
+  if (!rows.length) return <div style={{ padding:40, textAlign:'center', color:'var(--text-3)' }}>No data</div>
+
+  const maxMed = Math.max(...rows.map(r => r.medLog))
+  const meanMed = rows.reduce((s,r) => s+r.medLog, 0) / rows.length
+  const GRID = '1px solid var(--border)'
+
+  return (
+    <div style={{ overflowY:'auto', maxHeight:'100%' }}>
+      <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.76rem' }}>
+        <thead style={{ position:'sticky', top:0, background:'var(--bg-panel)', zIndex:2 }}>
+          <tr>
+            {['Sample','Median (log₁p)','Median (count)','IQR (counts)','vs mean','Distribution','Status'].map(h => (
+              <th key={h} style={{ padding:'6px 10px', textAlign:'left', borderBottom:'2px solid var(--border)',
+                                   fontSize:'0.68rem', fontWeight:700, color:V.text, whiteSpace:'nowrap' }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, ri) => {
+            const barPct = maxMed > 0 ? (r.medLog / maxMed) * 100 : 0
+            const diffPct = ((r.medLog - meanMed) / meanMed * 100)
+            const diffColor = diffPct >= 0 ? '#10b981' : '#f43f5e'
+            const rowBg = ri % 2 === 0 ? 'transparent' : 'rgba(var(--accent-rgb),0.02)'
+            return (
+              <tr key={r.sample} style={{ background:rowBg }}>
+                <td style={{ padding:'5px 10px', borderBottom:GRID, whiteSpace:'nowrap' }}>
+                  <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background:r.color, marginRight:6, flexShrink:0 }} />
+                  {r.sample}
+                </td>
+                <td style={{ padding:'5px 10px', borderBottom:GRID, fontFamily:'monospace', textAlign:'right' }}>
+                  {r.medLog.toFixed(3)}
+                </td>
+                <td style={{ padding:'5px 10px', borderBottom:GRID, fontFamily:'monospace', textAlign:'right' }}>
+                  {r.medOrig < 1 ? r.medOrig.toFixed(3) : r.medOrig.toFixed(1)}
+                </td>
+                <td style={{ padding:'5px 10px', borderBottom:GRID, fontFamily:'monospace', textAlign:'right', fontSize:'0.7rem', color:'var(--text-3)' }}>
+                  {r.p25.toFixed(1)}–{r.p75.toFixed(1)}
+                </td>
+                <td style={{ padding:'5px 10px', borderBottom:GRID, textAlign:'right', fontFamily:'monospace', color:diffColor, fontSize:'0.72rem' }}>
+                  {diffPct >= 0 ? '+' : ''}{diffPct.toFixed(1)}%
+                </td>
+                <td style={{ padding:'5px 10px', borderBottom:GRID, minWidth:120 }}>
+                  <div style={{ height:8, borderRadius:4, background:'rgba(var(--accent-rgb),0.1)', overflow:'hidden' }}>
+                    <div style={{ height:'100%', width:`${barPct}%`, background:r.color, borderRadius:4, transition:'width 0.3s' }} />
+                  </div>
+                </td>
+                <td style={{ padding:'5px 10px', borderBottom:GRID }}>
+                  <span style={{
+                    padding:'2px 7px', borderRadius:10, fontSize:'0.65rem', fontWeight:700,
+                    background: r.passes ? 'rgba(16,185,129,0.12)' : 'rgba(244,63,94,0.1)',
+                    color:      r.passes ? '#10b981' : '#f43f5e',
+                    border:     `1px solid ${r.passes ? 'rgba(16,185,129,0.3)' : 'rgba(244,63,94,0.25)'}`,
+                  }}>
+                    {r.passes ? '✓ above cutoff' : '✗ below cutoff'}
+                  </span>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// ── Distribution + filter modal (draggable, resizable) ───────────────────────
+function DistributionModal({ histData, cutoffLog, cutoffOrig, filterMethod, filterValue, setFilterValue, setFilterMethod, nAbove, countMax, onClose }) {
+  const [activeTab, setActiveTab] = useState('distribution')
+  const [pos,  setPos]  = useState(null)   // {x,y} once dragged; null = CSS-centered
+  const [size, setSize] = useState({ w: Math.min(window.innerWidth  * 0.88, 1280),
+                                     h: Math.min(window.innerHeight * 0.84, 900) })
+  const modalRef   = useRef(null)
+  const dragRef    = useRef(null)
+  const resizeRef  = useRef(null)
+
+  // ── Drag ────────────────────────────────────────────────────────────────────
+  const onHeaderMouseDown = (e) => {
+    if (e.target.closest('button')) return
+    const rect = modalRef.current.getBoundingClientRect()
+    dragRef.current = { sx:e.clientX, sy:e.clientY, ox:rect.left, oy:rect.top }
+    const onMove = ev => {
+      setPos({ x: dragRef.current.ox + ev.clientX - dragRef.current.sx,
+               y: dragRef.current.oy + ev.clientY - dragRef.current.sy })
+    }
+    const onUp = () => { dragRef.current=null; window.removeEventListener('mousemove',onMove); window.removeEventListener('mouseup',onUp) }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    e.preventDefault()
+  }
+
+  // ── Resize (bottom-right handle) ────────────────────────────────────────────
+  const onResizeMouseDown = (e) => {
+    const rect = modalRef.current.getBoundingClientRect()
+    resizeRef.current = { sx:e.clientX, sy:e.clientY, ow:rect.width, oh:rect.height }
+    const onMove = ev => {
+      setSize({ w: Math.max(720, resizeRef.current.ow + ev.clientX - resizeRef.current.sx),
+                h: Math.max(480, resizeRef.current.oh + ev.clientY - resizeRef.current.sy) })
+    }
+    const onUp = () => { resizeRef.current=null; window.removeEventListener('mousemove',onMove); window.removeEventListener('mouseup',onUp) }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    e.preventDefault(); e.stopPropagation()
+  }
+
+  // On first drag, snap pos to current rendered position
+  const initDrag = (e) => {
+    if (!pos && modalRef.current) {
+      const rect = modalRef.current.getBoundingClientRect()
+      setPos({ x: rect.left, y: rect.top })
+    }
+    onHeaderMouseDown(e)
+  }
+
+  const modalStyle = {
+    position: 'fixed',
+    zIndex: 101001,
+    background: 'var(--bg-panel)',
+    border: `1px solid ${V.border}`,
+    borderRadius: 16,
+    boxShadow: '0 8px 60px rgba(0,0,0,0.45)',
+    width:  size.w,
+    height: size.h,
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    ...(pos
+      ? { left:pos.x, top:pos.y }
+      : { top:'50%', left:'50%', transform:'translate(-50%,-50%)' }),
+  }
+
+  const chartH = Math.max(220, Math.round((size.h - 320) / 1))
+
+  return createPortal(
+    <div style={{ position:'fixed', inset:0, zIndex:101000, background:'rgba(0,0,0,0.6)', backdropFilter:'blur(4px)' }}
+         onClick={onClose}>
+      <div ref={modalRef} style={modalStyle} onClick={e=>e.stopPropagation()}>
+
+        {/* ── Draggable header ── */}
+        <div onMouseDown={initDrag} style={{
+          display:'flex', alignItems:'center', justifyContent:'space-between',
+          padding:'14px 20px 10px', cursor:'grab', userSelect:'none', flexShrink:0,
+          borderBottom:`1px solid ${V.border}`,
+        }}>
+          <div>
+            <div style={{ fontSize:'0.95rem', fontWeight:700, color:V.text }}>Count Distribution — All Samples</div>
+            <div style={{ fontSize:'0.7rem', color:'var(--text-3)', marginTop:2 }}>
+              Each curve = one sample · log₁p(normalised counts)
+              {histData && ` · ${histData.n_samples} samples · ${histData.n_genes?.toLocaleString()} genes`}
+              {' · '}drag header to move · drag ◢ to resize
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text-3)', fontSize:'1.4rem', lineHeight:1, padding:'0 4px' }}>×</button>
+        </div>
+
+        {/* ── Tab bar ── */}
+        <div style={{ display:'flex', gap:2, padding:'8px 20px 0', flexShrink:0, borderBottom:`1px solid ${V.border}` }}>
+          {[['distribution','📊 Distribution'],['medians','📋 Sample Medians']].map(([id,label]) => (
+            <button key={id} onClick={()=>setActiveTab(id)} style={{
+              padding:'5px 14px', borderRadius:'6px 6px 0 0', border:`1px solid ${activeTab===id?V.border:'transparent'}`,
+              borderBottom: activeTab===id ? '1px solid var(--bg-panel)' : `1px solid ${V.border}`,
+              cursor:'pointer', fontSize:'0.78rem', fontWeight: activeTab===id ? 700 : 400,
+              background: activeTab===id ? 'var(--bg-panel)' : 'transparent',
+              color: activeTab===id ? V.text : 'var(--text-3)',
+              marginBottom: -1,
+            }}>{label}</button>
+          ))}
+        </div>
+
+        {/* ── Tab content ── */}
+        <div style={{ flex:'1 1 0', overflow:'hidden', display:'flex', flexDirection:'column', padding:'14px 20px 16px', gap:12 }}>
+
+          {activeTab === 'distribution' && (<>
+            {/* Filter controls */}
+            <div style={{ display:'flex', flexDirection:'column', gap:10, flexShrink:0 }}>
+              {/* Mode toggle */}
+              <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
+                <div style={{ display:'flex', gap:0, borderRadius:9, overflow:'hidden', border:`1px solid ${V.border}` }}>
+                  {[['count','baseMean cutoff'],['quantile','Quantile (% of genes)']].map(([v,l])=>(
+                    <button key={v} onClick={()=>{ setFilterMethod(v); setFilterValue(v==='quantile'?0.25:10) }}
+                      style={{ padding:'5px 14px', border:'none', cursor:'pointer', fontSize:'0.78rem', fontWeight:600,
+                               background:filterMethod===v?V.accent:'var(--bg-card2)', color:filterMethod===v?'#fff':'var(--text-2)', transition:'background 0.12s' }}>{l}</button>
+                  ))}
+                </div>
+                {/* Stats chips */}
+                <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                  {[
+                    [`~${nAbove.toLocaleString()}`, 'pass filter', '#10b981'],
+                    [histData?.n_genes ? `${(histData.n_genes-nAbove).toLocaleString()}` : '—', 'removed', '#f43f5e'],
+                    [histData?.n_genes ? `${((nAbove/(histData.n_genes||1))*100).toFixed(1)}%` : '—', 'retained', V.text],
+                    [`≥ ${cutoffOrig.toFixed(1)}`, 'baseMean cutoff', 'var(--text-2)'],
+                  ].map(([v,l,col])=>(
+                    <div key={l} style={{ padding:'4px 10px', borderRadius:8, background:V.muted, border:`1px solid ${V.border}`, textAlign:'center' }}>
+                      <span style={{ fontSize:'0.88rem', fontWeight:700, color:col }}>{v}</span>
+                      <span style={{ fontSize:'0.62rem', color:'var(--text-3)', textTransform:'uppercase', letterSpacing:'0.04em', marginLeft:5 }}>{l}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Slider row */}
+              {filterMethod==='quantile' ? (
+                <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+                    <span style={{ fontSize:'0.8rem', color:'var(--text-2)', whiteSpace:'nowrap' }}>
+                      Remove genes below the <b style={{ color:V.text }}>{(filterValue*100).toFixed(0)}th percentile</b>
+                    </span>
+                    <span style={{ fontSize:'0.72rem', color:'var(--text-3)' }}>— or set manually:</span>
+                    <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+                      <span style={{ fontSize:'0.75rem', color:'var(--text-3)', whiteSpace:'nowrap' }}>baseMean ≥</span>
+                      <input type="number" min={0} value={cutoffOrig.toFixed(1)}
+                        onChange={e=>{ const v=Math.max(0,+e.target.value); setFilterMethod('count'); setFilterValue(v) }}
+                        style={{ width:76, padding:'2px 6px', fontSize:'0.82rem', fontFamily:'monospace',
+                                 background:'var(--bg-card2)', border:`1px solid ${V.border}`, borderRadius:6,
+                                 color:V.text, textAlign:'right' }} />
+                    </div>
+                  </div>
+                  <input type="range" min={0} max={0.75} step={0.01} value={filterValue}
+                    onChange={e=>setFilterValue(+e.target.value)} style={{ width:'100%', accentColor:V.accent }} />
+                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.7rem', color:'var(--text-3)' }}>
+                    <span>0% (no filter)</span><span>75%</span>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <span style={{ fontSize:'0.8rem', color:'var(--text-2)', whiteSpace:'nowrap' }}>Min baseMean ≥</span>
+                  <input type="range" min={0} max={Math.max(countMax,100)} step={1} value={filterValue}
+                    onChange={e=>setFilterValue(+e.target.value)} style={{ flex:1, accentColor:V.accent }} />
+                  <input type="number" min={0} value={filterValue}
+                    onChange={e=>setFilterValue(Math.max(0,+e.target.value))}
+                    style={{ width:74, padding:'3px 6px', fontSize:'0.85rem', fontFamily:'monospace',
+                             background:'var(--bg-card2)', border:`1px solid ${V.border}`, borderRadius:6,
+                             color:V.text, textAlign:'right' }} />
+                </div>
+              )}
+            </div>
+
+            {/* Dual density charts */}
+            <div style={{ flex:'1 1 0', overflow:'hidden' }}>
+              {histData
+                ? <DualDensityChart histData={histData} cutoffLog={cutoffLog} height={chartH} />
+                : <div style={{ height:chartH, display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text-3)' }}>Loading…</div>
+              }
+            </div>
+          </>)}
+
+          {activeTab === 'medians' && (
+            <div style={{ flex:'1 1 0', overflow:'hidden', display:'flex', flexDirection:'column', gap:8 }}>
+              <div style={{ fontSize:'0.75rem', color:'var(--text-3)', flexShrink:0 }}>
+                Approximate sample-level median expression (50th percentile of log₁p KDE) · sorted highest → lowest ·
+                IQR = interquartile range · Status relative to current baseMean cutoff (≥ {cutoffOrig.toFixed(1)})
+              </div>
+              {histData
+                ? <MediansTable histData={histData} cutoffLog={cutoffLog} />
+                : <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text-3)' }}>Loading…</div>
+              }
+            </div>
+          )}
+        </div>
+
+        {/* ── Resize handle ── */}
+        <div onMouseDown={onResizeMouseDown} style={{
+          position:'absolute', bottom:0, right:0, width:18, height:18, cursor:'nwse-resize',
+          display:'flex', alignItems:'flex-end', justifyContent:'flex-end',
+          padding:'3px', color:'var(--text-3)', fontSize:'0.7rem', lineHeight:1, userSelect:'none',
+        }}>◢</div>
+      </div>
+    </div>,
+    document.body
   )
 }
 
