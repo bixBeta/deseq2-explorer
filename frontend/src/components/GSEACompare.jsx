@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { useDownloadDialog } from './DownloadDialog'
 
 function extractSets(runs, padjCutoff, topN, searchQ) {
   const q = searchQ.trim().toLowerCase()
@@ -102,6 +103,7 @@ function useTooltip() {
 
 // ── Pairwise overlap matrix ───────────────────────────────────────────────────
 function OverlapMatrix({ sets }) {
+  const { promptDownload, dialog } = useDownloadDialog()
   const [metric, setMetric] = useState('count')
   const [fsOverlap, setFsOverlap] = useState(false)
   const { show, move, hide, node: tipNode } = useTooltip()
@@ -157,11 +159,11 @@ function OverlapMatrix({ sets }) {
       return [JSON.stringify(rowSet.pathway), ...cols].join(',')
     })
     const csv = [header, ...rows].join('\n')
-    const a = Object.assign(document.createElement('a'), {
-      href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })),
-      download: `gsea_overlap_${metric}.csv`,
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+    promptDownload(`gsea_overlap_${metric}.csv`, name => {
+      const a = Object.assign(document.createElement('a'), { href: url, download: name })
+      a.click(); URL.revokeObjectURL(url)
     })
-    a.click(); URL.revokeObjectURL(a.href)
   }
 
   // Tooltip for intersection cells: show shared genes
@@ -203,6 +205,7 @@ function OverlapMatrix({ sets }) {
                          background: 'rgba(99,102,241,0.08)', color: '#818cf8' }}>
           ↓ CSV
         </button>
+        {dialog}
         <button onClick={() => setFsOverlap(v => !v)}
                 title={fsOverlap ? 'Exit fullscreen (Esc)' : 'Expand to fullscreen'}
                 style={{ fontSize: '0.75rem', padding: '2px 10px', borderRadius: 5, cursor: 'pointer',
@@ -335,6 +338,7 @@ function MethodsPanel() {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function GSEACompare({ session, gseaRuns }) {
+  const { promptDownload, dialog: dlDialog } = useDownloadDialog()
   const runs = gseaRuns ?? []
 
   const [padjCutoff, setPadjCutoff] = useState(0.05)
@@ -403,7 +407,7 @@ export default function GSEACompare({ session, gseaRuns }) {
       n_genes:    s.genes.length,
       leading_edge: s.genes.join(';'),
     }))
-    downloadCSV(rows, 'gsea_compare_pathways.csv')
+    promptDownload('gsea_compare_pathways.csv', name => downloadCSV(rows, name))
   }
 
   const [tablePage, setTablePage] = useState(0)
@@ -450,6 +454,7 @@ export default function GSEACompare({ session, gseaRuns }) {
                            border: '1px solid rgba(99,102,241,0.25)' }}>
             ↓ CSV
           </button>
+          {dlDialog}
           <button onClick={() => setFsPathways(v => !v)}
                   title={fsPathways ? 'Exit fullscreen (Esc)' : 'Expand to fullscreen'}
                   style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: 6, cursor: 'pointer',

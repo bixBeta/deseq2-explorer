@@ -754,12 +754,13 @@ function(req, res) {
          results   = result_dfs[[i]])
   })
 
-  saveRDS(list(contrasts   = c(old_kept, new_saved),
-               pca         = list(scores = scores, variance = variance, loadings = sub_rot),
-               count_dist  = count_dist,
-               column      = column,
-               vst_matrix  = vst_mat,
-               norm_matrix = norm_mat),
+  saveRDS(list(contrasts    = c(old_kept, new_saved),
+               pca          = list(scores = scores, variance = variance, loadings = sub_rot),
+               count_dist   = count_dist,
+               column       = column,
+               vst_matrix   = vst_mat,
+               norm_matrix  = norm_mat,
+               size_factors = sizeFactors(dds)),
           results_path)
 
   design_json <- toJSON(list(

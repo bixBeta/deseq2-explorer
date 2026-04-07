@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useTransition } from 'react'
 import { createPortal } from 'react-dom'
 import GeneViolinModal from './GeneViolinModal'
+import { useDownloadDialog } from './DownloadDialog'
 
 const PAGE_SIZE = 25
 
@@ -21,6 +22,7 @@ function cmp(a, b, dir) {
 }
 
 export default function ResultsTable({ results, label, session, contrast, column, annMap, annDetails }) {
+  const { promptDownload, dialog } = useDownloadDialog()
   const [query,   setQuery]   = useState('')
   const [sortKey, setSortKey] = useState('padj')
   const [sortDir, setSortDir] = useState('asc')
@@ -66,7 +68,7 @@ export default function ResultsTable({ results, label, session, contrast, column
     })
   }
 
-  function downloadCSV() {
+  function buildCSVBlob() {
     const hasDet = !!annDetails
     const header = annMap
       ? (hasDet ? 'symbol,gene_id,description,baseMean,log2FC,lfcSE,stat,pvalue,padj' : 'symbol,gene_id,baseMean,log2FC,lfcSE,stat,pvalue,padj')
@@ -81,10 +83,12 @@ export default function ResultsTable({ results, label, session, contrast, column
       }
       return [r.gene, r.baseMean, r.log2FC, r.lfcSE, r.stat, r.pvalue, r.padj].join(',')
     })
-    const blob = new Blob([[header, ...rows].join('\n')], { type: 'text/csv' })
+    return new Blob([[header, ...rows].join('\n')], { type: 'text/csv' })
+  }
+
+  function doDownloadCSV(filename) {
     const a = Object.assign(document.createElement('a'), {
-      href: URL.createObjectURL(blob),
-      download: label ? `deseq2_${label.replace(/\s+/g, '_')}.csv` : 'deseq2_results.csv',
+      href: URL.createObjectURL(buildCSVBlob()), download: filename,
     })
     a.click()
   }
@@ -134,7 +138,10 @@ export default function ResultsTable({ results, label, session, contrast, column
             Click row to plot
           </span>
         )}
-        <button className="btn-ghost" onClick={downloadCSV}>⬇ CSV</button>
+        <button className="btn-ghost" onClick={() => promptDownload(
+          label ? `deseq2_${label.replace(/\s+/g, '_')}.csv` : 'deseq2_results.csv', doDownloadCSV
+        )}>⬇ CSV</button>
+        {dialog}
         <button
           onClick={() => setFullscreen(v => !v)}
           title={fullscreen ? 'Exit fullscreen (Esc)' : 'Expand to fullscreen'}

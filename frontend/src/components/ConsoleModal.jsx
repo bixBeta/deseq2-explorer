@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useDownloadDialog } from './DownloadDialog'
 import methodsMd from '../methods.md?raw'
 import deseq2LogoRaw from '../assets/deseq2-applogo.svg?raw'
 import trexLogoRaw   from '../assets/trex-applogo.svg?raw'
@@ -491,6 +492,7 @@ function ParamTable({ rows }) {
 
 // ── Main ConsoleModal ─────────────────────────────────────────────────────────
 export default function ConsoleModal({ onClose, session, design, results, parseInfo, gseaRuns }) {
+  const { promptDownload, dialog } = useDownloadDialog()
   const [tab, setTab] = useState('methods')
   const scrollRef = useRef(null)
 
@@ -526,10 +528,11 @@ export default function ConsoleModal({ onClose, session, design, results, parseI
   function handleExport() {
     const html = buildHtmlExport(methodsMd, sessionRows, contrasts, gseaRuns, alpha)
     const blob = new Blob([html], { type: 'text/html' })
-    const a    = Object.assign(document.createElement('a'), {
-      href: URL.createObjectURL(blob), download: 'deseq2-explorer-methods.html'
+    const url  = URL.createObjectURL(blob)
+    promptDownload('deseq2-explorer-methods.html', name => {
+      const a = Object.assign(document.createElement('a'), { href: url, download: name })
+      a.click(); URL.revokeObjectURL(url)
     })
-    a.click(); URL.revokeObjectURL(a.href)
   }
 
   const TABS = [
@@ -565,6 +568,7 @@ export default function ConsoleModal({ onClose, session, design, results, parseI
                 color:'var(--accent)', cursor:'pointer', fontWeight:600 }}>
               ↓ Export HTML
             </button>
+            {dialog}
             <button onClick={onClose}
               style={{ width:28, height:28, borderRadius:6, border:'1px solid var(--border)',
                 background:'rgba(255,255,255,0.05)', color:'var(--text-2)', cursor:'pointer', fontSize:'0.9rem' }}>

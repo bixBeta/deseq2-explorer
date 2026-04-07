@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import Plotly from 'plotly.js-dist-min'
+import { useDownloadDialog } from './DownloadDialog'
 
 // ── Mouse-follow tooltip (portaled to body to escape stacking contexts) ────────
 function useTooltip() {
@@ -230,6 +231,7 @@ const DIST_METHODS = ['euclidean', 'pearson', 'spearman', 'kendall', 'manhattan'
 
 // ── Heatmap (interactive via heatmaply → Plotly JSON) ─────────────────────────
 function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
+  const { promptDownload, dialog: dlDialog } = useDownloadDialog()
   const outerRef = useRef(null)
   const plotRef  = useRef(null)
   const [fdr, setFdr]                 = useState(0.05)
@@ -440,7 +442,9 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
       {hasPlot && (
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <button
-            onClick={() => Plotly.downloadImage(plotRef.current, { format: 'png', filename: 'heatmap', width: 1600, height: 1200, scale: 2 })}
+            onClick={() => promptDownload('heatmap.png', name =>
+              Plotly.downloadImage(plotRef.current, { format: 'png', filename: name.replace(/\.png$/i,''), width: 1600, height: 1200, scale: 2 })
+            )}
             style={{
               display: 'flex', alignItems: 'center', gap: 5,
               padding: '4px 12px', borderRadius: 6, cursor: 'pointer', fontSize: '0.78rem',
@@ -453,6 +457,7 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
           </button>
         </div>
       )}
+      {dlDialog}
 
       <div ref={outerRef} className="resizable-plot"
            style={{ width: '100%', height: 800, display: hasPlot ? 'block' : 'none' }}>
@@ -658,6 +663,7 @@ const STAT_COLS = [
 const PAGE_SIZES = [25, 50, 100, 200]
 
 function TableExplorer({ contrasts, annMap, annDetails }) {
+  const { promptDownload, dialog } = useDownloadDialog()
   const [search,        setSearch]        = useState('')
   const [fdrCut,        setFdrCut]        = useState(1)
   const [sortContrast,  setSortContrast]  = useState(null)
@@ -861,8 +867,8 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
     }).join('\n')
     const blob = new Blob([hdr + '\n' + body], { type: 'text/csv' })
     const url  = URL.createObjectURL(blob)
-    Object.assign(document.createElement('a'), { href: url, download: 'de_pivot_all_contrasts.csv' }).click()
-    URL.revokeObjectURL(url)
+    const doSave = name => { Object.assign(document.createElement('a'), { href: url, download: name }).click(); URL.revokeObjectURL(url) }
+    promptDownload('de_pivot_all_contrasts.csv', doSave)
   }
 
   function downloadFilteredCSV() {
@@ -903,8 +909,8 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
     }).join('\n')
     const blob = new Blob([hdr + '\n' + body], { type: 'text/csv' })
     const url  = URL.createObjectURL(blob)
-    Object.assign(document.createElement('a'), { href: url, download: `de_pivot_filtered_${sorted.length}genes.csv` }).click()
-    URL.revokeObjectURL(url)
+    const doSave = name => { Object.assign(document.createElement('a'), { href: url, download: name }).click(); URL.revokeObjectURL(url) }
+    promptDownload(`de_pivot_filtered_${sorted.length}genes.csv`, doSave)
   }
 
   const fmtN   = (v, d = 3) => {
@@ -1046,6 +1052,7 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
           </button>
         </div>
       </div>
+      {dialog}
 
       {/* ── Advanced filters panel ── */}
       {showAdvanced && (

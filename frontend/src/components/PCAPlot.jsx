@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
 import Plotly from 'plotly.js-dist-min'
+import { useDownloadDialog } from './DownloadDialog'
 
 function triggerDownload(csv, name) {
   const blob = new Blob([csv], { type: 'text/csv' })
@@ -594,6 +595,7 @@ function ExportBtn({ onClick, label }) {
 
 // ── Loadings table component ──────────────────────────────────────────────────
 function LoadingsTable({ loadings, pcKeys, variance, annMap, rankByPC, setRankByPC, topN, setTopN }) {
+  const { promptDownload, dialog } = useDownloadDialog()
   const hasAnn = annMap && Object.keys(annMap).length > 0
 
   const sorted = useMemo(() => {
@@ -617,7 +619,7 @@ function LoadingsTable({ loadings, pcKeys, variance, annMap, rankByPC, setRankBy
     return (n >= 0 ? '+' : '') + n.toFixed(4)
   }
 
-  function downloadCSV() {
+  function doDownloadCSV(filename) {
     if (!sorted.length) return
     const allPCs = pcKeys
     const header = ['Rank', 'Gene', ...(hasAnn ? ['Symbol'] : []), ...allPCs.map(k => {
@@ -633,7 +635,7 @@ function LoadingsTable({ loadings, pcKeys, variance, annMap, rankByPC, setRankBy
     const csv = [header, ...rows].map(r => r.join(',')).join('\n')
     const a = Object.assign(document.createElement('a'), {
       href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })),
-      download: `pca_loadings_${rankByPC}.csv`,
+      download: filename,
     })
     document.body.appendChild(a); a.click(); document.body.removeChild(a)
   }
@@ -681,7 +683,7 @@ function LoadingsTable({ loadings, pcKeys, variance, annMap, rankByPC, setRankBy
             {[10, 20, 30, 50].map(n => <option key={n} value={n}>{n}</option>)}
           </select>
         </div>
-        <button onClick={downloadCSV}
+        <button onClick={() => promptDownload(`pca_loadings_${rankByPC}.csv`, doDownloadCSV)}
                 style={{ marginLeft: 'auto', padding: '4px 12px', fontSize: '0.75rem',
                          borderRadius: 6, border: '1px solid var(--border)',
                          background: 'var(--bg-card2)', color: 'var(--text-2)',
@@ -693,6 +695,7 @@ function LoadingsTable({ loadings, pcKeys, variance, annMap, rankByPC, setRankBy
           Download CSV
         </button>
       </div>
+      {dialog}
 
       {/* Table */}
       <div className="glass" style={{ overflow: 'auto', maxHeight: 600, borderRadius: 10 }}>

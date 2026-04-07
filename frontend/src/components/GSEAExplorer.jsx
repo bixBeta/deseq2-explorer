@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import Plotly from 'plotly.js-dist-min'
+import { useDownloadDialog } from './DownloadDialog'
 
 // ── Ocean palette — green/red preserved for ±NES ─────────────────────────────
 const V = {
@@ -229,30 +230,36 @@ function DualDensityChart({ histData, cutoffLog, height = 300 }) {
 }
 
 // ── Per-sample medians table ──────────────────────────────────────────────────
-function MediansTable({ histData, cutoffLog }) {
-  const rows = useMemo(() => {
-    if (!histData?.kdes?.length) return []
+function MediansTable({ histData }) {
+  const { rows, meanMed, sd } = useMemo(() => {
+    if (!histData?.kdes?.length) return { rows: [], meanMed: 0, sd: 0 }
     const computed = histData.kdes.map((kde, i) => {
       const medLog = kdePercentile(kde, 0.5)
       const p25Log = kdePercentile(kde, 0.25)
       const p75Log = kdePercentile(kde, 0.75)
       return {
-        sample:   kde.sample,
-        color:    SAMPLE_COLORS[i % SAMPLE_COLORS.length],
+        sample:     kde.sample,
+        color:      SAMPLE_COLORS[i % SAMPLE_COLORS.length],
+        sizeFactor: kde.size_factor ?? null,
         medLog,
-        medOrig:  Math.expm1(medLog),
-        p25:      Math.expm1(p25Log),
-        p75:      Math.expm1(p75Log),
-        passes:   medLog >= cutoffLog,
+        medOrig: Math.expm1(medLog),
+        p25:     Math.expm1(p25Log),
+        p75:     Math.expm1(p75Log),
       }
     })
-    return computed.sort((a,b) => b.medLog - a.medLog)
-  }, [histData, cutoffLog])
+    const mean = computed.reduce((s, r) => s + r.medLog, 0) / computed.length
+    const variance = computed.reduce((s, r) => s + (r.medLog - mean) ** 2, 0) / computed.length
+    const stdDev = Math.sqrt(variance)
+    return {
+      rows:    computed.sort((a, b) => b.medLog - a.medLog),
+      meanMed: mean,
+      sd:      stdDev,
+    }
+  }, [histData])
 
   if (!rows.length) return <div style={{ padding:40, textAlign:'center', color:'var(--text-3)' }}>No data</div>
 
   const maxMed = Math.max(...rows.map(r => r.medLog))
-  const meanMed = rows.reduce((s,r) => s+r.medLog, 0) / rows.length
   const GRID = '1px solid var(--border)'
 
   return (
@@ -268,10 +275,15 @@ function MediansTable({ histData, cutoffLog }) {
         </thead>
         <tbody>
           {rows.map((r, ri) => {
-            const barPct = maxMed > 0 ? (r.medLog / maxMed) * 100 : 0
-            const diffPct = ((r.medLog - meanMed) / meanMed * 100)
+            const barPct   = maxMed > 0 ? (r.medLog / maxMed) * 100 : 0
+            const diffPct  = meanMed > 0 ? ((r.medLog - meanMed) / meanMed * 100) : 0
             const diffColor = diffPct >= 0 ? '#10b981' : '#f43f5e'
-            const rowBg = ri % 2 === 0 ? 'transparent' : 'rgba(var(--accent-rgb),0.02)'
+            const zScore   = sd > 0 ? (r.medLog - meanMed) / sd : 0
+            const isLow    = zScore < -2
+            const isHigh   = zScore > 2
+            const rowBg    = isLow
+              ? 'rgba(251,191,36,0.04)'
+              : ri % 2 === 0 ? 'transparent' : 'rgba(var(--accent-rgb),0.02)'
             return (
               <tr key={r.sample} style={{ background:rowBg }}>
                 <td style={{ padding:'5px 10px', borderBottom:GRID, whiteSpace:'nowrap' }}>
@@ -295,15 +307,48 @@ function MediansTable({ histData, cutoffLog }) {
                     <div style={{ height:'100%', width:`${barPct}%`, background:r.color, borderRadius:4, transition:'width 0.3s' }} />
                   </div>
                 </td>
-                <td style={{ padding:'5px 10px', borderBottom:GRID }}>
-                  <span style={{
-                    padding:'2px 7px', borderRadius:10, fontSize:'0.65rem', fontWeight:700,
-                    background: r.passes ? 'rgba(16,185,129,0.12)' : 'rgba(244,63,94,0.1)',
-                    color:      r.passes ? '#10b981' : '#f43f5e',
-                    border:     `1px solid ${r.passes ? 'rgba(16,185,129,0.3)' : 'rgba(244,63,94,0.25)'}`,
-                  }}>
-                    {r.passes ? '✓ above cutoff' : '✗ below cutoff'}
-                  </span>
+                <td style={{ padding:'5px 10px', borderBottom:GRID, whiteSpace:'nowrap' }}>
+                  {isLow ? (
+                    <span title={[
+                      `z = ${zScore.toFixed(2)} · more than 2 SD below the mean median`,
+                      r.sizeFactor != null
+                        ? `Size factor: ${r.sizeFactor.toFixed(4)}${r.sizeFactor > 2 ? ' (large — raw library was big, scaled down heavily; composition effect likely)' : r.sizeFactor < 0.5 ? ' (small — raw library was small, scaled up; may indicate low sequencing depth)' : ' (within normal range)'}`
+                        : 'Size factor: not available (re-run DESeq2 to populate)',
+                    ].join('\n')} style={{
+                      display:'inline-flex', alignItems:'center', gap:4,
+                      padding:'2px 8px', borderRadius:10, fontSize:'0.65rem', fontWeight:700,
+                      background:'rgba(251,191,36,0.12)', color:'#f59e0b',
+                      border:'1px solid rgba(251,191,36,0.35)', cursor:'help',
+                    }}>
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{flexShrink:0}}>
+                        <path d="M5 1L9 9H1L5 1Z" stroke="#f59e0b" strokeWidth="1.2" fill="rgba(251,191,36,0.2)" strokeLinejoin="round"/>
+                        <line x1="5" y1="4" x2="5" y2="6.5" stroke="#f59e0b" strokeWidth="1.2" strokeLinecap="round"/>
+                        <circle cx="5" cy="8" r="0.6" fill="#f59e0b"/>
+                      </svg>
+                      Low outlier
+                    </span>
+                  ) : isHigh ? (
+                    <span title={[
+                      `z = ${zScore.toFixed(2)} · more than 2 SD above the mean median`,
+                      r.sizeFactor != null
+                        ? `Size factor: ${r.sizeFactor.toFixed(4)}${r.sizeFactor < 0.5 ? ' (small — raw library was small, scaled up heavily; may inflate apparent expression)' : r.sizeFactor > 2 ? ' (large — raw library was unusually big)' : ' (within normal range)'}`
+                        : 'Size factor: not available (re-run DESeq2 to populate)',
+                    ].join('\n')} style={{
+                      display:'inline-flex', alignItems:'center', gap:4,
+                      padding:'2px 8px', borderRadius:10, fontSize:'0.65rem', fontWeight:700,
+                      background:'rgba(99,102,241,0.1)', color:'#818cf8',
+                      border:'1px solid rgba(99,102,241,0.3)', cursor:'help',
+                    }}>
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{flexShrink:0}}>
+                        <path d="M5 9L1 1H9L5 9Z" stroke="#818cf8" strokeWidth="1.2" fill="rgba(99,102,241,0.2)" strokeLinejoin="round"/>
+                        <line x1="5" y1="6" x2="5" y2="3.5" stroke="#818cf8" strokeWidth="1.2" strokeLinecap="round"/>
+                        <circle cx="5" cy="2" r="0.6" fill="#818cf8"/>
+                      </svg>
+                      High outlier
+                    </span>
+                  ) : (
+                    <span style={{ color:'var(--text-4)', fontSize:'0.72rem' }}>—</span>
+                  )}
                 </td>
               </tr>
             )
@@ -314,8 +359,44 @@ function MediansTable({ histData, cutoffLog }) {
   )
 }
 
+// ── Guide helpers ─────────────────────────────────────────────────────────────
+function GuideSection({ title, icon, children }) {
+  return (
+    <div>
+      <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:10 }}>
+        {icon}
+        <span style={{ fontSize:'0.8rem', fontWeight:700, color:V.text, letterSpacing:'0.01em' }}>{title}</span>
+        <div style={{ flex:1, height:1, background:V.border }} />
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function GuideTable({ rows }) {
+  return (
+    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.76rem' }}>
+      <tbody>
+        {rows.map(([term, desc], i) => (
+          <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : `rgba(11,68,111,0.04)` }}>
+            <td style={{ padding:'6px 12px', whiteSpace:'nowrap', verticalAlign:'top', width:1,
+                         fontWeight:600, color:V.text, fontFamily:'monospace', fontSize:'0.72rem',
+                         borderBottom:'1px solid var(--border)', borderRight:`1px solid ${V.border}` }}>
+              {term}
+            </td>
+            <td style={{ padding:'6px 12px', color:'var(--text-2)', lineHeight:1.55,
+                         borderBottom:'1px solid var(--border)', fontSize:'0.74rem' }}>
+              {desc}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
 // ── Distribution + filter modal (draggable, resizable) ───────────────────────
-function DistributionModal({ histData, cutoffLog, cutoffOrig, filterMethod, filterValue, setFilterValue, setFilterMethod, nAbove, countMax, onClose }) {
+function DistributionModal({ histData, cutoffLog, cutoffOrig, filterValue, setFilterValue, nAbove, onClose }) {
   const [activeTab, setActiveTab] = useState('distribution')
   const [pos,  setPos]  = useState(null)   // {x,y} once dragged; null = CSS-centered
   const [size, setSize] = useState({ w: Math.min(window.innerWidth  * 0.88, 1280),
@@ -434,6 +515,12 @@ function DistributionModal({ histData, cutoffLog, cutoffOrig, filterMethod, filt
                 <rect x="1" y="9" width="9"  height="2.5" rx="0.5" fill="currentColor" opacity="0.55"/>
               </svg>Sample Medians</>
             ],
+            ['guide',
+              <><svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{display:'inline',verticalAlign:'middle',marginRight:5}}>
+                <circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" strokeWidth="1.2"/>
+                <text x="6.5" y="10" textAnchor="middle" fontSize="7" fill="currentColor" fontWeight="700">?</text>
+              </svg>How to read</>
+            ],
           ].map(([id,label]) => (
             <button key={id} onClick={()=>setActiveTab(id)} style={{
               padding:'5px 14px', borderRadius:'6px 6px 0 0', border:`1px solid ${activeTab===id?V.border:'transparent'}`,
@@ -452,15 +539,7 @@ function DistributionModal({ histData, cutoffLog, cutoffOrig, filterMethod, filt
           {activeTab === 'distribution' && (<>
             {/* Filter controls */}
             <div style={{ display:'flex', flexDirection:'column', gap:10, flexShrink:0 }}>
-              {/* Mode toggle */}
               <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
-                <div style={{ display:'flex', gap:0, borderRadius:9, overflow:'hidden', border:`1px solid ${V.border}` }}>
-                  {[['count','baseMean cutoff'],['quantile','Quantile (% of genes)']].map(([v,l])=>(
-                    <button key={v} onClick={()=>{ setFilterMethod(v); setFilterValue(v==='quantile'?0.25:10) }}
-                      style={{ padding:'5px 14px', border:'none', cursor:'pointer', fontSize:'0.78rem', fontWeight:600,
-                               background:filterMethod===v?V.accent:'var(--bg-card2)', color:filterMethod===v?'#fff':'var(--text-2)', transition:'background 0.12s' }}>{l}</button>
-                  ))}
-                </div>
                 {/* Stats chips */}
                 <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
                   {[
@@ -477,41 +556,17 @@ function DistributionModal({ histData, cutoffLog, cutoffOrig, filterMethod, filt
                 </div>
               </div>
 
-              {/* Slider row */}
-              {filterMethod==='quantile' ? (
-                <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
-                    <span style={{ fontSize:'0.8rem', color:'var(--text-2)', whiteSpace:'nowrap' }}>
-                      Remove genes below the <b style={{ color:V.text }}>{(filterValue*100).toFixed(0)}th percentile</b>
-                    </span>
-                    <span style={{ fontSize:'0.72rem', color:'var(--text-3)' }}>— or set manually:</span>
-                    <div style={{ display:'flex', alignItems:'center', gap:5 }}>
-                      <span style={{ fontSize:'0.75rem', color:'var(--text-3)', whiteSpace:'nowrap' }}>baseMean ≥</span>
-                      <input type="number" min={0} value={cutoffOrig.toFixed(1)}
-                        onChange={e=>{ const v=Math.max(0,+e.target.value); setFilterMethod('count'); setFilterValue(v) }}
-                        style={{ width:76, padding:'2px 6px', fontSize:'0.82rem', fontFamily:'monospace',
-                                 background:'var(--bg-card2)', border:`1px solid ${V.border}`, borderRadius:6,
-                                 color:V.text, textAlign:'right' }} />
-                    </div>
-                  </div>
-                  <input type="range" min={0} max={0.75} step={0.01} value={filterValue}
-                    onChange={e=>setFilterValue(+e.target.value)} style={{ width:'100%', accentColor:V.accent }} />
-                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.7rem', color:'var(--text-3)' }}>
-                    <span>0% (no filter)</span><span>75%</span>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                  <span style={{ fontSize:'0.8rem', color:'var(--text-2)', whiteSpace:'nowrap' }}>Min baseMean ≥</span>
-                  <input type="range" min={0} max={500} step={0.5} value={Math.min(filterValue, 500)}
-                    onChange={e=>setFilterValue(+e.target.value)} style={{ flex:1, accentColor:V.accent }} />
-                  <input type="number" min={0} value={filterValue}
-                    onChange={e=>setFilterValue(Math.max(0,+e.target.value))}
-                    style={{ width:74, padding:'3px 6px', fontSize:'0.85rem', fontFamily:'monospace',
-                             background:'var(--bg-card2)', border:`1px solid ${V.border}`, borderRadius:6,
-                             color:V.text, textAlign:'right' }} />
-                </div>
-              )}
+              {/* baseMean slider */}
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <span style={{ fontSize:'0.8rem', color:'var(--text-2)', whiteSpace:'nowrap' }}>Min baseMean ≥</span>
+                <input type="range" min={0} max={500} step={0.5} value={Math.min(filterValue, 500)}
+                  onChange={e=>setFilterValue(+e.target.value)} style={{ flex:1, accentColor:V.accent }} />
+                <input type="number" min={0} value={filterValue}
+                  onChange={e=>setFilterValue(Math.max(0,+e.target.value))}
+                  style={{ width:74, padding:'3px 6px', fontSize:'0.85rem', fontFamily:'monospace',
+                           background:'var(--bg-card2)', border:`1px solid ${V.border}`, borderRadius:6,
+                           color:V.text, textAlign:'right' }} />
+              </div>
             </div>
 
             {/* Dual density charts */}
@@ -527,12 +582,60 @@ function DistributionModal({ histData, cutoffLog, cutoffOrig, filterMethod, filt
             <div style={{ flex:'1 1 0', overflow:'hidden', display:'flex', flexDirection:'column', gap:8 }}>
               <div style={{ fontSize:'0.75rem', color:'var(--text-3)', flexShrink:0 }}>
                 Approximate sample-level median expression (50th percentile of log₁p KDE) · sorted highest → lowest ·
-                IQR = interquartile range · Status relative to current baseMean cutoff (≥ {cutoffOrig.toFixed(1)})
+                IQR = interquartile range · Status flags statistical outliers (⚠ Low / ↑ High) at ±2 SD from the mean median
               </div>
               {histData
-                ? <MediansTable histData={histData} cutoffLog={cutoffLog} />
+                ? <MediansTable histData={histData} />
                 : <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text-3)' }}>Loading…</div>
               }
+            </div>
+          )}
+
+          {activeTab === 'guide' && (
+            <div style={{ flex:'1 1 0', overflowY:'auto', display:'flex', flexDirection:'column', gap:22 }}>
+
+              {/* ── Section: Distribution tab ── */}
+              <GuideSection title="Distribution tab" icon={
+                <svg width="14" height="14" viewBox="0 0 13 13" fill="none"><path d="M1 11 Q3 4 5 7 Q7 10 9 3 Q11 0 12 2" stroke={V.text} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/><line x1="4" y1="0" x2="4" y2="13" stroke={V.text} strokeWidth="1" strokeDasharray="2 2" opacity="0.5"/></svg>
+              }>
+                <GuideTable rows={[
+                  ['Each KDE curve',         'One curve per sample. Shows how normalised gene counts are distributed within that sample across all genes.'],
+                  ['X-axis',                 'log₁p(normalised count) — a log-scale transformation of each gene\'s count value within the sample. Tick labels are shown in count space for readability.'],
+                  ['Y-axis',                 'Probability density — taller peaks mean more genes cluster at that expression level.'],
+                  ['Red dashed line',        'The current baseMean cutoff. Genes to the left of this line are removed before running GSEA.'],
+                  ['Pre-filter panel',       'Full distributions before any filtering is applied. Shows the natural expression landscape of your data.'],
+                  ['Post-filter panel',      'Same distributions clipped at the cutoff. Shows only the genes that will be passed to GSEA.'],
+                  ['baseMean cutoff',        'Filters genes where the average normalised count across ALL samples is below this value. It is a per-gene cross-sample statistic — not a per-sample value.'],
+                ]} />
+              </GuideSection>
+
+              {/* ── Section: baseMean vs per-sample counts ── */}
+              <GuideSection title="baseMean vs per-sample counts" icon={
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="5" height="5" rx="1" stroke={V.text} strokeWidth="1.2"/><rect x="8" y="1" width="5" height="5" rx="1" stroke={V.text} strokeWidth="1.2"/><rect x="1" y="8" width="5" height="5" rx="1" stroke={V.text} strokeWidth="1.2"/><rect x="8" y="8" width="5" height="5" rx="1" fill={V.text} opacity="0.25" stroke={V.text} strokeWidth="1.2"/></svg>
+              }>
+                <GuideTable rows={[
+                  ['counts[gene, sample]',   'Normalised count for one gene in one specific sample. This is what the KDE curves are built from.'],
+                  ['baseMean (per gene)',     'rowMeans(counts) — the average of a gene\'s normalised count across all samples. Used for the filter cutoff.'],
+                  ['Median (count) in table','The 50th percentile of counts[·, sample] — the midpoint of that sample\'s own count distribution. Not related to baseMean.'],
+                  ['Key difference',         'A gene can have baseMean = 50 (passes the filter) yet have a count of 0 in one specific sample. Conversely, a gene can be highly expressed in one sample but have a low baseMean if the rest barely express it.'],
+                ]} />
+              </GuideSection>
+
+              {/* ── Section: Sample Medians tab ── */}
+              <GuideSection title="Sample Medians tab" icon={
+                <svg width="14" height="14" viewBox="0 0 13 13" fill="none"><rect x="1" y="1" width="11" height="2.5" rx="0.5" fill={V.text} opacity="0.8"/><rect x="1" y="5" width="7" height="2.5" rx="0.5" fill={V.text} opacity="0.55"/><rect x="1" y="9" width="9" height="2.5" rx="0.5" fill={V.text} opacity="0.55"/></svg>
+              }>
+                <GuideTable rows={[
+                  ['Median (log₁p)',  '50th percentile of the sample\'s KDE — in log₁p space. Comparable across samples.'],
+                  ['Median (count)',  'The same value back-transformed to count space (eˣ − 1). Represents the typical expression level in that sample.'],
+                  ['IQR (counts)',    'Interquartile range: P25 to P75 in count space. Wide IQR = broad dynamic range; narrow = expression is tightly clustered.'],
+                  ['vs mean',        'How far each sample\'s median is from the mean of all sample medians — expressed as a percentage. Positive = above average, negative = below.'],
+                  ['Distribution bar','Bar length is proportional to the sample\'s median. Quick visual comparison of relative expression levels across all samples.'],
+                  ['⚠ Low outlier',  'Sample median is more than 2 SD below the group mean. Hover the badge for the DESeq2 size factor — a small size factor (< 0.5) alongside a low median suggests genuinely low sequencing depth; a large size factor (> 2) alongside a low median suggests a composition effect rather than a depth problem.'],
+                  ['↑ High outlier', 'Sample median is more than 2 SD above the group mean. Less commonly a problem. Hover the badge for the size factor — a small size factor here may indicate over-scaling of a small library.'],
+                ]} />
+              </GuideSection>
+
             </div>
           )}
         </div>
@@ -610,7 +713,7 @@ function RunChip({ r, active, onSelect, onRemove }) {
             ['Rank by',    RANK_LABELS[p.rankMethod] ?? p.rankMethod],
             ['padj method',p.pAdjMethod],
             ['padj cutoff',p.padjCutoff],
-            ['Filter',     p.filterMethod==='quantile' ? `Quantile ${(p.filterValue*100).toFixed(0)}%` : `baseMean ≥ ${p.filterValue}`],
+            ['Filter',     `baseMean ≥ ${p.filterValue}`],
             ['Gene set size', `${p.minSize}–${p.maxSize}`],
             ['Species',    p.species],
             ['Time',       r.timestamp],
@@ -640,6 +743,7 @@ function RunChips({ runs, activeRunId, onSelect, onRemove }) {
 
 // ── Results table ─────────────────────────────────────────────────────────────
 function ResultsTable({ run, onPathwayClick, selectedPathway, fullscreen, setFullscreen }) {
+  const { promptDownload, dialog } = useDownloadDialog()
   const [sortKey,   setSortKey]   = useState('padj')
   const [sortAsc,   setSortAsc]   = useState(true)
   const [dirFilter, setDirFilter] = useState('all')
@@ -660,9 +764,9 @@ function ResultsTable({ run, onPathwayClick, selectedPathway, fullscreen, setFul
   const pageData=filtered.slice(page*PER,(page+1)*PER)
   function toggleSort(k){ if(sortKey===k) setSortAsc(a=>!a); else{ setSortKey(k); setSortAsc(true) }; setPage(0) }
 
-  const exportRows=()=>downloadCSV(
-    filtered.map(r=>({ pathway:r.pathway,NES:r.NES,pvalue:r.pvalue,padj:r.padj,size:r.size,leadingEdgeN:r.leadingEdgeN,leadingEdge:r.leadingEdge })),
-    `gsea_${run?.collectionLabel?.replace(/\s/g,'_')}.csv`
+  const exportRows=()=>promptDownload(
+    `gsea_${run?.collectionLabel?.replace(/\s/g,'_')}.csv`,
+    name => downloadCSV(filtered.map(r=>({ pathway:r.pathway,NES:r.NES,pvalue:r.pvalue,padj:r.padj,size:r.size,leadingEdgeN:r.leadingEdgeN,leadingEdge:r.leadingEdge })), name)
   )
 
   const CB = `1px solid var(--border)`   // cell border shorthand
@@ -691,6 +795,7 @@ function ResultsTable({ run, onPathwayClick, selectedPathway, fullscreen, setFul
           style={{ flex:1, minWidth:160, padding:'4px 10px', fontSize:'0.78rem', background:'var(--bg-card2)', border:`1px solid ${V.border}`, borderRadius:8, color:'var(--text-1)' }} />
         <span style={{ fontSize:'0.7rem', color:'var(--text-3)' }}>{filtered.length} pathways</span>
         <button onClick={exportRows} style={{ padding:'4px 10px', borderRadius:7, border:`1px solid ${V.border}`, background:V.muted, color:V.text, fontSize:'0.72rem', fontWeight:600, cursor:'pointer' }}>↓ CSV</button>
+        {dialog}
         {setFullscreen && (
           <button
             onClick={() => setFullscreen(v => !v)}
@@ -752,6 +857,7 @@ function ResultsTable({ run, onPathwayClick, selectedPathway, fullscreen, setFul
 const PER_PAGE_OPTIONS = [50, 100, 200, 'All']
 
 function RankedListPanel({ run }) {
+  const { promptDownload, dialog } = useDownloadDialog()
   const [page,    setPage]    = useState(0)
   const [perPage, setPerPage] = useState(50)
   const [sortAsc, setSortAsc] = useState(false)  // default: high→low (desc)
@@ -810,8 +916,12 @@ function RankedListPanel({ run }) {
           ))}
         </div>
 
-        <button onClick={() => downloadCSV(list.map((r,i) => ({ rank:i+1, gene:r.gene, score:r.score })), `ranked_list_${run?.collectionLabel?.replace(/\s/g,'_')}.csv`)}
+        <button onClick={() => promptDownload(
+            `ranked_list_${run?.collectionLabel?.replace(/\s/g,'_')}.csv`,
+            name => downloadCSV(list.map((r,i) => ({ rank:i+1, gene:r.gene, score:r.score })), name)
+          )}
           style={{ marginLeft:'auto', padding:'4px 10px', borderRadius:7, border:`1px solid ${V.border}`, background:V.muted, color:V.text, fontSize:'0.72rem', fontWeight:600, cursor:'pointer' }}>↓ CSV</button>
+        {dialog}
       </div>
 
       {/* Table */}
@@ -942,6 +1052,7 @@ function PathwayPicker({ options, selected, onChange, accent }) {
 }
 
 function PlotsPanel({ run, session, contrastLabel }) {
+  const { promptDownload, dialog } = useDownloadDialog()
   const [plotType,   setPlotType]   = useState('dotplot')
   const [nShow,      setNShow]      = useState(20)
   const [fontSize,   setFontSize]   = useState(11)
@@ -1003,8 +1114,10 @@ function PlotsPanel({ run, session, contrastLabel }) {
 
   const downloadPng = () => {
     if (!imgSrc) return
-    const a = Object.assign(document.createElement('a'), { href: imgSrc, download: `gsea_${plotType}.png` })
-    a.click()
+    promptDownload(`gsea_${plotType}.png`, name => {
+      const a = Object.assign(document.createElement('a'), { href: imgSrc, download: name })
+      a.click()
+    })
   }
 
   const CB = `1px solid var(--border)`
@@ -1091,6 +1204,7 @@ function PlotsPanel({ run, session, contrastLabel }) {
             ↓ Download PNG
           </button>
         )}
+        {dialog}
       </div>
 
       {/* Image area */}
@@ -1320,7 +1434,6 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
   const [nPerm,        setNPerm]        = useState(1000)
   const [pAdjMethod,   setPAdjMethod]   = useState('BH')
   const [padjCutoff,   setPadjCutoff]   = useState(0.25)
-  const [filterMethod, setFilterMethod] = useState('count')
   const [filterValue,  setFilterValue]  = useState(10)
 
   const [histData,     setHistData]     = useState(null)
@@ -1386,20 +1499,15 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
     return ()=>ctrl.abort()
   },[session, contrastLabel])
 
-  // Derived cutoff — supports both quantile and absolute baseMean modes
+  // Derived cutoff — baseMean absolute mode only
   const { cutoffOrig, cutoffLog, nAbove } = useMemo(()=>{
     if(!histData) return { cutoffOrig:0, cutoffLog:0, nAbove:0 }
-    const orig = filterMethod === 'quantile'
-      ? (histData.quantileValues?.[Math.min(Math.round(filterValue * 100), 100)] ?? 0)
-      : filterValue
     return {
-      cutoffOrig: orig,
-      cutoffLog:  Math.log1p(orig),
-      nAbove:     genesAbove(histData.baseMeans, orig, histData.n_genes||0),
+      cutoffOrig: filterValue,
+      cutoffLog:  Math.log1p(filterValue),
+      nAbove:     genesAbove(histData.baseMeans, filterValue, histData.n_genes||0),
     }
-  },[histData, filterMethod, filterValue])
-
-  const countMax = histData?.bmMax ?? 1000
+  },[histData, filterValue])
 
   // Run GSEA
   const handleRun = useCallback(async()=>{
@@ -1414,24 +1522,24 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
         body:JSON.stringify({ sessionId:session.sessionId, contrastLabel, rankMethod,
           collection:collection.id, subcategory:collection.sub, species,
           minSize, maxSize, scoreType, nPerm, pAdjMethod, padjCutoff,
-          filterMethod, filterValue, annMap:annMap||null, runId }), signal:ctrl.signal })
+          filterMethod:'count', filterValue, annMap:annMap||null, runId }), signal:ctrl.signal })
       const data=await r.json()
       if(data.error) throw new Error(data.error)
       const rm=RANK_METHODS.find(m=>m.value===rankMethod)
       const newRun={ id:runId, collectionLabel:collection.label, collectionKey:collection.key,
         collectionId:collection.id, collectionSub:collection.sub,
-        rankMethod, rankShort:rm?.short??rankMethod, filterMethod, filterValue, species,
+        rankMethod, rankShort:rm?.short??rankMethod, filterValue, species,
         scoreType, nPerm, pAdjMethod, padjCutoff,
         results:data.results, rankedList:data.rankedList, meta:data.meta,
         timestamp:new Date().toLocaleTimeString(), contrastLabel,
-        params: { rankMethod, pAdjMethod, padjCutoff, minSize, maxSize, filterMethod, filterValue, species } }
+        params: { rankMethod, pAdjMethod, padjCutoff, minSize, maxSize, filterValue, species } }
       setRuns(prev=>[...prev,newRun])
       setActiveRunId(newRun.id)
       setContentTab('results'); curveCacheRef.current={}
       setSelPathway(null); setCurveData(null); setCurveError(null)
     } catch(e){ if(e.name!=='AbortError') setRunError(e.message) }
     finally{ clearInterval(timer); setElapsed(0); setRunning(false) }
-  },[session,contrastLabel,rankMethod,collection,species,minSize,maxSize,scoreType,nPerm,pAdjMethod,padjCutoff,filterMethod,filterValue,annMap])
+  },[session,contrastLabel,rankMethod,collection,species,minSize,maxSize,scoreType,nPerm,pAdjMethod,padjCutoff,filterValue,annMap])
 
   // Curve on pathway click
   const fetchCurve = useCallback(async(result, ar)=>{
@@ -1504,38 +1612,19 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
             </select>
           </div>
 
-          {/* Pre-filter — quantile or absolute baseMean */}
+          {/* Pre-filter — baseMean absolute cutoff */}
           <div>
             <SectionLabel>Pre-filter genes</SectionLabel>
-            <div style={{ display:'flex', gap:4, marginBottom:6 }}>
-              {[['count','baseMean cutoff'],['quantile','Quantile']].map(([v,l])=>(
-                <button key={v} onClick={()=>{ setFilterMethod(v); setFilterValue(v==='quantile'?0.25:10) }}
-                  style={{ flex:1, padding:'4px 0', fontSize:'0.7rem', fontWeight:600, borderRadius:6, cursor:'pointer', border:'none',
-                           background:filterMethod===v?V.accent:'rgba(255,255,255,0.06)', color:filterMethod===v?'#fff':'var(--text-2)', transition:'all 0.12s' }}>{l}</button>
-              ))}
+            <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
+              <span style={{ fontSize:'0.7rem', color:'var(--text-3)', whiteSpace:'nowrap' }}>baseMean ≥</span>
+              <input type="range" min={0} max={500} step={0.5} value={Math.min(filterValue, 500)}
+                onChange={e=>setFilterValue(+e.target.value)} style={{ flex:1, accentColor:V.accent }} />
+              <input type="number" min={0} value={filterValue}
+                onChange={e=>setFilterValue(Math.max(0,+e.target.value))}
+                style={{ width:52, padding:'2px 4px', fontSize:'0.72rem', fontFamily:'monospace',
+                         background:'var(--bg-card2)', border:`1px solid ${V.border}`, borderRadius:5,
+                         color:V.text, textAlign:'right' }} />
             </div>
-
-            {filterMethod==='quantile' ? (
-              <div style={{ marginBottom:8 }}>
-                <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.7rem', color:'var(--text-3)', marginBottom:4 }}>
-                  <span>Remove bottom</span>
-                  <span style={{ color:V.text, fontWeight:700 }}>{(filterValue*100).toFixed(0)}% · ≥{cutoffOrig.toFixed(1)}</span>
-                </div>
-                <input type="range" min={0} max={0.75} step={0.01} value={filterValue}
-                  onChange={e=>setFilterValue(+e.target.value)} style={{ width:'100%', accentColor:V.accent }} />
-              </div>
-            ) : (
-              <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
-                <span style={{ fontSize:'0.7rem', color:'var(--text-3)', whiteSpace:'nowrap' }}>baseMean ≥</span>
-                <input type="range" min={0} max={Math.max(countMax, 100)} step={0.5} value={filterValue}
-                  onChange={e=>setFilterValue(+e.target.value)} style={{ flex:1, accentColor:V.accent }} />
-                <input type="number" min={0} value={filterValue}
-                  onChange={e=>setFilterValue(Math.max(0,+e.target.value))}
-                  style={{ width:52, padding:'2px 4px', fontSize:'0.72rem', fontFamily:'monospace',
-                           background:'var(--bg-card2)', border:`1px solid ${V.border}`, borderRadius:5,
-                           color:V.text, textAlign:'right' }} />
-              </div>
-            )}
 
             {/* Stat + distribution button */}
             <div style={{ display:'flex', gap:6 }}>
@@ -1667,9 +1756,8 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
       {showDistModal && createPortal(
         <DistributionModal
           histData={histData} cutoffLog={cutoffLog} cutoffOrig={cutoffOrig}
-          filterMethod={filterMethod} filterValue={filterValue}
-          setFilterValue={setFilterValue} setFilterMethod={setFilterMethod}
-          nAbove={nAbove} countMax={countMax}
+          filterValue={filterValue} setFilterValue={setFilterValue}
+          nAbove={nAbove}
           onClose={()=>setShowDistModal(false)}
         />,
         document.body

@@ -117,12 +117,17 @@ gsea_preview <- function(session_id, contrast_label) {
   n_genes  <- nrow(counts)
   n_samp   <- ncol(counts)
 
+  # Per-sample size factors (named vector, NA if not saved yet)
+  sf_vec <- if (!is.null(saved$size_factors)) saved$size_factors else setNames(rep(NA_real_, n_samp), colnames(counts))
+
   # Per-sample KDE of log1p(normalised counts)
   kdes <- lapply(seq_len(n_samp), function(j) {
-    vals <- log1p(counts[, j])
-    dens <- density(vals, bw = "nrd0", n = 256, from = 0)
+    sname <- colnames(counts)[j]
+    vals  <- log1p(counts[, j])
+    dens  <- density(vals, bw = "nrd0", n = 256, from = 0)
     list(
-      sample = colnames(counts)[j],
+      sample      = sname,
+      size_factor = round(as.numeric(sf_vec[sname]), 4),
       x = round(as.numeric(dens$x), 4),
       y = round(as.numeric(dens$y), 8)
     )
