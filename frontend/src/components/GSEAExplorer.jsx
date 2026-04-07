@@ -259,20 +259,29 @@ function DistributionModal({ histData, cutoffLog, cutoffOrig, filterMethod, filt
   const [pos,  setPos]  = useState(null)   // {x,y} once dragged; null = CSS-centered
   const [size, setSize] = useState({ w: Math.min(window.innerWidth  * 0.88, 1280),
                                      h: Math.min(window.innerHeight * 0.84, 900) })
-  const modalRef   = useRef(null)
-  const dragRef    = useRef(null)
-  const resizeRef  = useRef(null)
+  const modalRef      = useRef(null)
+  const dragRef       = useRef(null)
+  const resizeRef     = useRef(null)
+  const wasDragging   = useRef(false)   // prevents backdrop onClick firing after drag/resize mouseup
 
   // ── Drag ────────────────────────────────────────────────────────────────────
   const onHeaderMouseDown = (e) => {
     if (e.target.closest('button')) return
     const rect = modalRef.current.getBoundingClientRect()
     dragRef.current = { sx:e.clientX, sy:e.clientY, ox:rect.left, oy:rect.top }
+    wasDragging.current = false
     const onMove = ev => {
+      wasDragging.current = true
       setPos({ x: dragRef.current.ox + ev.clientX - dragRef.current.sx,
                y: dragRef.current.oy + ev.clientY - dragRef.current.sy })
     }
-    const onUp = () => { dragRef.current=null; window.removeEventListener('mousemove',onMove); window.removeEventListener('mouseup',onUp) }
+    const onUp = () => {
+      dragRef.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      // Clear the flag after the click event has been evaluated
+      setTimeout(() => { wasDragging.current = false }, 0)
+    }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
     e.preventDefault()
@@ -282,11 +291,17 @@ function DistributionModal({ histData, cutoffLog, cutoffOrig, filterMethod, filt
   const onResizeMouseDown = (e) => {
     const rect = modalRef.current.getBoundingClientRect()
     resizeRef.current = { sx:e.clientX, sy:e.clientY, ow:rect.width, oh:rect.height }
+    wasDragging.current = true   // set immediately so any stray click is swallowed
     const onMove = ev => {
       setSize({ w: Math.max(720, resizeRef.current.ow + ev.clientX - resizeRef.current.sx),
                 h: Math.max(480, resizeRef.current.oh + ev.clientY - resizeRef.current.sy) })
     }
-    const onUp = () => { resizeRef.current=null; window.removeEventListener('mousemove',onMove); window.removeEventListener('mouseup',onUp) }
+    const onUp = () => {
+      resizeRef.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      setTimeout(() => { wasDragging.current = false }, 0)
+    }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
     e.preventDefault(); e.stopPropagation()
@@ -322,7 +337,7 @@ function DistributionModal({ histData, cutoffLog, cutoffOrig, filterMethod, filt
 
   return createPortal(
     <div style={{ position:'fixed', inset:0, zIndex:101000, background:'rgba(0,0,0,0.6)', backdropFilter:'blur(4px)' }}
-         onClick={onClose}>
+         onClick={() => { if (!wasDragging.current) onClose() }}>
       <div ref={modalRef} style={modalStyle} onClick={e=>e.stopPropagation()}>
 
         {/* ── Draggable header ── */}
@@ -413,7 +428,7 @@ function DistributionModal({ histData, cutoffLog, cutoffOrig, filterMethod, filt
               ) : (
                 <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                   <span style={{ fontSize:'0.8rem', color:'var(--text-2)', whiteSpace:'nowrap' }}>Min baseMean ≥</span>
-                  <input type="range" min={0} max={Math.max(countMax,100)} step={1} value={filterValue}
+                  <input type="range" min={0} max={500} step={1} value={Math.min(filterValue, 500)}
                     onChange={e=>setFilterValue(+e.target.value)} style={{ flex:1, accentColor:V.accent }} />
                   <input type="number" min={0} value={filterValue}
                     onChange={e=>setFilterValue(Math.max(0,+e.target.value))}
