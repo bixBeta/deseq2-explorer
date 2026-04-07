@@ -96,9 +96,10 @@ function kdePercentile(kde, p = 0.5) {
 
 // ── Dual-panel KDE chart (pre & post filter) ─────────────────────────────────
 function DualDensityChart({ histData, cutoffLog, height = 300 }) {
-  const preRef   = useRef(null)
-  const postRef  = useRef(null)
-  const [logScale, setLogScale] = useState(true)   // true = log₁p (default), false = linear counts
+  const preRef      = useRef(null)
+  const postRef     = useRef(null)
+  // true = count-value tick labels (default); false = raw log₁p numeric labels
+  const [countLabels, setCountLabels] = useState(true)
 
   useEffect(() => {
     if (!histData?.kdes || !preRef.current || !postRef.current) return
@@ -110,44 +111,24 @@ function DualDensityChart({ histData, cutoffLog, height = 300 }) {
     const modebarBg  = isLight ? 'rgba(255,255,255,0.85)' : 'rgba(15,23,42,0.85)'
     const plotCfg    = { responsive:true, displaylogo:false, modeBarButtonsToRemove:['select2d','lasso2d'] }
 
-    // ── Transform x values based on scale mode ───────────────────────────────
-    // Log mode: x stays as log₁p; Linear mode: convert to original count space
-    const toX    = v  => logScale ? v : Math.expm1(v)
-    // In linear mode, density needs Jacobian correction: p(x) = p(log₁p(x)) / (x+1)
-    const toY    = (y, x_log) => logScale ? y : y / (Math.expm1(x_log) + 1)
-
-    const cutoffX  = toX(cutoffLog)                          // cutoff in display space
-    const cutoffC  = Math.expm1(cutoffLog)                   // cutoff in original count space
-
-    // x range
+    // x is always log₁p — only tick labeling differs
     const allXLog = kdes.flatMap(k => k.x)
-    const xMaxLog = Math.max(...allXLog)
-    const xMax    = toX(xMaxLog) * 1.02
+    const xMaxLog = Math.max(...allXLog) * 1.02
+    const cutoffC = Math.expm1(cutoffLog)
 
-    // Axis ticks
-    let xAxis
-    if (logScale) {
-      const niceCountTicks = [0,1,2,3,5,10,20,50,100,200,500,1000,2000,5000,10000,20000]
-        .filter(v => Math.log1p(v) <= xMaxLog)
-      xAxis = {
-        title:{ text:'normalised count  (log₁p scale)', font:{size:9} },
-        tickvals: niceCountTicks.map(v => Math.log1p(v)),
-        ticktext: niceCountTicks.map(v => String(v)),
-        range:[0, toX(xMaxLog) * 1.02],
-      }
-    } else {
-      xAxis = {
-        title:{ text:'normalised count  (linear scale)', font:{size:9} },
-        range:[0, xMax],
-        tickformat:',d',
-      }
-    }
+    const niceCountTicks = [0,1,2,3,5,10,20,50,100,200,500,1000,2000,5000,10000,20000]
+      .filter(v => Math.log1p(v) <= xMaxLog)
 
     const baseXAxis = {
-      ...xAxis,
       color:textColor, gridcolor:gridColor, showgrid:true,
       zeroline:true, zerolinecolor: cutoffLog === 0 ? '#f43f5e' : gridColor, zerolinewidth:1,
-      tickfont:{size:8},
+      tickfont:{ size:8 },
+      range:[0, xMaxLog],
+      ...(countLabels
+        ? { title:{ text:'normalised count  (log₁p scale)', font:{size:9} },
+            tickvals: niceCountTicks.map(v => Math.log1p(v)),
+            ticktext: niceCountTicks.map(v => String(v)) }
+        : { title:{ text:'log₁p(normalised count)', font:{size:9} } }),
     }
 
     const baseLayout = {
@@ -161,15 +142,13 @@ function DualDensityChart({ histData, cutoffLog, height = 300 }) {
       modebar:{ bgcolor:modebarBg, color:textColor, activecolor:isLight?'#000':'#fff' },
     }
 
-    const hoverTpl = (sample) => logScale
-      ? `<b>${sample}</b><br>log₁p: %{x:.3f}<br>count ≈ %{customdata:.1f}<extra></extra>`
-      : `<b>${sample}</b><br>count: %{x:.1f}<extra></extra>`
+    const hoverTpl = (sample) =>
+      `<b>${sample}</b><br>log₁p: %{x:.3f}<br>count ≈ %{customdata:.1f}<extra></extra>`
 
-    // ── Pre-filter traces ────────────────────────────────────────────────────
+    // Pre-filter traces
     const preTraces = kdes.map((kde, i) => ({
-      x: kde.x.map(toX),
-      y: kde.y.map((y, j) => toY(y, kde.x[j])),
-      customdata: logScale ? kde.x.map(v => Math.expm1(v)) : undefined,
+      x:kde.x, y:kde.y,
+      customdata: kde.x.map(v => Math.expm1(v)),
       type:'scatter', mode:'lines', name:kde.sample,
       line:{ color:SAMPLE_COLORS[i%SAMPLE_COLORS.length], width:1.5, shape:'spline' },
       opacity:0.7, showlegend:showLegend,
@@ -177,54 +156,53 @@ function DualDensityChart({ histData, cutoffLog, height = 300 }) {
     }))
 
     const cutoffLabel = cutoffLog === 0
-      ? (logScale ? ' no cutoff (= 0)' : ' no cutoff (= 0)')
-      : ` cutoff${logScale ? ` (count ≈ ${cutoffC.toFixed(1)})` : ` (= ${cutoffC.toFixed(1)})`}`
+      ? ' no cutoff (baseMean = 0)'
+      : ` cutoff (count ≈ ${cutoffC.toFixed(1)})`
 
     const preLayout = {
       ...baseLayout,
       title:{ text:'Pre-filter (all genes)', font:{size:11,color:textColor}, x:0.5, xanchor:'center', y:0.97 },
-      shapes:[{ type:'line', x0:cutoffX, x1:cutoffX, y0:0, y1:1, yref:'paper',
+      shapes:[{ type:'line', x0:cutoffLog, x1:cutoffLog, y0:0, y1:1, yref:'paper',
                 line:{ color:'#f43f5e', width: cutoffLog === 0 ? 1 : 2, dash:'dash' } }],
-      annotations:[{ x:cutoffX, y:0.96, yref:'paper', xanchor:'left',
+      annotations:[{ x:cutoffLog, y:0.96, yref:'paper', xanchor:'left',
                      text:cutoffLabel, font:{size:8,color:'#f87171'}, showarrow:false }],
     }
 
-    // ── Post-filter traces: clip x < cutoffLog ───────────────────────────────
+    // Post-filter traces: clip x < cutoffLog
     const postTraces = kdes.map((kde, i) => {
       const startIdx = cutoffLog === 0 ? 0 : kde.x.findIndex(v => v >= cutoffLog)
-      const xlog = startIdx >= 0 ? kde.x.slice(startIdx) : kde.x
-      const yraw = startIdx >= 0 ? kde.y.slice(startIdx) : kde.y
+      const xs = startIdx >= 0 ? kde.x.slice(startIdx) : kde.x
+      const ys = startIdx >= 0 ? kde.y.slice(startIdx) : kde.y
       return {
-        x: xlog.map(toX),
-        y: yraw.map((y, j) => toY(y, xlog[j])),
-        customdata: logScale ? xlog.map(v => Math.expm1(v)) : undefined,
+        x:xs, y:ys,
+        customdata: xs.map(v => Math.expm1(v)),
         type:'scatter', mode:'lines', name:kde.sample,
         line:{ color:SAMPLE_COLORS[i%SAMPLE_COLORS.length], width:1.5, shape:'spline' },
         opacity:0.7, showlegend:showLegend,
         hovertemplate: hoverTpl(kde.sample),
       }
     })
-    const postXStart = cutoffLog === 0 ? 0 : cutoffX * (logScale ? 0.98 : 0.95)
+    const postXStart = cutoffLog === 0 ? 0 : cutoffLog * 0.98
     const postLayout = {
       ...baseLayout,
-      xaxis:{ ...baseXAxis, range:[postXStart, xMax] },
+      xaxis:{ ...baseXAxis, range:[postXStart, xMaxLog] },
       title:{ text:'Post-filter (genes above cutoff)', font:{size:11,color:textColor}, x:0.5, xanchor:'center', y:0.97 },
     }
 
     Plotly.react(preRef.current,  preTraces,  preLayout,  plotCfg)
     Plotly.react(postRef.current, postTraces, postLayout, plotCfg)
-  }, [histData, cutoffLog, height, logScale])
+  }, [histData, cutoffLog, height, countLabels])
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:6, height:'100%' }}>
-      {/* Scale toggle */}
+      {/* Label mode toggle */}
       <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
-        <span style={{ fontSize:'0.7rem', color:'var(--text-3)' }}>X-axis:</span>
+        <span style={{ fontSize:'0.7rem', color:'var(--text-3)' }}>X-axis labels:</span>
         <div style={{ display:'flex', gap:0, borderRadius:7, overflow:'hidden', border:`1px solid ${V.border}` }}>
-          {[['log','log₁p (default)'], ['linear','Linear counts']].map(([key, lbl]) => {
-            const active = (key === 'log') === logScale
+          {[['counts','Count values (default)'],['log1p','log₁p values']].map(([key, lbl]) => {
+            const active = (key === 'counts') === countLabels
             return (
-              <button key={key} onClick={() => setLogScale(key === 'log')} style={{
+              <button key={key} onClick={() => setCountLabels(key === 'counts')} style={{
                 padding:'3px 10px', border:'none', cursor:'pointer', fontSize:'0.72rem', fontWeight: active ? 700 : 400,
                 background: active ? V.accent : 'var(--bg-card2)',
                 color: active ? '#fff' : 'var(--text-2)',
@@ -234,7 +212,7 @@ function DualDensityChart({ histData, cutoffLog, height = 300 }) {
           })}
         </div>
         <span style={{ fontSize:'0.68rem', color:'var(--text-3)' }}>
-          {logScale ? 'Tick labels show original count values' : 'Density adjusted for linear scale (Jacobian)'}
+          {countLabels ? 'Axis is log₁p — tick labels show original count equivalents' : 'Raw log₁p values on axis'}
         </span>
       </div>
 
