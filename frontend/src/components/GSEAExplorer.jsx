@@ -230,7 +230,12 @@ function DualDensityChart({ histData, cutoffLog, height = 300 }) {
 }
 
 // ── Outlier badge with hover tooltip ─────────────────────────────────────────
-function OutlierBadge({ label, kind, zScore, sizeFactor, sfNote }) {
+function OutlierBadge({ label, kind, zScore, sizeFactor }) {
+  const multiplier  = sizeFactor != null ? (1 / sizeFactor) : null
+  const sfNote = multiplier == null ? null
+    : multiplier > 1
+      ? `Counts scaled up ×${multiplier.toFixed(2)} (library smaller than reference)`
+      : `Counts scaled down ×${(1 / multiplier).toFixed(2)} (library larger than reference)`
   const [pos, setPos] = useState(null)
   const isLow = kind === 'low'
   const color  = isLow ? '#f59e0b' : '#818cf8'
@@ -272,9 +277,9 @@ function OutlierBadge({ label, kind, zScore, sizeFactor, sfNote }) {
             <Row label="Direction" value={isLow ? '> 2 SD below mean median' : '> 2 SD above mean median'} />
             <div style={{ height:1, background:'var(--border)', margin:'3px 0' }} />
             <Row label="Size factor"
-                 value={sizeFactor != null ? sizeFactor.toFixed(4) : 'not available'}
-                 color={sizeFactor != null && (sizeFactor < 0.5 || sizeFactor > 2) ? '#f59e0b' : undefined} />
-            {sizeFactor != null
+                 value={sizeFactor != null ? `${sizeFactor.toFixed(4)}  (×${multiplier.toFixed(2)})` : 'not available'}
+                 color={sizeFactor != null && (multiplier > 2 || multiplier < 0.5) ? '#f59e0b' : undefined} />
+            {sfNote != null
               ? <div style={{ fontSize:'0.68rem', color:'var(--text-3)', lineHeight:1.5 }}>{sfNote}</div>
               : <div style={{ fontSize:'0.68rem', color:'var(--text-4)', fontStyle:'italic' }}>Re-run DESeq2 to populate size factor</div>
             }
@@ -374,17 +379,9 @@ function MediansTable({ histData }) {
                 </td>
                 <td style={{ padding:'5px 10px', borderBottom:GRID, whiteSpace:'nowrap' }}>
                   {isLow ? (
-                    <OutlierBadge
-                      label="Low outlier" kind="low"
-                      zScore={zScore} sizeFactor={r.sizeFactor}
-                      sfNote={r.sizeFactor > 2 ? 'large — raw library was big, scaled down heavily; composition effect likely' : r.sizeFactor < 0.5 ? 'small — raw library was small, scaled up; may indicate low sequencing depth' : 'within normal range'}
-                    />
+                    <OutlierBadge label="Low outlier" kind="low" zScore={zScore} sizeFactor={r.sizeFactor} />
                   ) : isHigh ? (
-                    <OutlierBadge
-                      label="High outlier" kind="high"
-                      zScore={zScore} sizeFactor={r.sizeFactor}
-                      sfNote={r.sizeFactor < 0.5 ? 'small — raw library was small, scaled up heavily; may inflate apparent expression' : r.sizeFactor > 2 ? 'large — raw library was unusually big' : 'within normal range'}
-                    />
+                    <OutlierBadge label="High outlier" kind="high" zScore={zScore} sizeFactor={r.sizeFactor} />
                   ) : (
                     <span style={{ color:'var(--text-4)', fontSize:'0.72rem' }}>—</span>
                   )}
