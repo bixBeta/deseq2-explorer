@@ -231,7 +231,7 @@ function DualDensityChart({ histData, cutoffLog, height = 300 }) {
 
 // ── Outlier badge with hover tooltip ─────────────────────────────────────────
 function OutlierBadge({ label, kind, zScore, sizeFactor, sfNote }) {
-  const [hovered, setHovered] = useState(false)
+  const [pos, setPos] = useState(null)
   const isLow = kind === 'low'
   const color  = isLow ? '#f59e0b' : '#818cf8'
   const bg     = isLow ? 'rgba(251,191,36,0.12)'   : 'rgba(99,102,241,0.1)'
@@ -249,7 +249,9 @@ function OutlierBadge({ label, kind, zScore, sizeFactor, sfNote }) {
       </svg>
   return (
     <div style={{ position:'relative', display:'inline-flex' }}
-         onMouseEnter={()=>setHovered(true)} onMouseLeave={()=>setHovered(false)}>
+         onMouseEnter={e => setPos({ x: e.clientX, y: e.clientY })}
+         onMouseMove={e  => setPos({ x: e.clientX, y: e.clientY })}
+         onMouseLeave={()=> setPos(null)}>
       <span style={{
         display:'inline-flex', alignItems:'center', gap:4,
         padding:'2px 8px', borderRadius:10, fontSize:'0.65rem', fontWeight:700,
@@ -257,9 +259,9 @@ function OutlierBadge({ label, kind, zScore, sizeFactor, sfNote }) {
       }}>
         {icon}{label}
       </span>
-      {hovered && (
+      {pos && createPortal(
         <div style={{
-          position:'absolute', bottom:'calc(100% + 6px)', left:0, zIndex:9999,
+          position:'fixed', left: pos.x + 14, top: pos.y + 14, zIndex:999999,
           background:'var(--bg-panel)', border:`1px solid ${border}`,
           borderRadius:10, padding:'10px 13px', minWidth:260, maxWidth:320,
           boxShadow:'0 8px 28px rgba(0,0,0,0.35)', pointerEvents:'none',
@@ -277,7 +279,8 @@ function OutlierBadge({ label, kind, zScore, sizeFactor, sfNote }) {
               : <div style={{ fontSize:'0.68rem', color:'var(--text-4)', fontStyle:'italic' }}>Re-run DESeq2 to populate size factor</div>
             }
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
