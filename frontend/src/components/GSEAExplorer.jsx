@@ -108,11 +108,30 @@ function DualDensityChart({ histData, cutoffLog, height = 300 }) {
     const gridColor  = isLight ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.12)'
     const modebarBg  = isLight ? 'rgba(255,255,255,0.85)' : 'rgba(15,23,42,0.85)'
 
+    // Compute x range from all KDE data (clamp to >= 0)
+    const allX = kdes.flatMap(k => k.x)
+    const xMax = Math.ceil(Math.max(...allX) * 1.02)
+
+    // Build tick labels in original count space so users think in counts, not log₁p
+    // Pick "nice" count values and convert to log₁p positions
+    const niceCountTicks = [0,1,2,3,5,10,20,50,100,200,500,1000,2000,5000,10000,20000]
+      .filter(v => Math.log1p(v) <= xMax)
+    const tickvals = niceCountTicks.map(v => Math.log1p(v))
+    const ticktext = niceCountTicks.map(v => String(v))
+
+    const baseXAxis = {
+      title:{ text:'normalised count (baseMean scale)', font:{size:9} },
+      color:textColor, gridcolor:gridColor, showgrid:true, zeroline:true,
+      zerolinecolor: '#f43f5e', zerolinewidth: cutoffLog === 0 ? 2 : 1,
+      tickfont:{size:8}, tickvals, ticktext,
+      range:[0, xMax],   // always start at 0 so cutoffLog=0 lands on the left axis
+    }
+
     const baseLayout = {
       height,
-      margin:{ t:28, r: showLegend ? 120 : 14, b:44, l:52 },
+      margin:{ t:28, r: showLegend ? 120 : 14, b:52, l:52 },
       plot_bgcolor:'transparent', paper_bgcolor:'transparent',
-      xaxis:{ title:{ text:'log₁p(norm count)', font:{size:9} }, color:textColor, gridcolor:gridColor, showgrid:true, zeroline:false, tickfont:{size:8} },
+      xaxis: baseXAxis,
       yaxis:{ title:{ text:'Density', font:{size:9} }, color:textColor, gridcolor:gridColor, showgrid:true, zeroline:false, tickfont:{size:8} },
       legend:{ font:{size:8,color:textColor}, bgcolor:'transparent', x:1.01, y:1, xanchor:'left' },
       hovermode:'x',
@@ -120,34 +139,49 @@ function DualDensityChart({ histData, cutoffLog, height = 300 }) {
     }
     const plotCfg = { responsive:true, displaylogo:false, modeBarButtonsToRemove:['select2d','lasso2d'] }
 
+    // Hover shows both log₁p value and original count
+    const hoverTpl = (sample) =>
+      `<b>${sample}</b><br>log₁p: %{x:.3f}<br>count ≈ %{customdata:.1f}<extra></extra>`
+
     // Pre-filter traces (all genes)
     const preTraces = kdes.map((kde, i) => ({
-      x:kde.x, y:kde.y, type:'scatter', mode:'lines', name:kde.sample,
+      x:kde.x, y:kde.y,
+      customdata: kde.x.map(v => Math.expm1(v)),
+      type:'scatter', mode:'lines', name:kde.sample,
       line:{ color:SAMPLE_COLORS[i%SAMPLE_COLORS.length], width:1.5, shape:'spline' },
       opacity:0.7, showlegend:showLegend,
-      hovertemplate:`<b>${kde.sample}</b><br>%{x:.2f}<extra></extra>`,
+      hovertemplate: hoverTpl(kde.sample),
     }))
+
+    const cutoffCount = Math.expm1(cutoffLog).toFixed(1)
+    const cutoffLabel = cutoffLog === 0 ? ' no cutoff (baseMean = 0)' : ` cutoff (count ≈ ${cutoffCount})`
     const preLayout = {
       ...baseLayout,
       title:{ text:'Pre-filter (all genes)', font:{size:11,color:textColor}, x:0.5, xanchor:'center', y:0.97 },
-      shapes:[{ type:'line', x0:cutoffLog, x1:cutoffLog, y0:0, y1:1, yref:'paper', line:{ color:'#f43f5e', width:2, dash:'dash' } }],
-      annotations:[{ x:cutoffLog, y:0.96, yref:'paper', xanchor:'left', text:' cutoff', font:{size:8,color:'#f87171'}, showarrow:false }],
+      shapes:[{ type:'line', x0:cutoffLog, x1:cutoffLog, y0:0, y1:1, yref:'paper',
+                line:{ color:'#f43f5e', width: cutoffLog === 0 ? 1 : 2, dash:'dash' } }],
+      annotations:[{ x:cutoffLog, y:0.96, yref:'paper',
+                     xanchor: cutoffLog === 0 ? 'left' : 'left',
+                     text: cutoffLabel, font:{size:8,color:'#f87171'}, showarrow:false }],
     }
 
     // Post-filter traces: clip x < cutoffLog
     const postTraces = kdes.map((kde, i) => {
-      const startIdx = kde.x.findIndex(v => v >= cutoffLog)
-      const xs = startIdx >= 0 ? kde.x.slice(startIdx) : []
-      const ys = startIdx >= 0 ? kde.y.slice(startIdx) : []
+      const startIdx = cutoffLog === 0 ? 0 : kde.x.findIndex(v => v >= cutoffLog)
+      const xs = startIdx >= 0 ? kde.x.slice(startIdx) : kde.x
+      const ys = startIdx >= 0 ? kde.y.slice(startIdx) : kde.y
       return {
-        x:xs, y:ys, type:'scatter', mode:'lines', name:kde.sample,
+        x:xs, y:ys,
+        customdata: xs.map(v => Math.expm1(v)),
+        type:'scatter', mode:'lines', name:kde.sample,
         line:{ color:SAMPLE_COLORS[i%SAMPLE_COLORS.length], width:1.5, shape:'spline' },
         opacity:0.7, showlegend:showLegend,
-        hovertemplate:`<b>${kde.sample}</b><br>%{x:.2f}<extra></extra>`,
+        hovertemplate: hoverTpl(kde.sample),
       }
     })
     const postLayout = {
       ...baseLayout,
+      xaxis: { ...baseXAxis, range:[cutoffLog === 0 ? 0 : cutoffLog * 0.98, xMax] },
       title:{ text:'Post-filter (genes above cutoff)', font:{size:11,color:textColor}, x:0.5, xanchor:'center', y:0.97 },
     }
 
