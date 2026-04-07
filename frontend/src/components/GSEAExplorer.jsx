@@ -229,6 +229,68 @@ function DualDensityChart({ histData, cutoffLog, height = 300 }) {
   )
 }
 
+// ── Outlier badge with hover tooltip ─────────────────────────────────────────
+function OutlierBadge({ label, kind, zScore, sizeFactor, sfNote }) {
+  const [hovered, setHovered] = useState(false)
+  const isLow = kind === 'low'
+  const color  = isLow ? '#f59e0b' : '#818cf8'
+  const bg     = isLow ? 'rgba(251,191,36,0.12)'   : 'rgba(99,102,241,0.1)'
+  const border = isLow ? 'rgba(251,191,36,0.35)'   : 'rgba(99,102,241,0.3)'
+  const icon = isLow
+    ? <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{flexShrink:0}}>
+        <path d="M5 1L9 9H1L5 1Z" stroke={color} strokeWidth="1.2" fill={bg} strokeLinejoin="round"/>
+        <line x1="5" y1="4" x2="5" y2="6.5" stroke={color} strokeWidth="1.2" strokeLinecap="round"/>
+        <circle cx="5" cy="8" r="0.6" fill={color}/>
+      </svg>
+    : <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{flexShrink:0}}>
+        <path d="M5 9L1 1H9L5 9Z" stroke={color} strokeWidth="1.2" fill={bg} strokeLinejoin="round"/>
+        <line x1="5" y1="6" x2="5" y2="3.5" stroke={color} strokeWidth="1.2" strokeLinecap="round"/>
+        <circle cx="5" cy="2" r="0.6" fill={color}/>
+      </svg>
+  return (
+    <div style={{ position:'relative', display:'inline-flex' }}
+         onMouseEnter={()=>setHovered(true)} onMouseLeave={()=>setHovered(false)}>
+      <span style={{
+        display:'inline-flex', alignItems:'center', gap:4,
+        padding:'2px 8px', borderRadius:10, fontSize:'0.65rem', fontWeight:700,
+        background:bg, color, border:`1px solid ${border}`, cursor:'default',
+      }}>
+        {icon}{label}
+      </span>
+      {hovered && (
+        <div style={{
+          position:'absolute', bottom:'calc(100% + 6px)', left:0, zIndex:9999,
+          background:'var(--bg-panel)', border:`1px solid ${border}`,
+          borderRadius:10, padding:'10px 13px', minWidth:260, maxWidth:320,
+          boxShadow:'0 8px 28px rgba(0,0,0,0.35)', pointerEvents:'none',
+        }}>
+          <div style={{ fontSize:'0.72rem', fontWeight:700, color, marginBottom:7 }}>{label}</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+            <Row label="z-score" value={zScore.toFixed(2)} color={color} />
+            <Row label="Direction" value={isLow ? '> 2 SD below mean median' : '> 2 SD above mean median'} />
+            <div style={{ height:1, background:'var(--border)', margin:'3px 0' }} />
+            <Row label="Size factor"
+                 value={sizeFactor != null ? sizeFactor.toFixed(4) : 'not available'}
+                 color={sizeFactor != null && (sizeFactor < 0.5 || sizeFactor > 2) ? '#f59e0b' : undefined} />
+            {sizeFactor != null
+              ? <div style={{ fontSize:'0.68rem', color:'var(--text-3)', lineHeight:1.5 }}>{sfNote}</div>
+              : <div style={{ fontSize:'0.68rem', color:'var(--text-4)', fontStyle:'italic' }}>Re-run DESeq2 to populate size factor</div>
+            }
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+function Row({ label, value, color }) {
+  return (
+    <div style={{ display:'flex', justifyContent:'space-between', gap:12, fontSize:'0.7rem' }}>
+      <span style={{ color:'var(--text-3)', whiteSpace:'nowrap' }}>{label}</span>
+      <span style={{ color: color ?? 'var(--text-1)', fontFamily:'monospace', fontWeight:600, textAlign:'right' }}>{value}</span>
+    </div>
+  )
+}
+
 // ── Per-sample medians table ──────────────────────────────────────────────────
 function MediansTable({ histData }) {
   const { rows, meanMed, sd } = useMemo(() => {
@@ -309,43 +371,17 @@ function MediansTable({ histData }) {
                 </td>
                 <td style={{ padding:'5px 10px', borderBottom:GRID, whiteSpace:'nowrap' }}>
                   {isLow ? (
-                    <span title={[
-                      `z = ${zScore.toFixed(2)} · more than 2 SD below the mean median`,
-                      r.sizeFactor != null
-                        ? `Size factor: ${r.sizeFactor.toFixed(4)}${r.sizeFactor > 2 ? ' (large — raw library was big, scaled down heavily; composition effect likely)' : r.sizeFactor < 0.5 ? ' (small — raw library was small, scaled up; may indicate low sequencing depth)' : ' (within normal range)'}`
-                        : 'Size factor: not available (re-run DESeq2 to populate)',
-                    ].join('\n')} style={{
-                      display:'inline-flex', alignItems:'center', gap:4,
-                      padding:'2px 8px', borderRadius:10, fontSize:'0.65rem', fontWeight:700,
-                      background:'rgba(251,191,36,0.12)', color:'#f59e0b',
-                      border:'1px solid rgba(251,191,36,0.35)', cursor:'help',
-                    }}>
-                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{flexShrink:0}}>
-                        <path d="M5 1L9 9H1L5 1Z" stroke="#f59e0b" strokeWidth="1.2" fill="rgba(251,191,36,0.2)" strokeLinejoin="round"/>
-                        <line x1="5" y1="4" x2="5" y2="6.5" stroke="#f59e0b" strokeWidth="1.2" strokeLinecap="round"/>
-                        <circle cx="5" cy="8" r="0.6" fill="#f59e0b"/>
-                      </svg>
-                      Low outlier
-                    </span>
+                    <OutlierBadge
+                      label="Low outlier" kind="low"
+                      zScore={zScore} sizeFactor={r.sizeFactor}
+                      sfNote={r.sizeFactor > 2 ? 'large — raw library was big, scaled down heavily; composition effect likely' : r.sizeFactor < 0.5 ? 'small — raw library was small, scaled up; may indicate low sequencing depth' : 'within normal range'}
+                    />
                   ) : isHigh ? (
-                    <span title={[
-                      `z = ${zScore.toFixed(2)} · more than 2 SD above the mean median`,
-                      r.sizeFactor != null
-                        ? `Size factor: ${r.sizeFactor.toFixed(4)}${r.sizeFactor < 0.5 ? ' (small — raw library was small, scaled up heavily; may inflate apparent expression)' : r.sizeFactor > 2 ? ' (large — raw library was unusually big)' : ' (within normal range)'}`
-                        : 'Size factor: not available (re-run DESeq2 to populate)',
-                    ].join('\n')} style={{
-                      display:'inline-flex', alignItems:'center', gap:4,
-                      padding:'2px 8px', borderRadius:10, fontSize:'0.65rem', fontWeight:700,
-                      background:'rgba(99,102,241,0.1)', color:'#818cf8',
-                      border:'1px solid rgba(99,102,241,0.3)', cursor:'help',
-                    }}>
-                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{flexShrink:0}}>
-                        <path d="M5 9L1 1H9L5 9Z" stroke="#818cf8" strokeWidth="1.2" fill="rgba(99,102,241,0.2)" strokeLinejoin="round"/>
-                        <line x1="5" y1="6" x2="5" y2="3.5" stroke="#818cf8" strokeWidth="1.2" strokeLinecap="round"/>
-                        <circle cx="5" cy="2" r="0.6" fill="#818cf8"/>
-                      </svg>
-                      High outlier
-                    </span>
+                    <OutlierBadge
+                      label="High outlier" kind="high"
+                      zScore={zScore} sizeFactor={r.sizeFactor}
+                      sfNote={r.sizeFactor < 0.5 ? 'small — raw library was small, scaled up heavily; may inflate apparent expression' : r.sizeFactor > 2 ? 'large — raw library was unusually big' : 'within normal range'}
+                    />
                   ) : (
                     <span style={{ color:'var(--text-4)', fontSize:'0.72rem' }}>—</span>
                   )}
