@@ -151,7 +151,7 @@ function DualDensityChart({ histData, cutoffLog, height = 300 }) {
       x:kde.x, y:kde.y,
       customdata: kde.x.map(v => Math.expm1(v)),
       type:'scatter', mode:'lines', name:kde.sample,
-      line:{ color:SAMPLE_COLORS[i%SAMPLE_COLORS.length], width:1.5, shape:'spline' },
+      line:{ color:SAMPLE_COLORS[i%SAMPLE_COLORS.length], width:1.5, shape:'linear' },
       opacity:0.7, showlegend:showLegend,
       hovertemplate: hoverTpl(kde.sample),
     }))
@@ -178,7 +178,7 @@ function DualDensityChart({ histData, cutoffLog, height = 300 }) {
         x:xs, y:ys,
         customdata: xs.map(v => Math.expm1(v)),
         type:'scatter', mode:'lines', name:kde.sample,
-        line:{ color:SAMPLE_COLORS[i%SAMPLE_COLORS.length], width:1.5, shape:'spline' },
+        line:{ color:SAMPLE_COLORS[i%SAMPLE_COLORS.length], width:1.5, shape:'linear' },
         opacity:0.7, showlegend:showLegend,
         hovertemplate: hoverTpl(kde.sample),
       }
