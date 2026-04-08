@@ -845,7 +845,7 @@ function ResultsTable({ run, onPathwayClick, selectedPathway, fullscreen, setFul
       </div>
 
       {/* Table */}
-      <div style={{ overflowX:'auto', borderRadius:10, border:CB, flex: fullscreen ? '1 1 0' : undefined }}>
+      <div style={{ overflowX:'auto', overflowY: fullscreen ? 'auto' : 'visible', borderRadius:10, border:CB, flex: fullscreen ? '1 1 0' : undefined, minHeight: 0 }}>
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.78rem' }}>
           <thead><tr>{TH('pathway','Pathway')}{TH('NES','NES')}{TH('padj','padj')}{TH('size','Size')}
             <th style={{ padding:'7px 10px', fontSize:'0.65rem', fontWeight:700, letterSpacing:'0.05em', textTransform:'uppercase', color:'var(--text-3)', background:'var(--bg-card2)', border:CB }}>Leading Edge</th>
