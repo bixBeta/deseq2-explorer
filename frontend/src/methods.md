@@ -280,22 +280,13 @@ GSEA is performed using [`clusterProfiler::GSEA()`](https://bioconductor.org/pac
 
 ### Pre-filter: low-count gene removal
 
-Before ranking, genes are filtered by **baseMean** — the mean of DESeq2-normalised counts (`rowMeans(counts(dds, normalized = TRUE))`) across all samples. Two filter modes are available:
+Before ranking, genes are filtered by **baseMean** — the mean of DESeq2 size-factor-normalised counts across all samples (`rowMeans(counts(dds, normalized = TRUE))`). Only genes with baseMean ≥ N are retained in the ranked list (default: N = 10 normalised counts). The threshold is set directly via the sidebar slider.
 
-- **baseMean cutoff** (default) — retain genes with baseMean ≥ N normalised counts (default: 10). The slider and number input set N directly.
-- **Quantile** — retain genes above the Nth percentile of baseMean (default: 25th). The resolved baseMean threshold is shown alongside the slider.
-
-The density distribution of per-sample normalised counts (log₁p-transformed) is shown in a modal panel to guide cutoff selection. The red dashed vertical line marks `log₁p(cutoff)` on the x-axis; genes whose baseMean falls to the left of the line are excluded from the ranked list.
+The distribution modal displays per-sample kernel density estimates of log₁p-transformed normalised counts. The red dashed vertical line marks `log1p(cutoff)` on the x-axis; genes whose baseMean falls to the left of this line are excluded from the ranked list. The **Sample Medians** tab shows the median log₁p count per sample alongside statistical outlier flags (±2 SD from the cross-sample mean), which can help identify samples with unusually low or high library depth before running GSEA.
 
 ```r
 base_means <- rowMeans(counts(dds, normalized = TRUE))
-
-cutoff <- if (filter_method == "quantile") {
-  quantile(base_means, filter_value, na.rm = TRUE)   # filter_value = 0–1
-} else {
-  filter_value                                        # absolute count threshold
-}
-genes_pass <- names(base_means)[base_means >= cutoff]
+genes_pass <- names(base_means)[base_means >= filter_value]
 ```
 
 ### Ranked gene list construction

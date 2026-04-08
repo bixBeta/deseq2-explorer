@@ -474,9 +474,10 @@ function SectionGSEA() {
 
       <H3>Pre-filter</H3>
       <P>
-        Low-expression genes are removed before ranking using row medians of DESeq2-normalised counts.
-        Use the density plot in the filter modal to choose an appropriate cutoff.
-        The <Badge>Quantile</Badge> mode removes genes below the Nth percentile; <Badge>Abs count</Badge> removes genes with median below N counts.
+        Low-expression genes are removed before ranking using <strong>baseMean</strong> — the mean of DESeq2 size-factor-normalised counts across all samples.
+        Only genes with baseMean ≥ N are included in the ranked list (default: 10 normalised counts).
+        Use the density distribution modal to inspect per-sample count distributions and choose an appropriate threshold.
+        The dashed vertical line marks the current cutoff on the log₁p scale; genes to the left are excluded.
       </P>
 
       <H3>Run Parameters</H3>
