@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import ProgressBar from './ProgressBar'
 
 function CopyIdBadge({ sessionId }) {
@@ -14,6 +14,69 @@ function CopyIdBadge({ sessionId }) {
         fontFamily: 'monospace', cursor: 'pointer', transition: 'all 0.15s',
       }}>
       {copied ? '✓ Copied' : `ID: ${sessionId}`}
+    </button>
+  )
+}
+
+/* ── inline name editor ── */
+function EditableName({ sessionId, initialName, auth, onChange }) {
+  const [editing, setEditing] = useState(false)
+  const [value,   setValue]   = useState(initialName || 'Unnamed Session')
+  const [saving,  setSaving]  = useState(false)
+  const inputRef = useRef(null)
+
+  useEffect(() => { if (editing) inputRef.current?.select() }, [editing])
+
+  async function commit() {
+    const trimmed = value.trim()
+    if (!trimmed || trimmed === initialName) { setValue(initialName || 'Unnamed Session'); setEditing(false); return }
+    setSaving(true)
+    try {
+      const res = await fetch('/api/session/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: auth.email, pin: auth.pin, sessionId, name: trimmed }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Rename failed')
+      setValue(data.name)
+      onChange(data.name)
+    } catch { setValue(initialName || 'Unnamed Session') }
+    finally { setSaving(false); setEditing(false) }
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={e => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit() } if (e.key === 'Escape') { setValue(initialName || 'Unnamed Session'); setEditing(false) } }}
+        maxLength={80}
+        disabled={saving}
+        style={{
+          fontSize: '0.875rem', fontWeight: 600, background: 'var(--bg-card)',
+          border: '1px solid var(--accent)', borderRadius: 6, padding: '1px 6px',
+          color: 'var(--text-1)', outline: 'none', width: '100%', maxWidth: 280,
+        }}
+      />
+    )
+  }
+
+  return (
+    <button
+      onClick={() => setEditing(true)}
+      title="Click to rename"
+      style={{
+        background: 'none', border: 'none', padding: 0, cursor: 'text',
+        fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-1)',
+        display: 'flex', alignItems: 'center', gap: 5, textAlign: 'left',
+      }}>
+      <span className="truncate">{value}</span>
+      <svg width="11" height="11" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, opacity: 0.4 }}>
+        <path d="M10 2l2 2L5 11H3V9L10 2z" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
     </button>
   )
 }
@@ -38,7 +101,7 @@ const SESSION_LIMIT = 5
 
 /* ── component ── */
 export default function SessionPicker({ auth, initialSessions, onPick, onLogout }) {
-  const [sessions, setSessions]   = useState(initialSessions || [])
+  const [sessions, setSessions]   = useState((initialSessions || []).map(s => ({ ...s })))
   const [loading, setLoading]     = useState(null)    // sessionId | 'new' | `${id}-del`
   const [delConfirm, setDelConfirm] = useState(null)  // sessionId awaiting confirmation
   const [error, setError]         = useState(null)
@@ -195,9 +258,12 @@ export default function SessionPicker({ auth, initialSessions, onPick, onLogout 
 
                 {/* info */}
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-1)' }}>
-                    {s.name || 'Unnamed Session'}
-                  </p>
+                  <EditableName
+                    sessionId={s.sessionId}
+                    initialName={s.name}
+                    auth={auth}
+                    onChange={newName => setSessions(prev => prev.map(x => x.sessionId === s.sessionId ? { ...x, name: newName } : x))}
+                  />
                   <div className="flex flex-wrap items-center gap-2 mt-1">
                     <span className="text-xs px-1.5 py-0.5 rounded-md"
                           style={{ background: badge.bg, color: badge.color, border: `1px solid ${badge.border}` }}>

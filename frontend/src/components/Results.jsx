@@ -259,6 +259,7 @@ export default function Results({ results, design, onBack, onEditSamples, sessio
         </div>
         <div style={{ display: vizTab === 'gsea' ? 'block' : 'none' }}>
           <GSEAExplorer
+            key={session?.sessionId}
             session={session}
             contrastLabel={active?.label}
             annMap={annMap}

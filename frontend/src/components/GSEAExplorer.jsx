@@ -1462,7 +1462,9 @@ function MountainModal({ pathway, result, curveData, curveLoading, curveError, o
 // ── Main GSEAExplorer ─────────────────────────────────────────────────────────
 export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsChange, initialRuns }) {
   const { promptDownload, dialog: exportDialog } = useDownloadDialog()
-  const [exportLoading, setExportLoading] = useState(false)
+  const [exportLoading,  setExportLoading]  = useState(false)
+  const [exportProgress, setExportProgress] = useState(0)   // 0-100
+  const exportTimerRef = useRef(null)
   const [rankMethod,   setRankMethod]   = useState('log2FC')
   const [collection,   setCollection]   = useState(COLLECTIONS[0])
   const [species,      setSpecies]      = useState('Homo sapiens')
@@ -1550,7 +1552,18 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
   // Export full clusterProfiler results for all runs in this contrast
   const handleExportAll = useCallback(async()=>{
     if(!session?.sessionId || !contrastRuns.length) return
+    // Start progress simulation: crawl toward 80%, slowing as it approaches
+    setExportProgress(0)
     setExportLoading(true)
+    clearInterval(exportTimerRef.current)
+    exportTimerRef.current = setInterval(()=>{
+      setExportProgress(p => {
+        if(p >= 80) { clearInterval(exportTimerRef.current); return p }
+        // step shrinks as we get closer to 80
+        const step = Math.max(0.3, (80 - p) * 0.035)
+        return Math.min(80, p + step)
+      })
+    }, 120)
     try {
       const runs = contrastRuns.map(r=>({
         contrast_label:   r.contrastLabel,
@@ -1567,11 +1580,18 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
       })
       const rows = await resp.json()
       if(rows.error) throw new Error(rows.error)
+      // Snap to 100% then prompt download
+      clearInterval(exportTimerRef.current)
+      setExportProgress(100)
       const label = contrastLabel?.replace(/\s+/g,'_') ?? 'contrast'
       const dbs   = [...new Set(contrastRuns.map(r=>r.collectionLabel))].join('+')
       promptDownload(`gsea_results_${label}_${dbs}.csv`, name => downloadCSV(rows, name))
     } catch(e){ console.error('[GSEA export]', e) }
-    finally{ setExportLoading(false) }
+    finally{
+      clearInterval(exportTimerRef.current)
+      // Brief pause at 100% so the user sees completion, then reset
+      setTimeout(()=>{ setExportLoading(false); setExportProgress(0) }, 600)
+    }
   },[session, contrastRuns, contrastLabel, promptDownload])
 
   // Run GSEA
@@ -1591,7 +1611,8 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
       const data=await r.json()
       if(data.error) throw new Error(data.error)
       const rm=RANK_METHODS.find(m=>m.value===rankMethod)
-      const newRun={ id:runId, collectionLabel:collection.label, collectionKey:collection.key,
+      const newRun={ id:runId, sessionId:session?.sessionId,
+        collectionLabel:collection.label, collectionKey:collection.key,
         collectionId:collection.id, collectionSub:collection.sub,
         rankMethod, rankShort:rm?.short??rankMethod, filterValue, species,
         scoreType, nPerm, pAdjMethod, padjCutoff,
@@ -1813,6 +1834,16 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
                 </button>
                 {exportDialog}
               </div>
+              {exportLoading && (
+                <div style={{ width:'100%', height:3, borderRadius:2, background:V.border, overflow:'hidden', marginTop:2 }}>
+                  <div style={{
+                    height:'100%', borderRadius:2,
+                    background:`linear-gradient(90deg,${V.accent},${V.accent2})`,
+                    width:`${exportProgress}%`,
+                    transition: exportProgress === 100 ? 'width 0.2s ease' : 'width 0.12s linear',
+                  }} />
+                </div>
+              )}
               <div style={{ display:'flex', gap:2, borderBottom:`1px solid ${V.border}` }}>
                 {[
                   ['results', `◉ Pathways${activeRun?.results?.length?` (${activeRun.results.length})`:''}`],

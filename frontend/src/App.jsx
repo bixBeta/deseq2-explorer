@@ -121,6 +121,10 @@ export default function App() {
   function handlePick(info) {
     setSession({ sessionId: info.sessionId, email: auth?.email || info.email })
 
+    // Always reset all session-scoped state so nothing bleeds across sessions
+    setGseaRuns([])
+    setAnnMap(null); setAnnDetails(null); setSampleLabels({})
+
     if (info.isNew) {
       setParseInfo(null); setMetaState(null); setResults(null); setDesign(null)
       setStep('upload')
@@ -133,7 +137,21 @@ export default function App() {
       if (info.annMap    && Object.keys(info.annMap).length    > 0) setAnnMap(info.annMap)
       if (info.annDetails && Object.keys(info.annDetails).length > 0) setAnnDetails(info.annDetails)
       if (info.sampleLabels && Object.keys(info.sampleLabels).length > 0) setSampleLabels(info.sampleLabels)
-      if (info.gseaRuns?.length > 0) setGseaRuns(info.gseaRuns)
+      if (info.gseaRuns?.length > 0) {
+        // Only restore runs that belong to this session.
+        // Filter by sessionId (new runs) or by contrastLabel matching a known contrast
+        // in this session's results (cleans pre-existing DB contamination).
+        const knownLabels = new Set(
+          (info.results?.contrasts ?? []).map(c => c.label).filter(Boolean)
+        )
+        const ownRuns = info.gseaRuns.filter(r =>
+          // tagged run: must match this session
+          (r.sessionId && r.sessionId === info.sessionId) ||
+          // legacy untagged run: trust it only if its contrast exists in this session
+          (!r.sessionId && knownLabels.has(r.contrastLabel))
+        )
+        if (ownRuns.length > 0) setGseaRuns(ownRuns)
+      }
       // Restore metaState so "Add Contrast" can route back to the design panel
       if (info.metadataRows?.length > 0) {
         const norm = normParseInfo(info)
@@ -162,7 +180,7 @@ export default function App() {
   function handleLogout() {
     setAuth(null); setSessions([]); setSession(null)
     setParseInfo(null); setMetaState(null); setResults(null); setDesign(null); setAnnMap(null); setAnnDetails(null)
-    setSampleLabels({})
+    setSampleLabels({}); setGseaRuns([])
     setStep('session')
   }
 

@@ -345,6 +345,24 @@ function(req, res) {
   list(ok = TRUE)
 }
 
+#* @post /api/session/rename
+#* @serializer unboxedJSON
+function(req, res) {
+  body       <- fromJSON(rawToChar(req$bodyRaw))
+  email      <- body$email; pin <- body$pin; session_id <- body$sessionId
+  new_name   <- trimws(body$name %||% "")
+  if (is.null(email) || is.null(pin)) stop("email and pin are required")
+  if (is.null(session_id) || session_id == "") stop("sessionId is required")
+  if (nchar(new_name) == 0) stop("name cannot be empty")
+  if (nchar(new_name) > 80) stop("name must be 80 characters or fewer")
+  pin_hash <- digest(pin, algo = "sha256")
+  # Verify ownership
+  row <- session_load_by_id(session_id, email, pin_hash)
+  if (nrow(row) == 0) { res$status <- 403; return(list(error = "Session not found or access denied")) }
+  session_update(session_id, name = new_name)
+  list(ok = TRUE, name = new_name)
+}
+
 # ── MA Plot: return data points as JSON for interactive Plotly rendering ───────
 #* @post /api/maplot
 #* @serializer unboxedJSON

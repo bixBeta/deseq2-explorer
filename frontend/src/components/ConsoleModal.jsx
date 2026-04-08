@@ -318,15 +318,14 @@ function buildHtmlExport(md, sessionRows, contrasts, gseaRuns, alpha) {
   </table>
 </section>` : ''
 
-  const RANK_LABELS_EXP   = { log2FC:'LFC', stat:'Wald stat', shrunkLFC:'Shrunk LFC', signedNegLog10p:'−log10p' }
-  const FILTER_LABELS_EXP = { quantile:'Quantile', abs_lfc:'|LFC|', pvalue:'p-value', padj:'padj' }
+  const RANK_LABELS_EXP = { log2FC:'LFC', stat:'Wald stat', shrunkLFC:'Shrunk LFC', signedNegLog10p:'−log10p' }
 
   const gseaHtml = gseaRuns?.length ? `
 <section>
   <h2>GSEA Runs (${gseaRuns.length})</h2>
   <div style="overflow-x:auto">
   <table style="width:auto;min-width:100%;white-space:nowrap">
-    <thead><tr><th>Contrast</th><th>Collection</th><th>Rank by</th><th>padj method</th><th>padj cutoff</th><th>Filter</th><th>Gene set size</th><th>Species</th><th>Pathways</th></tr></thead>
+    <thead><tr><th>Contrast</th><th>Collection</th><th>Rank by</th><th>padj method</th><th>padj cutoff</th><th>Min baseMean</th><th>Gene set size</th><th>Species</th><th>Pathways</th></tr></thead>
     <tbody>${gseaRuns.map(r => {
       const p = r.params ?? r
       return `<tr><td><code>${escHtml(r.contrastLabel ?? '')}</code></td>` +
@@ -334,7 +333,7 @@ function buildHtmlExport(md, sessionRows, contrasts, gseaRuns, alpha) {
         `<td>${escHtml(RANK_LABELS_EXP[p.rankMethod] ?? p.rankMethod ?? '')}</td>` +
         `<td>${escHtml(p.pAdjMethod ?? '')}</td>` +
         `<td>${escHtml(String(p.padjCutoff ?? ''))}</td>` +
-        `<td>${escHtml((FILTER_LABELS_EXP[p.filterMethod] ?? p.filterMethod ?? '')+' > '+(p.filterValue ?? ''))}</td>` +
+        `<td>${escHtml(String(p.filterValue ?? ''))}</td>` +
         `<td>${escHtml(String(p.minSize ?? ''))}–${escHtml(String(p.maxSize ?? ''))}</td>` +
         `<td>${escHtml(p.species ?? '')}</td>` +
         `<td>${r.meta?.n_pathways ?? '—'}</td></tr>`
@@ -649,7 +648,7 @@ export default function ConsoleModal({ onClose, session, design, results, parseI
                       <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.79rem' }}>
                         <thead>
                           <tr style={{ background:'rgba(var(--accent-rgb),0.07)' }}>
-                            {['Contrast','Collection','Rank by','padj method','padj cutoff','Filter','Gene set size','Species','Pathways','Time'].map(h=>(
+                            {['Contrast','Collection','Rank by','padj method','padj cutoff','Min baseMean','Gene set size','Species','Pathways','Time'].map(h=>(
                               <th key={h} style={{ padding:'6px 10px', textAlign:'left', color:'var(--accent)',
                                 fontWeight:600, borderBottom:'2px solid var(--border)', whiteSpace:'nowrap' }}>{h}</th>
                             ))}
@@ -659,7 +658,6 @@ export default function ConsoleModal({ onClose, session, design, results, parseI
                           {gseaRuns.map((r, i) => {
                             const p = r.params ?? r
                             const RANK_LABELS = { log2FC:'LFC', stat:'Wald stat', shrunkLFC:'Shrunk LFC', signedNegLog10p:'−log₁₀p' }
-                            const FILTER_LABELS = { quantile:'Quantile', abs_lfc:'|LFC|', pvalue:'p-value', padj:'padj' }
                             return (
                               <tr key={r.id} style={{ background: i%2===0?'transparent':'rgba(255,255,255,0.02)',
                                 borderBottom:'1px solid var(--border)' }}>
@@ -668,7 +666,7 @@ export default function ConsoleModal({ onClose, session, design, results, parseI
                                 <td style={{ padding:'5px 10px', color:'var(--text-2)' }}>{RANK_LABELS[p.rankMethod] ?? p.rankMethod}</td>
                                 <td style={{ padding:'5px 10px', color:'var(--text-2)' }}>{p.pAdjMethod}</td>
                                 <td style={{ padding:'5px 10px', color:'var(--text-2)' }}>{p.padjCutoff}</td>
-                                <td style={{ padding:'5px 10px', color:'var(--text-2)', whiteSpace:'nowrap' }}>{FILTER_LABELS[p.filterMethod] ?? p.filterMethod} &gt; {p.filterValue}</td>
+                                <td style={{ padding:'5px 10px', color:'var(--text-2)', whiteSpace:'nowrap' }}>{p.filterValue ?? '—'}</td>
                                 <td style={{ padding:'5px 10px', color:'var(--text-2)', whiteSpace:'nowrap' }}>{p.minSize}–{p.maxSize}</td>
                                 <td style={{ padding:'5px 10px', color:'var(--text-2)' }}>{p.species}</td>
                                 <td style={{ padding:'5px 10px', color:'var(--text-2)' }}>{r.meta?.n_pathways ?? '—'}</td>
