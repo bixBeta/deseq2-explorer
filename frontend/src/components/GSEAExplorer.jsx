@@ -1684,10 +1684,10 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
         </button>
       </div>
 
-      <div style={{ display:'flex', gap:16, alignItems:'flex-start' }}>
+      <div style={{ display:'flex', gap:16, alignItems:'flex-start', flex: fsPanel ? '1 1 0' : undefined, minHeight: fsPanel ? 0 : undefined }}>
 
         {/* ── SIDEBAR ─────────────────────────────────────────────────── */}
-        <div style={{ width:292, flexShrink:0, display:'flex', flexDirection:'column', gap:14, background:V.card, borderRadius:12, padding:16, border:`1px solid ${V.border}`, position:'sticky', top:80, maxHeight:'calc(100vh - 120px)', overflowY:'auto' }}>
+        <div style={{ width:292, flexShrink:0, display:'flex', flexDirection:'column', gap:14, background:V.card, borderRadius:12, padding:16, border:`1px solid ${V.border}`, position:'sticky', top: fsPanel ? 0 : 80, maxHeight: fsPanel ? '100%' : 'calc(100vh - 120px)', overflowY:'auto' }}>
 
           {/* Rank method */}
           <div>
@@ -1797,10 +1797,8 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
         </div>
 
         {/* ── RIGHT CONTENT ──────────────────────────────────────────────── */}
-        <div style={{ flex:1, minWidth:0, display:'flex', flexDirection:'column', gap:12,
-                      maxHeight: fsPanel ? undefined : 'calc(100vh - 140px)',
-                      overflowY: fsPanel ? undefined : 'auto',
-                      paddingRight: fsPanel ? undefined : 4 }}>
+        <div style={{ flex:1, minWidth:0, minHeight:0, display:'flex', flexDirection:'column', gap:12,
+                      overflowY: fsPanel ? 'auto' : undefined }}>
           {!contrastRuns.length && !running && (
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:400, gap:16, color:'var(--text-3)' }}>
               <div style={{ fontSize:'3rem', opacity:0.2 }}>⟳</div>
