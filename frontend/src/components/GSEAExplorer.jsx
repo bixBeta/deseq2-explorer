@@ -169,16 +169,23 @@ function DualDensityChart({ histData, cutoffLog, height = 300 }) {
                      text:cutoffLabel, font:{size:8,color:'#f87171'}, showarrow:false }],
     }
 
-    // Post-filter traces: use full KDE arrays — let Plotly clip via xaxis.range
-    // (slicing causes staircase artifacts by removing the points that anchor the spline)
-    const postTraces = kdes.map((kde, i) => ({
-      x:kde.x, y:kde.y,
-      customdata: kde.x.map(v => Math.expm1(v)),
-      type:'scatter', mode:'lines', name:kde.sample,
-      line:{ color:SAMPLE_COLORS[i%SAMPLE_COLORS.length], width:1.5, shape:'spline' },
-      opacity:0.7, showlegend:showLegend,
-      hovertemplate: hoverTpl(kde.sample),
-    }))
+    // Post-filter traces: keep 15 anchor points below the cutoff so the spline
+    // enters the visible window smoothly, then clip the rest
+    const ANCHOR = 15
+    const postTraces = kdes.map((kde, i) => {
+      const cutIdx   = cutoffLog === 0 ? 0 : kde.x.findIndex(v => v >= cutoffLog)
+      const startIdx = Math.max(0, cutIdx - ANCHOR)
+      const xs = kde.x.slice(startIdx)
+      const ys = kde.y.slice(startIdx)
+      return {
+        x: xs, y: ys,
+        customdata: xs.map(v => Math.expm1(v)),
+        type:'scatter', mode:'lines', name:kde.sample,
+        line:{ color:SAMPLE_COLORS[i%SAMPLE_COLORS.length], width:1.5, shape:'spline' },
+        opacity:0.7, showlegend:showLegend,
+        hovertemplate: hoverTpl(kde.sample),
+      }
+    })
     const postXStart = cutoffLog === 0 ? 0 : cutoffLog * 0.98
     // Compute y-range from only the points in the visible x window so the
     // axis doesn't scale to the off-screen pre-cutoff peak
