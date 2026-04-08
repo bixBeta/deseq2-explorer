@@ -785,7 +785,7 @@ function ResultsTable({ run, onPathwayClick, selectedPathway, fullscreen, setFul
   const [dirFilter, setDirFilter] = useState('all')
   const [query,     setQuery]     = useState('')
   const [page,      setPage]      = useState(0)
-  const PER = 30
+  const PER = 20
   const padjCutoff = run?.padjCutoff ?? 1
   const results = (run?.results ?? []).filter(r => (r.padj ?? 1) <= padjCutoff)
   const maxAbs  = useMemo(()=>Math.max(...results.map(r=>Math.abs(r.NES||0)),1),[results])
