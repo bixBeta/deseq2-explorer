@@ -1797,7 +1797,10 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
         </div>
 
         {/* ── RIGHT CONTENT ──────────────────────────────────────────────── */}
-        <div style={{ flex:1, minWidth:0, display:'flex', flexDirection:'column', gap:12 }}>
+        <div style={{ flex:1, minWidth:0, display:'flex', flexDirection:'column', gap:12,
+                      maxHeight: fsPanel ? undefined : 'calc(100vh - 140px)',
+                      overflowY: fsPanel ? undefined : 'auto',
+                      paddingRight: fsPanel ? undefined : 4 }}>
           {!contrastRuns.length && !running && (
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:400, gap:16, color:'var(--text-3)' }}>
               <div style={{ fontSize:'3rem', opacity:0.2 }}>⟳</div>
