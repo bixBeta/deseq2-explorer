@@ -25,6 +25,10 @@
   .preview_cache[[session_id]] <- list(mtime = mtime, data = data)
 }
 
+.preview_cache_clear <- function() {
+  rm(list = ls(.preview_cache), envir = .preview_cache)
+}
+
 # ── Internal: derive cache file path ──────────────────────────────────────────
 .gsea_cache_path <- function(session_id, contrast_label, collection, subcategory, species, run_id = NULL) {
   key <- paste0(
@@ -146,7 +150,7 @@ gsea_preview <- function(session_id, contrast_label) {
   kdes <- lapply(seq_len(n_samp), function(j) {
     sname <- colnames(counts)[j]
     vals  <- log1p(counts[, j])
-    dens  <- density(vals, bw = "nrd0", n = 128, from = 0)
+    dens  <- density(vals, bw = "nrd0", adjust = 2, n = 256, from = 0)
     list(
       sample      = sname,
       size_factor = round(as.numeric(sf_vec[sname]), 4),
