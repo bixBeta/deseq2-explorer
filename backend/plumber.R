@@ -1953,6 +1953,18 @@ function(req, res) {
   )
 }
 
+# ── GSEA: export full clusterProfiler results across runs for a contrast ───────
+#* @post /api/gsea/export_results
+#* @serializer unboxedJSON
+function(req, res) {
+  body       <- fromJSON(rawToChar(req$bodyRaw), simplifyVector = FALSE)
+  session_id <- body$sessionId
+  if (is.null(session_id) || session_id == "") stop("sessionId is required")
+  runs <- body$runs %||% list()
+  if (!length(runs)) stop("No runs provided")
+  gsea_export_results(session_id = session_id, runs = runs)
+}
+
 #* Compare leading-edge gene sets across GSEA runs via UpSet plot
 #* @post /api/gsea/compare
 function(req, res) {

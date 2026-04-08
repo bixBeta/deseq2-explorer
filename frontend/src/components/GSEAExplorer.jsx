@@ -1461,6 +1461,8 @@ function MountainModal({ pathway, result, curveData, curveLoading, curveError, o
 
 // ── Main GSEAExplorer ─────────────────────────────────────────────────────────
 export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsChange, initialRuns }) {
+  const { promptDownload, dialog: exportDialog } = useDownloadDialog()
+  const [exportLoading, setExportLoading] = useState(false)
   const [rankMethod,   setRankMethod]   = useState('log2FC')
   const [collection,   setCollection]   = useState(COLLECTIONS[0])
   const [species,      setSpecies]      = useState('Homo sapiens')
@@ -1544,6 +1546,33 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
       nAbove:     genesAbove(histData.baseMeans, filterValue, histData.n_genes||0),
     }
   },[histData, filterValue])
+
+  // Export full clusterProfiler results for all runs in this contrast
+  const handleExportAll = useCallback(async()=>{
+    if(!session?.sessionId || !contrastRuns.length) return
+    setExportLoading(true)
+    try {
+      const runs = contrastRuns.map(r=>({
+        contrast_label:   r.contrastLabel,
+        collection:       r.collectionId,
+        subcategory:      r.collectionSub ?? null,
+        species:          r.species,
+        run_id:           r.id,
+        collection_label: r.collectionLabel,
+        rank_method:      r.rankMethod,
+      }))
+      const resp = await fetch('/api/gsea/export_results',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ sessionId:session.sessionId, runs }),
+      })
+      const rows = await resp.json()
+      if(rows.error) throw new Error(rows.error)
+      const label = contrastLabel?.replace(/\s+/g,'_') ?? 'contrast'
+      const dbs   = [...new Set(contrastRuns.map(r=>r.collectionLabel))].join('+')
+      promptDownload(`gsea_results_${label}_${dbs}.csv`, name => downloadCSV(rows, name))
+    } catch(e){ console.error('[GSEA export]', e) }
+    finally{ setExportLoading(false) }
+  },[session, contrastRuns, contrastLabel, promptDownload])
 
   // Run GSEA
   const handleRun = useCallback(async()=>{
@@ -1767,7 +1796,23 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
           )}
           {contrastRuns.length>0 && !running && (
             <>
-              <RunChips runs={contrastRuns} activeRunId={activeRunId} onSelect={id=>{ setActiveRunId(id); setSelPathway(null); setCurveData(null) }} onRemove={removeRun} />
+              <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                <RunChips runs={contrastRuns} activeRunId={activeRunId} onSelect={id=>{ setActiveRunId(id); setSelPathway(null); setCurveData(null) }} onRemove={removeRun} />
+                <button onClick={handleExportAll} disabled={exportLoading}
+                  title="Export full clusterProfiler results for all runs in this contrast"
+                  style={{ marginLeft:'auto', flexShrink:0, padding:'4px 12px', borderRadius:8,
+                    border:`1px solid ${V.border}`, background:V.muted, color:V.text,
+                    fontSize:'0.72rem', fontWeight:600, cursor:exportLoading?'wait':'pointer',
+                    opacity:exportLoading?0.6:1, whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:5 }}>
+                  {exportLoading
+                    ? '…'
+                    : <><svg width="11" height="11" viewBox="0 0 14 14" fill="none" style={{flexShrink:0}}>
+                        <path d="M7 1v8M4 6l3 3 3-3M2 11h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>Export Results</>
+                  }
+                </button>
+                {exportDialog}
+              </div>
               <div style={{ display:'flex', gap:2, borderBottom:`1px solid ${V.border}` }}>
                 {[
                   ['results', `◉ Pathways${activeRun?.results?.length?` (${activeRun.results.length})`:''}`],

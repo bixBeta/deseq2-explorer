@@ -447,3 +447,57 @@ gsea_plots <- function(session_id, contrast_label, collection, subcategory, spec
                 base64enc::base64encode(readBin(tmp, "raw", file.info(tmp)$size)))
   list(image = b64, plotType = plot_type)
 }
+
+# ── gsea_export_results: rbind full clusterProfiler results across runs ────────
+gsea_export_results <- function(session_id, runs) {
+  # runs: list of lists, each with keys:
+  #   contrast_label, collection, subcategory, species, run_id,
+  #   collection_label, rank_method
+
+  KEEP_COLS <- c("ID", "Description", "setSize", "enrichmentScore", "NES",
+                 "pvalue", "p.adjust", "qvalue", "rank",
+                 "leading_edge", "core_enrichment")
+
+  frames <- lapply(runs, function(run) {
+    cache_path <- .gsea_cache_path(
+      session_id,
+      run$contrast_label %||% "",
+      run$collection     %||% "H",
+      run$subcategory,
+      run$species        %||% "Homo sapiens",
+      run$run_id
+    )
+    if (!file.exists(cache_path)) {
+      message("[gsea_export] cache not found: ", cache_path)
+      return(NULL)
+    }
+    cache       <- readRDS(cache_path)
+    gsea_result <- cache$gsea_result
+    if (is.null(gsea_result)) return(NULL)
+
+    df <- as.data.frame(gsea_result)
+
+    # Keep known columns that exist, drop any extras
+    cols_present <- intersect(KEEP_COLS, colnames(df))
+    df <- df[, cols_present, drop = FALSE]
+
+    # Prepend identifying columns
+    df <- cbind(
+      contrast_label   = run$contrast_label   %||% "",
+      collection       = run$collection_label %||% run$collection %||% "",
+      rank_method      = run$rank_method      %||% "",
+      df,
+      stringsAsFactors = FALSE
+    )
+    df
+  })
+
+  frames <- Filter(Negate(is.null), frames)
+  if (!length(frames)) stop("No cached GSEA results found — please re-run GSEA")
+
+  combined <- do.call(rbind, frames)
+  rownames(combined) <- NULL
+
+  # Serialize rows as a list for JSON transport
+  lapply(seq_len(nrow(combined)), function(i) as.list(combined[i, ]))
+}
