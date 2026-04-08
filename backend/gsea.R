@@ -151,7 +151,10 @@ gsea_preview <- function(session_id, contrast_label) {
     sname <- colnames(counts)[j]
     vals  <- log1p(counts[, j])
     dens  <- density(vals, bw = "nrd0", adjust = 1.5, n = 256, from = 0)
-    y_sm  <- as.numeric(stats::filter(dens$y, rep(1/9, 9), circular = TRUE))
+    y_sm  <- as.numeric(stats::filter(dens$y, rep(1/9, 9), circular = FALSE))
+    na_idx        <- is.na(y_sm)
+    y_sm[na_idx]  <- dens$y[na_idx]   # restore edge points unchanged
+    y_sm          <- pmax(y_sm, 0)     # ensure non-negative
     list(
       sample      = sname,
       size_factor = round(as.numeric(sf_vec[sname]), 4),
