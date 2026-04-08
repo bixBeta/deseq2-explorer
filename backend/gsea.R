@@ -7,6 +7,24 @@
 .upload_dir  <- function() Sys.getenv("UPLOAD_DIR",  file.path(dirname(getwd()), "data", "uploads"))
 .results_dir <- function() Sys.getenv("RESULTS_DIR", file.path(dirname(getwd()), "data", "results"))
 
+# ── In-memory preview cache (keyed by session_id + results file mtime) ────────
+.preview_cache <- new.env(hash = TRUE, parent = emptyenv())
+
+.preview_cache_get <- function(session_id, results_path) {
+  key   <- session_id
+  entry <- .preview_cache[[key]]
+  if (is.null(entry)) return(NULL)
+  # Invalidate if results file has been updated since last cache
+  mtime <- as.numeric(file.info(results_path)$mtime)
+  if (is.null(entry$mtime) || !isTRUE(entry$mtime == mtime)) return(NULL)
+  entry$data
+}
+
+.preview_cache_set <- function(session_id, results_path, data) {
+  mtime <- as.numeric(file.info(results_path)$mtime)
+  .preview_cache[[session_id]] <- list(mtime = mtime, data = data)
+}
+
 # ── Internal: derive cache file path ──────────────────────────────────────────
 .gsea_cache_path <- function(session_id, contrast_label, collection, subcategory, species, run_id = NULL) {
   key <- paste0(
@@ -102,6 +120,10 @@ gsea_preview <- function(session_id, contrast_label) {
   results_path <- file.path(.results_dir(), paste0(session_id, "_results.rds"))
   if (!file.exists(results_path)) stop("Results not found — please run DESeq2 first")
 
+  # Return cached result if results file hasn't changed
+  cached <- .preview_cache_get(session_id, results_path)
+  if (!is.null(cached)) return(cached)
+
   library(matrixStats)
   saved  <- readRDS(results_path)
 
@@ -120,11 +142,11 @@ gsea_preview <- function(session_id, contrast_label) {
   # Per-sample size factors (named vector, NA if not saved yet)
   sf_vec <- if (!is.null(saved$size_factors)) saved$size_factors else setNames(rep(NA_real_, n_samp), colnames(counts))
 
-  # Per-sample KDE of log1p(normalised counts)
+  # Per-sample KDE of log1p(normalised counts) — 128 points is plenty for display
   kdes <- lapply(seq_len(n_samp), function(j) {
     sname <- colnames(counts)[j]
     vals  <- log1p(counts[, j])
-    dens  <- density(vals, bw = "nrd0", n = 256, from = 0)
+    dens  <- density(vals, bw = "nrd0", n = 128, from = 0)
     list(
       sample      = sname,
       size_factor = round(as.numeric(sf_vec[sname]), 4),
@@ -139,17 +161,23 @@ gsea_preview <- function(session_id, contrast_label) {
   # 101-point quantile table (0%…100%) for quantile-mode slider interpolation
   q_vals <- quantile(base_means, seq(0, 1, by = 0.01), na.rm = TRUE)
 
-  # Full sorted baseMeans — JS binary-searches for live gene count (no subsampling)
-  bm_sorted <- round(as.numeric(sort(base_means, na.last = FALSE)), 2)
+  # Subsample sorted baseMeans to at most 5 000 points — enough for accurate
+  # binary-search gene counts while keeping payload small
+  bm_all    <- sort(base_means, na.last = FALSE)
+  bm_idx    <- unique(round(seq(1, length(bm_all), length.out = min(5000L, length(bm_all)))))
+  bm_sorted <- round(as.numeric(bm_all[bm_idx]), 2)
 
-  list(
+  result <- list(
     kdes           = kdes,
-    baseMeans      = bm_sorted,                          # sorted, for JS binary-search
-    quantileValues = round(as.numeric(q_vals), 2),       # 101 values for quantile mode
+    baseMeans      = bm_sorted,
+    quantileValues = round(as.numeric(q_vals), 2),
     bmMax          = round(max(base_means, na.rm = TRUE), 2),
     n_genes        = n_genes,
     n_samples      = n_samp
   )
+
+  .preview_cache_set(session_id, results_path, result)
+  result
 }
 
 # ── gsea_run: clusterProfiler::GSEA against a MSigDB collection ───────────────
