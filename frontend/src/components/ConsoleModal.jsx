@@ -216,8 +216,9 @@ function mdToHtml(md) {
         rows.push(lines[i].split('|').map(s => s.trim()).filter(Boolean)); i++
       }
       out.push(
-        `<table><thead><tr>${headers.map(h => `<th>${inlineHtml(h)}</th>`).join('')}</tr></thead>` +
-        `<tbody>${rows.map(row => `<tr>${row.map(c => `<td>${inlineHtml(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`
+        `<div style="overflow-x:auto;margin:1rem 0 1.5rem">` +
+        `<table style="width:auto;min-width:100%"><thead><tr>${headers.map(h => `<th style="white-space:nowrap">${inlineHtml(h)}</th>`).join('')}</tr></thead>` +
+        `<tbody>${rows.map(row => `<tr>${row.map(c => `<td>${inlineHtml(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`
       )
       continue
     }
@@ -378,7 +379,7 @@ function buildHtmlExport(md, sessionRows, contrasts, gseaRuns, alpha) {
   code { background: #f1f5f9; padding: 1px 5px; border-radius: 3px; font-size: 0.85em; font-family: 'JetBrains Mono', 'Fira Code', monospace; color: #0b446f; }
   pre { background: #1e293b; color: #e2e8f0; padding: 16px 20px; border-radius: 8px; overflow-x: auto; margin: 0.6rem 0 1.2rem; }
   pre code { background: none; color: inherit; font-size: 0.82rem; padding: 0; }
-  table { width: 100%; border-collapse: collapse; margin: 1rem 0 1.5rem; font-size: 0.88rem; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
   th { background: #f1f5f9; padding: 8px 12px; text-align: left; border-bottom: 2px solid #cbd5e1; color: #0b446f; }
   td { padding: 6px 12px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
   tr:nth-child(even) td { background: #f8fafc; }
