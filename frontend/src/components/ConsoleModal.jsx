@@ -217,8 +217,8 @@ function mdToHtml(md) {
       }
       out.push(
         `<div style="overflow-x:auto;margin:1rem 0 1.5rem">` +
-        `<table style="width:auto;min-width:100%"><thead><tr>${headers.map(h => `<th style="white-space:nowrap">${inlineHtml(h)}</th>`).join('')}</tr></thead>` +
-        `<tbody>${rows.map(row => `<tr>${row.map(c => `<td>${inlineHtml(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`
+        `<table style="width:auto"><thead><tr>${headers.map(h => `<th style="white-space:nowrap">${inlineHtml(h)}</th>`).join('')}</tr></thead>` +
+        `<tbody>${rows.map(row => `<tr>${row.map((c, ci) => `<td style="white-space:${ci === row.length - 1 ? 'normal' : 'nowrap'}">${inlineHtml(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`
       )
       continue
     }
