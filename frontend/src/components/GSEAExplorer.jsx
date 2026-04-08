@@ -1527,17 +1527,17 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
   },[contrastLabel])
 
   // Fetch preview when contrast changes
-  useEffect(()=>{
+  const fetchPreview = useCallback(()=>{
     if(!session?.sessionId) return
     setHistData(null); setHistLoading(true); setHistError(null)
-    const ctrl=new AbortController()
     fetch('/api/gsea/preview',{ method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ sessionId:session.sessionId, contrastLabel }), signal:ctrl.signal })
+      body:JSON.stringify({ sessionId:session.sessionId, contrastLabel }) })
       .then(r=>r.json())
       .then(d=>{ if(d.error) throw new Error(d.error); setHistData(d); setHistLoading(false) })
-      .catch(e=>{ if(e.name!=='AbortError'){ setHistError(e.message || 'Failed to load distributions'); setHistLoading(false) } })
-    return ()=>ctrl.abort()
+      .catch(e=>{ setHistError(e.message || 'Failed to load distributions'); setHistLoading(false) })
   },[session, contrastLabel])
+
+  useEffect(()=>{ fetchPreview() },[fetchPreview])
 
   // Derived cutoff — baseMean absolute mode only
   const { cutoffOrig, cutoffLog, nAbove } = useMemo(()=>{
@@ -1718,15 +1718,15 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
                 <span style={{ color:'var(--text-3)' }}>Passing</span>
                 <span style={{ color:V.text, fontWeight:700 }}>~{nAbove.toLocaleString()}</span>
               </div>
-              <button onClick={()=>{ if(histData) setShowDistModal(true) }}
-                title={histError ? histError : 'View per-sample count distributions'}
-                disabled={!histData && !histError}
+              <button onClick={()=>{ if(histError) fetchPreview(); else if(histData) setShowDistModal(true) }}
+                title={histError ? `Error: ${histError}\n\nClick to retry` : 'View per-sample count distributions'}
+                disabled={histLoading}
                 style={{ padding:'5px 10px', borderRadius:6, border:`1px solid ${histError?'rgba(244,63,94,0.4)':V.border}`,
                   background: histError?'rgba(244,63,94,0.08)':V.muted,
                   color: histError?'#f43f5e':V.text,
-                  fontSize:'0.72rem', fontWeight:600, cursor:histData?'pointer':'default',
-                  opacity: (!histData && !histError) ? 0.45 : 1, whiteSpace:'nowrap' }}>
-                {histLoading ? '…' : histError ? '✕ Dist. error' : '⎚ Distributions'}
+                  fontSize:'0.72rem', fontWeight:600, cursor: histLoading ? 'wait' : 'pointer',
+                  opacity: histLoading ? 0.45 : 1, whiteSpace:'nowrap' }}>
+                {histLoading ? '…' : histError ? '↺ Retry dist.' : '⎚ Distributions'}
               </button>
             </div>
           </div>
