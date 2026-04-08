@@ -150,12 +150,13 @@ gsea_preview <- function(session_id, contrast_label) {
   kdes <- lapply(seq_len(n_samp), function(j) {
     sname <- colnames(counts)[j]
     vals  <- log1p(counts[, j])
-    dens  <- density(vals, bw = "nrd0", adjust = 2, n = 256, from = 0)
+    dens  <- density(vals, bw = "nrd0", adjust = 1.5, n = 256, from = 0)
+    y_sm  <- as.numeric(stats::filter(dens$y, rep(1/9, 9), circular = TRUE))
     list(
       sample      = sname,
       size_factor = round(as.numeric(sf_vec[sname]), 4),
       x = round(as.numeric(dens$x), 4),
-      y = round(as.numeric(dens$y), 8)
+      y = round(as.numeric(y_sm),   8)
     )
   })
 
