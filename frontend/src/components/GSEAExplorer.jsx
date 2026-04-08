@@ -151,7 +151,7 @@ function DualDensityChart({ histData, cutoffLog, height = 300 }) {
       x:kde.x, y:kde.y,
       customdata: kde.x.map(v => Math.expm1(v)),
       type:'scatter', mode:'lines', name:kde.sample,
-      line:{ color:SAMPLE_COLORS[i%SAMPLE_COLORS.length], width:1.5, shape:'linear' },
+      line:{ color:SAMPLE_COLORS[i%SAMPLE_COLORS.length], width:1.5, shape:'spline' },
       opacity:0.7, showlegend:showLegend,
       hovertemplate: hoverTpl(kde.sample),
     }))
@@ -169,24 +169,29 @@ function DualDensityChart({ histData, cutoffLog, height = 300 }) {
                      text:cutoffLabel, font:{size:8,color:'#f87171'}, showarrow:false }],
     }
 
-    // Post-filter traces: clip x < cutoffLog
-    const postTraces = kdes.map((kde, i) => {
-      const startIdx = cutoffLog === 0 ? 0 : kde.x.findIndex(v => v >= cutoffLog)
-      const xs = startIdx >= 0 ? kde.x.slice(startIdx) : kde.x
-      const ys = startIdx >= 0 ? kde.y.slice(startIdx) : kde.y
-      return {
-        x:xs, y:ys,
-        customdata: xs.map(v => Math.expm1(v)),
-        type:'scatter', mode:'lines', name:kde.sample,
-        line:{ color:SAMPLE_COLORS[i%SAMPLE_COLORS.length], width:1.5, shape:'linear' },
-        opacity:0.7, showlegend:showLegend,
-        hovertemplate: hoverTpl(kde.sample),
-      }
-    })
+    // Post-filter traces: use full KDE arrays — let Plotly clip via xaxis.range
+    // (slicing causes staircase artifacts by removing the points that anchor the spline)
+    const postTraces = kdes.map((kde, i) => ({
+      x:kde.x, y:kde.y,
+      customdata: kde.x.map(v => Math.expm1(v)),
+      type:'scatter', mode:'lines', name:kde.sample,
+      line:{ color:SAMPLE_COLORS[i%SAMPLE_COLORS.length], width:1.5, shape:'spline' },
+      opacity:0.7, showlegend:showLegend,
+      hovertemplate: hoverTpl(kde.sample),
+    }))
     const postXStart = cutoffLog === 0 ? 0 : cutoffLog * 0.98
+    // Compute y-range from only the points in the visible x window so the
+    // axis doesn't scale to the off-screen pre-cutoff peak
+    const postYMax = kdes.reduce((mx, kde) => {
+      for (let i = 0; i < kde.x.length; i++) {
+        if (kde.x[i] >= postXStart && kde.y[i] > mx) mx = kde.y[i]
+      }
+      return mx
+    }, 0)
     const postLayout = {
       ...baseLayout,
       xaxis:{ ...baseXAxis, range:[postXStart, xMaxLog] },
+      yaxis:{ ...baseLayout.yaxis, range:[0, postYMax * 1.08] },
       title:{ text:'Post-filter (genes above cutoff)', font:{size:11,color:textColor}, x:0.5, xanchor:'center', y:0.97 },
     }
 
