@@ -22,9 +22,11 @@ venv/
 # Data / sessions (runtime files)
 /data/
 
-# R
+# R — exclude runtime session files but keep bundled example data
 *.rds
 *.RData
+!backend/example_data.rds
+!backend/example_results.rds
 
 # OS
 .DS_Store
