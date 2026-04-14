@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
 import Plotly from 'plotly.js-dist-min'
 import { useDownloadDialog } from './DownloadDialog'
+import { useRegisterPlot } from '../context/PlotRegistryContext'
 
 function triggerDownload(csv, name) {
   const blob = new Blob([csv], { type: 'text/csv' })
@@ -50,6 +51,20 @@ export default function PCAPlot({ pca, design, sampleLabels = {}, annMap = {} })
   const plotRef       = useRef(null)
   const screeRef      = useRef(null)
   const screeOuterRef = useRef(null)
+
+  const pcaScatterCaptureRef = useRef(null)
+  pcaScatterCaptureRef.current = () => {
+    if (!plotRef.current?._fullLayout) return null
+    return Plotly.toImage(plotRef.current, { format: 'png', width: 900, height: 660 })
+  }
+  useRegisterPlot('pca-scatter', 'PCA Scatter', 'PCA', pcaScatterCaptureRef)
+
+  const pcaScreeCaptureRef = useRef(null)
+  pcaScreeCaptureRef.current = () => {
+    if (!screeRef.current?._fullLayout) return null
+    return Plotly.toImage(screeRef.current, { format: 'png', width: 900, height: 500 })
+  }
+  useRegisterPlot('pca-scree', 'PCA Scree', 'PCA', pcaScreeCaptureRef)
 
   const [plotTab,     setPlotTab]     = useState('scatter')   // 'scatter' | 'scree' | 'loadings'
   const [is3D,        setIs3D]        = useState(false)

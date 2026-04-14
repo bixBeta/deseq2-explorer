@@ -902,12 +902,12 @@ function ResultsTable({ run, onPathwayClick, selectedPathway, fullscreen, setFul
 }
 
 // ── Ranked list panel ─────────────────────────────────────────────────────────
-const PER_PAGE_OPTIONS = [50, 100, 200, 'All']
+const PER_PAGE_OPTIONS = [20, 50, 100, 200, 'All']
 
 function RankedListPanel({ run }) {
   const { promptDownload, dialog } = useDownloadDialog()
   const [page,    setPage]    = useState(0)
-  const [perPage, setPerPage] = useState(50)
+  const [perPage, setPerPage] = useState(20)
   const [sortAsc, setSortAsc] = useState(false)  // default: high→low (desc)
 
   const rawList = run?.rankedList ?? []

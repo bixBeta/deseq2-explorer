@@ -271,6 +271,9 @@ export default function Results({ results, design, onBack, onEditSamples, sessio
           <GSEACompare
             session={session}
             gseaRuns={initialGseaRuns}
+            pca={pca}
+            annMap={annMap}
+            sampleLabels={sampleLabels}
           />
         </div>
       </div>

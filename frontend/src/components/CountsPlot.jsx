@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
 import Plotly from 'plotly.js-dist-min'
+import { useRegisterPlot } from '../context/PlotRegistryContext'
 
 const PALETTES = {
   'Spectrum':  ['#6366f1','#8b5cf6','#ec4899','#14b8a6','#f59e0b','#3b82f6','#10b981','#f97316'],
@@ -35,6 +36,13 @@ export default function CountsPlot({ countDist, design, metadata, sampleLabels =
   const outerRef     = useRef(null)
   const plotRef      = useRef(null)
   const [countType,   setCountType]  = useState('vst')
+
+  const countsCaptureRef = useRef(null)
+  countsCaptureRef.current = () => {
+    if (!plotRef.current?._fullLayout) return null
+    return Plotly.toImage(plotRef.current, { format: 'png', width: 900, height: 540 })
+  }
+  useRegisterPlot('counts-plot', 'Counts Distribution', 'Distributions', countsCaptureRef)
   const [showPoints,  setShowPoints] = useState(false)
   const [paletteName, setPaletteName] = useState('Clinical')
   const [colorBy,     setColorBy]    = useState(design?.column ?? null)

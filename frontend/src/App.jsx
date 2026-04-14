@@ -10,6 +10,7 @@ import Results       from './components/Results'
 import ThemeToggle   from './components/ThemeToggle'
 import HelpPanel     from './components/HelpPanel'
 import ConsoleModal  from './components/ConsoleModal'
+import { PlotRegistryProvider } from './context/PlotRegistryContext'
 
 // ── Error boundary — catches render errors and shows a recovery UI ────────────
 class ErrorBoundary extends Component {
@@ -349,6 +350,7 @@ export default function App() {
   const showNav = step !== 'session'
 
   return (
+    <PlotRegistryProvider>
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--bg-app)' }}>
 
       {/* ── Header (frosted glass, like PCA explorer) ── */}
@@ -450,7 +452,7 @@ export default function App() {
               Logout
             </button>
           )}
-          <button onClick={() => setShowConsole(true)}
+<button onClick={() => setShowConsole(true)}
                   title="Console — Methods & Session Parameters"
                   style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)',
                            borderRadius: 8, height: 30, padding: '0 10px', cursor: 'pointer',
@@ -531,6 +533,8 @@ export default function App() {
           gseaRuns={gseaRuns}
         />
       )}
+
     </div>
+    </PlotRegistryProvider>
   )
 }

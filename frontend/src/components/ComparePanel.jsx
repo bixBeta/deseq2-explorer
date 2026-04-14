@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import Plotly from 'plotly.js-dist-min'
 import { useDownloadDialog } from './DownloadDialog'
+import { useRegisterPlot } from '../context/PlotRegistryContext'
 
 // ── Mouse-follow tooltip (portaled to body to escape stacking contexts) ────────
 function useTooltip() {
@@ -234,6 +235,14 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
   const { promptDownload, dialog: dlDialog } = useDownloadDialog()
   const outerRef = useRef(null)
   const plotRef  = useRef(null)
+
+  const heatmapCaptureRef = useRef(null)
+  heatmapCaptureRef.current = () => {
+    if (!plotRef.current?._fullLayout) return null
+    return Plotly.toImage(plotRef.current, { format: 'png', width: 900, height: 800 })
+  }
+  useRegisterPlot('heatmap', 'Heatmap', 'Compare', heatmapCaptureRef)
+
   const [fdr, setFdr]                 = useState(0.05)
   const [minLfc, setMinLfc]           = useState(0)
   const [topN, setTopN]               = useState(50)
@@ -248,7 +257,8 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
   const [error, setError]             = useState(null)
   const [hasPlot, setHasPlot]         = useState(false)
   const [palette, setPalette]         = useState(['#1565C0', '#ffffff', '#B71C1C'])
-  const debouncedPalette              = useDebounce(palette, 700)
+  const [annGroups, setAnnGroups]     = useState([])
+  const [annColors, setAnnColors]     = useState({})
 
   // Derive metadata columns from PCA scores (same source as CountsPlot)
   const metaCols = useMemo(() => {
@@ -261,6 +271,9 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
     if (!metaCols.length) return
     if (!metaCols.includes(colorBy)) setColorBy(metaCols[0])
   }, [metaCols])
+
+  // Reset annotation colors when the column changes
+  useEffect(() => { setAnnGroups([]); setAnnColors({}) }, [colorBy])
 
   // Resize observer
   useEffect(() => {
@@ -279,16 +292,6 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
   )
 
 
-  // Auto-regenerate on any option change when a plot already exists
-  const prevOpts = useRef(null)
-  useEffect(() => {
-    const opts = JSON.stringify({ clusterRows, clusterCols, distMethod, colorBy, geneSet, activeLabels, palette: debouncedPalette })
-    if (prevOpts.current === null) { prevOpts.current = opts; return }
-    if (prevOpts.current === opts) return
-    prevOpts.current = opts
-    if (hasPlot) generate()
-  }, [clusterRows, clusterCols, distMethod, colorBy, geneSet, activeLabels, debouncedPalette, minLfc])
-
   async function generate() {
     setLoading(true); setError(null); setHasPlot(false)
     try {
@@ -301,6 +304,7 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
         geneSet,
         activeLabels,
         palette,
+        annColors: Object.keys(annColors).length ? annColors : null,
       })
 
       const fig = JSON.parse(data.plotlyJson)
@@ -318,6 +322,16 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
         modeBarButtonsToRemove: ['lasso2d', 'select2d'],
       })
       setHasPlot(true)
+      // Populate annotation color pickers from backend response
+      if (data.annGroups?.length) {
+        const defaults = ['#800020', '#228B22', '#C9A227', '#555555', '#4E6E8E', '#A0522D', '#BF5700', '#4B0082']
+        setAnnGroups(data.annGroups)
+        setAnnColors(prev => {
+          const next = { ...prev }
+          data.annGroups.forEach((g, i) => { if (!next[g]) next[g] = defaults[i % defaults.length] })
+          return next
+        })
+      }
     } catch (e) { setError(e.message) }
     finally { setLoading(false) }
   }
@@ -406,6 +420,23 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
               {metaCols.map(col => <option key={col} value={col}>{col}</option>)}
             </select>
             {loading && <span style={{ fontSize: '0.7rem', color: 'var(--text-3)', animation: 'pulse 1s infinite' }}>updating…</span>}
+            {annGroups.length > 0 && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 2 }}>
+                {annGroups.map((grp, i) => (
+                  <label key={grp} title={`Click to change color for "${grp}"`}
+                         style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                    <input type="color" value={annColors[grp] || '#999999'}
+                           onChange={e => setAnnColors(prev => ({ ...prev, [grp]: e.target.value }))}
+                           style={{ width: 18, height: 18, padding: 0, border: '1px solid var(--border)',
+                                    borderRadius: 3, cursor: 'pointer', background: 'none' }} />
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-2)',
+                                   maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {grp}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
           </ControlGroup>
         )}
 
@@ -469,6 +500,224 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
   )
 }
 
+// Safely unwrap a value that might be a named R object { "key": val } or a plain scalar
+function scalarVal(v) {
+  if (v == null) return null
+  if (typeof v === 'number' || typeof v === 'string') return v
+  if (typeof v === 'object') {
+    const vals = Object.values(v)
+    return vals.length > 0 ? vals[0] : null
+  }
+  return v
+}
+
+// ── Gene Explorer modal (draggable + resizable) ───────────────────────────────
+function GeneExplorerModal({ imgSrc, selected, annMap, groupSummary, contrastStats, onClose }) {
+  const cardRef  = useRef(null)
+  const [size, setSize] = useState({ width: 1060, height: 720 })
+  const [pos,  setPos]  = useState(null) // null until centred on first render
+
+  // Centre on mount
+  useEffect(() => {
+    setPos({
+      x: Math.max(0, Math.round((window.innerWidth  - 1060) / 2)),
+      y: Math.max(0, Math.round((window.innerHeight - 720)  / 2)),
+    })
+  }, [])
+
+  // Drag — header is the handle
+  function onDragStart(e) {
+    if (e.button !== 0) return
+    e.preventDefault()
+    const startX = e.clientX - (pos?.x ?? 0)
+    const startY = e.clientY - (pos?.y ?? 0)
+    function onMove(e) {
+      setPos({
+        x: Math.max(0, Math.min(window.innerWidth  - size.width,  e.clientX - startX)),
+        y: Math.max(0, Math.min(window.innerHeight - 60,           e.clientY - startY)),
+      })
+    }
+    function onUp() {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup',   onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup',   onUp)
+  }
+
+  // Resize — bottom-right corner handle
+  function onResizeStart(e) {
+    e.preventDefault(); e.stopPropagation()
+    const startX = e.clientX, startY = e.clientY
+    const startW = cardRef.current?.offsetWidth  ?? size.width
+    const startH = cardRef.current?.offsetHeight ?? size.height
+    function onMove(e) {
+      setSize({
+        width:  Math.max(560, Math.min(startW + e.clientX - startX, Math.floor(window.innerWidth  * 0.97))),
+        height: Math.max(400, Math.min(startH + e.clientY - startY, Math.floor(window.innerHeight * 0.97))),
+      })
+    }
+    function onUp() {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup',   onUp)
+      window.addEventListener('click', e => e.stopPropagation(), { capture: true, once: true })
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup',   onUp)
+  }
+
+  if (!pos) return null
+
+  const sym = annMap?.[selected]
+  const displayName = (typeof sym === 'string' && sym !== 'N/A' && sym !== 'None')
+    ? `${sym} · ${selected}` : selected
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 101000, pointerEvents: 'none' }}>
+      {/* Backdrop */}
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)',
+                    backdropFilter: 'blur(4px)', pointerEvents: 'auto' }}
+           onClick={onClose} />
+
+      {/* Modal card */}
+      <div ref={cardRef}
+           style={{ position: 'absolute', left: pos.x, top: pos.y,
+                    width: size.width, height: size.height,
+                    background: 'var(--bg-panel)', borderRadius: 16,
+                    border: '1px solid var(--border)',
+                    boxShadow: '0 8px 60px rgba(0,0,0,0.45)',
+                    display: 'flex', flexDirection: 'column',
+                    pointerEvents: 'auto', overflow: 'hidden', boxSizing: 'border-box' }}
+           onClick={e => e.stopPropagation()}>
+
+        {/* Header — drag handle */}
+        <div onMouseDown={onDragStart}
+             style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      padding: '10px 16px', cursor: 'grab', flexShrink: 0, userSelect: 'none',
+                      borderBottom: '1px solid var(--border)', background: 'rgba(255,255,255,0.02)' }}>
+          <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-1)',
+                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {displayName}
+            <span style={{ fontWeight: 400, color: 'var(--text-3)', marginLeft: 8, fontSize: '0.72rem' }}>
+              normalized expression · drag to move · corner to resize
+            </span>
+          </span>
+          <button onClick={onClose}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer',
+                           color: 'var(--text-3)', fontSize: '1.3rem', lineHeight: 1, flexShrink: 0 }}>
+            ×
+          </button>
+        </div>
+
+        {/* Scrollable body */}
+        <div style={{ flex: '1 1 0', minHeight: 0, overflow: 'auto', padding: '12px 20px 20px' }}>
+          {/* Tables side-by-side — top */}
+          {(groupSummary?.length > 0 || contrastStats?.length > 0) && (
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start', marginBottom: 16 }}>
+              {groupSummary?.length > 0 && (
+                <div style={{ flex: '1 1 240px', minWidth: 200 }}>
+                  <p style={{ margin: '0 0 5px', fontSize: '0.68rem', fontWeight: 700,
+                              color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    Normalized Counts Summary
+                  </p>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem',
+                                  border: '1px solid var(--border)', borderRadius: 7, overflow: 'hidden' }}>
+                    <thead>
+                      <tr style={{ background: 'rgba(var(--accent-rgb),0.06)' }}>
+                        {['Group', 'n', 'Mean', 'Median', 'SD'].map(h => (
+                          <th key={h} style={{ padding: '4px 8px', textAlign: h === 'Group' ? 'left' : 'right',
+                                               fontWeight: 600, fontSize: '0.66rem', color: 'var(--text-3)',
+                                               borderBottom: '1px solid var(--border)' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {groupSummary.map((row, i) => (
+                        <tr key={i} style={{ borderTop: i > 0 ? '1px solid var(--border)' : undefined }}>
+                          <td style={{ padding: '4px 8px', fontWeight: 600, color: 'var(--accent-text)' }}>{row.group}</td>
+                          {[row.n, row.mean, row.median, row.sd].map((v, j) => (
+                            <td key={j} style={{ padding: '4px 8px', textAlign: 'right',
+                                                 fontFamily: 'monospace', fontSize: '0.72rem', color: 'var(--text-1)' }}>
+                              {v != null ? v : '—'}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {contrastStats?.length > 0 && (
+                <div style={{ flex: '2 1 380px', minWidth: 300 }}>
+                  <p style={{ margin: '0 0 5px', fontSize: '0.68rem', fontWeight: 700,
+                              color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    DESeq2 Results
+                  </p>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem',
+                                  border: '1px solid var(--border)', borderRadius: 7, overflow: 'hidden' }}>
+                    <thead>
+                      <tr style={{ background: 'rgba(var(--accent-rgb),0.06)' }}>
+                        {['Contrast', 'baseMean', 'log₂FC', 'lfcSE', 'p-value', 'padj'].map(h => (
+                          <th key={h} style={{ padding: '4px 8px', textAlign: h === 'Contrast' ? 'left' : 'right',
+                                               fontWeight: 600, fontSize: '0.66rem', color: 'var(--text-3)',
+                                               borderBottom: '1px solid var(--border)' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {contrastStats.map((ct, i) => (
+                        <tr key={i} style={{ borderTop: i > 0 ? '1px solid var(--border)' : undefined }}>
+                          <td style={{ padding: '4px 8px', fontWeight: 600, color: 'var(--accent-text)',
+                                       fontSize: '0.7rem', whiteSpace: 'nowrap' }}>{ct.contrast}</td>
+                          {(() => {
+                            const bm   = scalarVal(ct.baseMean)
+                            const lfc  = scalarVal(ct.log2FC)
+                            const se   = scalarVal(ct.lfcSE)
+                            const pv   = scalarVal(ct.pvalue)
+                            const padj = scalarVal(ct.padj)
+                            return [
+                              bm   != null ? Number(bm).toLocaleString() : '—',
+                              lfc  != null ? lfc  : '—',
+                              se   != null ? se   : '—',
+                              pv   != null ? pv   : '—',
+                              padj != null ? padj : '—',
+                            ].map((val, j) => (
+                              <td key={j} style={{
+                                padding: '4px 8px', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.72rem',
+                                color: j === 4 && padj != null ? (Number(padj) < 0.05 ? '#4ade80' : '#f87171') : 'var(--text-1)',
+                                fontWeight: j === 4 ? 600 : 400,
+                              }}>{String(val)}</td>
+                            ))
+                          })()}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Image — bottom */}
+          <div style={{ display: 'block', width: '100%' }}>
+            <img src={imgSrc} alt={`${selected} expression`}
+                 style={{ width: '100%', maxHeight: Math.max(200, size.height - 220),
+                          objectFit: 'contain', objectPosition: 'left',
+                          display: 'block', borderRadius: 8 }} />
+          </div>
+        </div>
+
+        {/* Resize handle — bottom-right corner */}
+        <div onMouseDown={onResizeStart}
+             style={{ position: 'absolute', bottom: 0, right: 0, width: 18, height: 18,
+                      cursor: 'se-resize', zIndex: 1,
+                      background: 'linear-gradient(135deg, transparent 50%, var(--border) 50%)',
+                      borderBottomRightRadius: 16 }} />
+      </div>
+    </div>
+  )
+}
+
 // ── Gene Explorer (multi-group violin) ────────────────────────────────────────
 function GeneExplorer({ session, contrasts, annMap }) {
   const [query, setQuery]             = useState('')
@@ -478,6 +727,15 @@ function GeneExplorer({ session, contrasts, annMap }) {
   const [error, setError]             = useState(null)
   const [groupSummary, setGroupSummary]   = useState(null)
   const [contrastStats, setContrastStats] = useState(null)
+  const [fullscreen, setFullscreen]   = useState(false)
+
+  // Escape key closes fullscreen
+  useEffect(() => {
+    if (!fullscreen) return
+    const h = e => { if (e.key === 'Escape') setFullscreen(false) }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [fullscreen])
 
   // Build sorted gene list with optional symbol lookup
   const genes = useMemo(() => {
@@ -552,22 +810,16 @@ function GeneExplorer({ session, contrasts, annMap }) {
       </div>
 
       {/* Plot area */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
         {loading && <Placeholder text="Generating violin plot…" />}
         {error && <ErrorBox msg={error} />}
-        {imgSrc && !loading && (
-          <div className="resizable-plot" style={{ width: 600, height: 600 }}>
-            <img src={imgSrc} alt={`${selected} expression`}
-                 style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
-          </div>
-        )}
         {!selected && !loading && (
           <Placeholder text="Select a gene to plot its normalized expression across all groups." />
         )}
 
-        {/* Per-group normalized count summary */}
+        {/* Per-group normalized count summary — top */}
         {groupSummary && groupSummary.length > 0 && (
-          <div style={{ maxWidth: 620 }}>
+          <div>
             <p style={{ margin: '0 0 5px', fontSize: '0.72rem', fontWeight: 600,
                         color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               Normalized Counts Summary
@@ -601,9 +853,9 @@ function GeneExplorer({ session, contrasts, annMap }) {
           </div>
         )}
 
-        {/* Per-contrast DESeq2 stats */}
+        {/* Per-contrast DESeq2 stats — top */}
         {contrastStats && contrastStats.length > 0 && (
-          <div style={{ maxWidth: 620 }}>
+          <div>
             <p style={{ margin: '0 0 5px', fontSize: '0.72rem', fontWeight: 600,
                         color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               DESeq2 Results
@@ -625,30 +877,68 @@ function GeneExplorer({ session, contrasts, annMap }) {
                   <tr key={i} style={{ borderTop: i > 0 ? '1px solid var(--border)' : undefined }}>
                     <td style={{ padding: '5px 10px', fontWeight: 600, color: 'var(--accent-text)',
                                  fontSize: '0.72rem' }}>{ct.contrast}</td>
-                    {[
-                      ct.baseMean != null ? Number(ct.baseMean).toLocaleString() : '—',
-                      ct.log2FC   != null ? ct.log2FC   : '—',
-                      ct.lfcSE    != null ? ct.lfcSE    : '—',
-                      ct.pvalue   != null ? ct.pvalue   : '—',
-                      ct.padj     != null ? ct.padj     : '—',
-                    ].map((val, j) => (
-                      <td key={j} style={{
-                        padding: '5px 10px', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.75rem',
-                        color: j === 4 && ct.padj != null
-                          ? (ct.padj < 0.05 ? '#4ade80' : '#f87171')
-                          : 'var(--text-1)',
-                        fontWeight: j === 4 ? 600 : 400,
-                      }}>
-                        {String(val)}
-                      </td>
-                    ))}
+                    {(() => {
+                      const bm    = scalarVal(ct.baseMean)
+                      const lfc   = scalarVal(ct.log2FC)
+                      const se    = scalarVal(ct.lfcSE)
+                      const pv    = scalarVal(ct.pvalue)
+                      const padj  = scalarVal(ct.padj)
+                      return [
+                        bm   != null ? Number(bm).toLocaleString() : '—',
+                        lfc  != null ? lfc  : '—',
+                        se   != null ? se   : '—',
+                        pv   != null ? pv   : '—',
+                        padj != null ? padj : '—',
+                      ].map((val, j) => (
+                        <td key={j} style={{
+                          padding: '5px 10px', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.75rem',
+                          color: j === 4 && padj != null
+                            ? (Number(padj) < 0.05 ? '#4ade80' : '#f87171')
+                            : 'var(--text-1)',
+                          fontWeight: j === 4 ? 600 : 400,
+                        }}>
+                          {String(val)}
+                        </td>
+                      ))
+                    })()}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
+
+        {/* Plot — bottom */}
+        {imgSrc && !loading && (
+          <div style={{ position: 'relative', display: 'block', width: '100%' }}>
+            <img src={imgSrc} alt={`${selected} expression`}
+                 style={{ width: '100%', maxHeight: 520, objectFit: 'contain', objectPosition: 'left',
+                          display: 'block', borderRadius: 10, border: '1px solid var(--border)' }} />
+            <button onClick={() => setFullscreen(true)}
+                    title="Expand (Esc to close)"
+                    style={{ position: 'absolute', top: 8, right: 8,
+                             fontSize: '0.68rem', padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
+                             background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)',
+                             color: '#e2e8f0', border: '1px solid rgba(255,255,255,0.18)',
+                             fontWeight: 600, letterSpacing: '0.03em' }}>
+              ⤢ Expand
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* Draggable + resizable modal */}
+      {fullscreen && imgSrc && createPortal(
+        <GeneExplorerModal
+          imgSrc={imgSrc}
+          selected={selected}
+          annMap={annMap}
+          groupSummary={groupSummary}
+          contrastStats={contrastStats}
+          onClose={() => setFullscreen(false)}
+        />,
+        document.body
+      )}
     </div>
   )
 }

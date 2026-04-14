@@ -408,17 +408,18 @@ function(req, res) {
   points <- Filter(Negate(is.null), points)
 
   # Downsample NS points to at most 10 000 — keeps payload small; sig points kept whole
-  NS_MAX  <- 10000L
-  is_sig  <- sapply(points, function(p) !is.null(p$padj) && !is.na(p$padj) && p$padj < 0.05)
-  ns_idx  <- which(!is_sig)
-  sig_idx <- which(is_sig)
-  if (length(ns_idx) > NS_MAX) {
+  NS_MAX   <- 10000L
+  is_sig   <- sapply(points, function(p) !is.null(p$padj) && !is.na(p$padj) && p$padj < 0.05)
+  ns_idx   <- which(!is_sig)
+  sig_idx  <- which(is_sig)
+  ns_total <- length(ns_idx)
+  if (ns_total > NS_MAX) {
     set.seed(42L)
     ns_idx <- sample(ns_idx, NS_MAX)
   }
   points <- points[sort(c(sig_idx, ns_idx))]
 
-  list(points = points, label = ct_label)
+  list(points = points, label = ct_label, ns_total = ns_total)
 }
 
 # ── Session: save (persist edited metadata / sample selection) ────────────────
@@ -1072,10 +1073,17 @@ function(req, res) {
   dist_method   <- if (!is.null(body$distMethod))    body$distMethod             else "pearson"
   color_by      <- if (!is.null(body$colorBy) && nchar(body$colorBy) > 0) body$colorBy else NULL
   palette_colors <- if (!is.null(body$palette) && length(body$palette) >= 2) as.character(body$palette) else c("#1565C0", "white", "#B71C1C")
+  ann_colors_raw <- body$annColors   # named list: group_value -> hex, or NULL
   # geneSet: "union" | "intersection" | a contrast label string
   gene_set      <- if (!is.null(body$geneSet) && nchar(body$geneSet) > 0) body$geneSet else "union"
   active_labels <- if (!is.null(body$activeLabels) && length(body$activeLabels) > 0)
                      as.character(body$activeLabels) else NULL
+  # Pathway leading-edge mode: explicit gene list (symbols) bypasses FDR/LFC filtering
+  custom_genes  <- if (!is.null(body$customGenes) && length(body$customGenes) > 0)
+                     as.character(body$customGenes) else NULL
+  ann_map_body  <- body$annMap   # named list gene_id -> symbol, used for reverse lookup
+  pathway_label <- if (!is.null(body$pathwayLabel) && nchar(body$pathwayLabel) > 0)
+                     body$pathwayLabel else NULL
 
   if (is.null(session_id) || session_id == "") stop("sessionId is required")
 
@@ -1105,25 +1113,55 @@ function(req, res) {
   rowv_arg <- if (cluster_rows) TRUE else NA
   colv_arg <- if (cluster_cols) TRUE else NA
 
-  # ── Gene selection helper (shared by both modes) ────────────────────────────
-  sig_per_contrast <- lapply(contrasts_use, function(ct) {
-    df <- ct$results
-    df$gene[!is.na(df$padj) & df$padj < fdr & abs(df$log2FC) >= min_lfc]
-  })
-  names(sig_per_contrast) <- sapply(contrasts_use, function(ct) ct$label)
+  # ── Gene selection: custom leading-edge genes OR FDR/LFC-filtered DEGs ───────
+  if (!is.null(custom_genes)) {
+    # Pathway heatmap mode — resolve gene symbols → IDs in expression matrix
+    expr_mat_tmp <- if (!is.null(saved$norm_matrix)) saved$norm_matrix else saved$vst_matrix
+    if (is.null(expr_mat_tmp)) stop("Normalized count matrix not found")
 
-  all_sig <- if (gene_set == "union") {
-    unique(unlist(sig_per_contrast))
-  } else if (gene_set == "intersection") {
-    if (length(sig_per_contrast) == 1) sig_per_contrast[[1]]
-    else Reduce(intersect, sig_per_contrast)
+    # Build symbol → gene_id reverse map from annMap
+    rev_map <- character(0)
+    if (!is.null(ann_map_body) && length(ann_map_body) > 0) {
+      sym_vec  <- as.character(unlist(ann_map_body))
+      names(sym_vec) <- names(unlist(ann_map_body))
+      rev_map  <- setNames(names(sym_vec), sym_vec)   # symbol -> gene_id
+    }
+
+    # Resolve each gene in leading-edge order — vectorized (avoids O(n²) copy loop)
+    resolved <- ifelse(
+      custom_genes %in% rownames(expr_mat_tmp),
+      custom_genes,
+      ifelse(length(rev_map) > 0 & custom_genes %in% names(rev_map),
+             rev_map[custom_genes], NA_character_)
+    )
+    valid   <- !is.na(resolved) & resolved %in% rownames(expr_mat_tmp)
+    all_sig <- unique(resolved[valid])   # preserves first-occurrence order
+
+    if (length(all_sig) == 0)
+      stop("None of the leading-edge genes were found in the expression matrix. Load gene annotations first.")
+    mode <- "vst"   # pathway heatmap always uses normalised counts
   } else {
-    # individual contrast label
-    matched <- sig_per_contrast[[gene_set]]
-    if (is.null(matched)) unique(unlist(sig_per_contrast)) else matched
+    # Standard DEG mode — FDR / LFC filtering
+    sig_per_contrast <- lapply(contrasts_use, function(ct) {
+      df <- ct$results
+      df$gene[!is.na(df$padj) & df$padj < fdr & abs(df$log2FC) >= min_lfc]
+    })
+    names(sig_per_contrast) <- sapply(contrasts_use, function(ct) ct$label)
+
+    all_sig <- if (gene_set == "union") {
+      unique(unlist(sig_per_contrast))
+    } else if (gene_set == "intersection") {
+      if (length(sig_per_contrast) == 1) sig_per_contrast[[1]]
+      else Reduce(intersect, sig_per_contrast)
+    } else {
+      matched <- sig_per_contrast[[gene_set]]
+      if (is.null(matched)) unique(unlist(sig_per_contrast)) else matched
+    }
+    if (length(all_sig) == 0)
+      stop(paste0("No significant DEGs found for gene set '", gene_set, "' at FDR < ", fdr))
   }
 
-  if (length(all_sig) == 0) stop(paste0("No significant DEGs found for gene set '", gene_set, "' at FDR < ", fdr))
+  ann_groups_vec <- character(0)   # populated in VST branch; returned for frontend colour pickers
 
   if (mode == "lfc") {
     # ── Mode: log2FC across contrasts ──────────────────────────────────────────
@@ -1150,7 +1188,7 @@ function(req, res) {
       xlab              = "Contrast",
       ylab              = "Gene",
       main              = paste0("log2FC heatmap (FDR < ", fdr, ", top ", nrow(mat_plot), " genes)"),
-      showticklabels    = c(TRUE, nrow(mat_plot) <= 60),
+      showticklabels    = c(TRUE, TRUE),
       plot_method       = "plotly",
       key.title         = "log2FC"
     )
@@ -1166,8 +1204,14 @@ function(req, res) {
 
     sub_mat <- expr_mat[all_sig, , drop = FALSE]
     if (nrow(sub_mat) > top_n) {
-      rv      <- apply(sub_mat, 1, var)
-      sub_mat <- sub_mat[order(rv, decreasing = TRUE)[1:top_n], , drop = FALSE]
+      if (!is.null(custom_genes) && !cluster_rows) {
+        # Pathway mode with clustering off — preserve leading-edge order, take first N
+        sub_mat <- sub_mat[seq_len(top_n), , drop = FALSE]
+      } else {
+        # Standard mode or clustering on — rank by row variance
+        rv      <- apply(sub_mat, 1, var)
+        sub_mat <- sub_mat[order(rv, decreasing = TRUE)[1:top_n], , drop = FALSE]
+      }
     }
     mat_scaled <- t(scale(t(sub_mat)))
     mat_scaled[!is.finite(mat_scaled)] <- 0
@@ -1191,9 +1235,17 @@ function(req, res) {
     }
 
     # ── Annotation bar colour palette ─────────────────────────────────────────
-    ann_palette <- c("#800020", "#228B22", "#C9A227", "#555555",
-                     "#4E6E8E", "#A0522D", "#BF5700", "#4B0082")
-    col_side_palette_fn <- grDevices::colorRampPalette(ann_palette)
+    ann_groups_vec <- if (!is.null(col_annotation)) sort(unique(as.character(col_annotation[[1]]))) else ann_groups_vec
+    if (!is.null(ann_colors_raw) && length(ann_colors_raw) > 0 && length(ann_groups_vec) > 0) {
+      custom_cols <- sapply(ann_groups_vec, function(g) {
+        if (!is.null(ann_colors_raw[[g]])) as.character(ann_colors_raw[[g]]) else "#999999"
+      })
+      col_side_palette_fn <- function(n) custom_cols[seq_len(min(n, length(custom_cols)))]
+    } else {
+      ann_palette <- c("#800020", "#228B22", "#C9A227", "#555555",
+                       "#4E6E8E", "#A0522D", "#BF5700", "#4B0082")
+      col_side_palette_fn <- grDevices::colorRampPalette(ann_palette)
+    }
 
     fig <- heatmaply::heatmaply(
       mat_scaled,
@@ -1207,8 +1259,11 @@ function(req, res) {
       colors                = grDevices::colorRampPalette(palette_colors)(256),
       xlab                  = "Sample",
       ylab                  = "Gene",
-      main                  = paste0("Normalized counts Z-score (FDR < ", fdr, ", top ", nrow(mat_scaled), " genes)"),
-      showticklabels        = c(TRUE, nrow(mat_scaled) <= 60),
+      main                  = if (!is.null(pathway_label))
+                               paste0(pathway_label, "  (", nrow(mat_scaled), " leading-edge genes, Z-scored)")
+                             else
+                               paste0("Normalized counts Z-score (FDR < ", fdr, ", top ", nrow(mat_scaled), " genes)"),
+      showticklabels        = c(TRUE, TRUE),
       plot_method           = "plotly",
       key.title             = "Z-score"
     )
@@ -1222,7 +1277,7 @@ function(req, res) {
   }, error = function(e) character(0))
 
   fig_json <- plotly::plotly_json(fig, jsoneol = FALSE)
-  list(plotlyJson = fig_json, metaCols = meta_cols)
+  list(plotlyJson = fig_json, metaCols = meta_cols, annGroups = ann_groups_vec)
 }
 
 # ── Multi-group violin: all groups, KW + pairwise Wilcoxon, VST counts ───────

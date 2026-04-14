@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Plotly from 'plotly.js-dist-min'
 import GeneViolinModal from './GeneViolinModal'
+import { useRegisterPlot } from '../context/PlotRegistryContext'
 
 const CTRL_LABEL = {
   fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-3)',
@@ -10,6 +11,13 @@ const CTRL_LABEL = {
 export default function MAPlot({ design, session, annMap }) {
   const plotRef = useRef(null)
 
+  const maCaptureRef = useRef(null)
+  maCaptureRef.current = () => {
+    if (!plotRef.current?._fullLayout) return null
+    return Plotly.toImage(plotRef.current, { format: 'png', width: 900, height: 600 })
+  }
+  useRegisterPlot('ma-plot', 'MA Plot', 'Differential Expression', maCaptureRef)
+
   const [fdr,       setFdr]       = useState(0.05)
   const [fc,        setFc]        = useState(1.5)
   const [topN,      setTopN]      = useState(15)
@@ -17,6 +25,7 @@ export default function MAPlot({ design, session, annMap }) {
   const [labelBy,   setLabelBy]   = useState('padj')   // 'padj' | 'fc'
 
   const [rawPoints,  setRawPoints]  = useState(null)
+  const [nsTotal,    setNsTotal]    = useState(null)
   const [plotLabel,  setPlotLabel]  = useState('')
   const [loading,    setLoading]    = useState(false)
   const [error,      setError]      = useState(null)
@@ -43,6 +52,7 @@ export default function MAPlot({ design, session, annMap }) {
       .then(data => {
         if (data.error) throw new Error(data.error)
         setRawPoints(data.points || [])
+        setNsTotal(data.ns_total ?? null)
         setPlotLabel(data.label || '')
         setLoading(false)
       })
@@ -90,8 +100,11 @@ export default function MAPlot({ design, session, annMap }) {
     const down = byGroup.down
     const ns   = byGroup.ns
 
+    const nsLabel = nsTotal != null && nsTotal > ns.length
+      ? `NS (${ns.length.toLocaleString()} of ${nsTotal.toLocaleString()} shown)`
+      : `NS (${ns.length.toLocaleString()})`
     const nsTrace = {
-      ...makeTrace(ns, 'darkgray', `Not significant (${ns.length})`, 0.35, true),
+      ...makeTrace(ns, 'darkgray', nsLabel, 0.35, true),
       hoverinfo: 'skip',   // no hit-testing on NS points — significant only are interactive
     }
 
@@ -183,7 +196,7 @@ export default function MAPlot({ design, session, annMap }) {
       setViolinGene(geneId)
       setViolinSymbol(gene !== geneId ? gene : null)
     })
-  }, [rawPoints, fdr, fc, topN, size, labelBy, plotLabel])
+  }, [rawPoints, nsTotal, fdr, fc, topN, size, labelBy, plotLabel])
 
   if (!session?.sessionId) {
     return (

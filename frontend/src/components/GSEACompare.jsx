@@ -1,6 +1,399 @@
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import Plotly from 'plotly.js-dist-min'
 import { useDownloadDialog } from './DownloadDialog'
+
+// ── Shared utilities (mirrored from ComparePanel) ─────────────────────────────
+async function apiFetch(path, body) {
+  const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  const data = await r.json()
+  if (data.error) throw new Error(data.error)
+  return data
+}
+
+function useDebounce(value, delay) {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay)
+    return () => clearTimeout(t)
+  }, [value, delay])
+  return debounced
+}
+
+const DIST_METHODS = ['euclidean', 'pearson', 'spearman', 'kendall', 'manhattan', 'maximum']
+
+const HEATMAP_PRESETS = [
+  { label: 'Blue–White–Red',   colors: ['#1565C0', '#ffffff', '#B71C1C'] },
+  { label: 'Purple–White–Org', colors: ['#6A1B9A', '#ffffff', '#E65100'] },
+  { label: 'Green–White–Red',  colors: ['#1B5E20', '#ffffff', '#B71C1C'] },
+  { label: 'Navy–White–Gold',  colors: ['#0D1B4B', '#ffffff', '#F9A825'] },
+  { label: 'Teal–Black–Pink',  colors: ['#00695C', '#000000', '#AD1457'] },
+  { label: 'RdYlBu',           colors: ['#2166AC', '#FFFFBF', '#D73027'] },
+]
+
+function HMPaletteRow({ palette, setPalette }) {
+  const [drafts, setDrafts] = useState(palette)
+  const timer = useRef(null)
+  useEffect(() => setDrafts(palette), [palette])
+  function pick(i, val) {
+    const next = [...drafts]; next[i] = val; setDrafts(next)
+    clearTimeout(timer.current); timer.current = setTimeout(() => setPalette(next), 600)
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+        {HEATMAP_PRESETS.map(p => {
+          const active = JSON.stringify(p.colors) === JSON.stringify(palette)
+          return (
+            <button key={p.label} onClick={() => { clearTimeout(timer.current); setPalette(p.colors) }} title={p.label}
+                    style={{ display: 'flex', padding: 0, border: active ? '2px solid var(--accent)' : '2px solid transparent',
+                             borderRadius: 5, cursor: 'pointer', overflow: 'hidden', height: 16 }}>
+              {p.colors.map((c, i) => <span key={i} style={{ width: 12, height: 16, background: c, display: 'block' }} />)}
+            </button>
+          )
+        })}
+      </div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        {drafts.map((col, i) => (
+          <label key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer' }}>
+            <span style={{ fontSize: '0.58rem', color: 'var(--text-3)', textTransform: 'uppercase' }}>
+              {['Low','Mid','Hi'][i]}
+            </span>
+            <div style={{ position: 'relative', width: 24, height: 24 }}>
+              <span style={{ display: 'block', width: 24, height: 24, borderRadius: 4,
+                             background: col, border: '2px solid var(--border)' }} />
+              <input type="color" value={col} onInput={e => pick(i, e.target.value)} onChange={e => pick(i, e.target.value)}
+                     style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }} />
+            </div>
+          </label>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function applySymbolsToFig(fig, annMap) {
+  if (!annMap || !fig?.layout) return fig
+  const replace = arr => Array.isArray(arr) ? arr.map(v => annMap[v] || v) : arr
+  Object.keys(fig.layout).filter(k => /^[xy]axis/.test(k)).forEach(ax => {
+    if (fig.layout[ax]?.ticktext) fig.layout[ax].ticktext = replace(fig.layout[ax].ticktext)
+  })
+  if (fig.data) fig.data.forEach(t => { if (t.y) t.y = replace(t.y) })
+  return fig
+}
+
+function applySampleLabelsToFig(fig, sampleLabels) {
+  if (!sampleLabels || !Object.keys(sampleLabels).length || !fig) return fig
+  const rename = v => typeof v === 'string' ? (sampleLabels[v] ?? v) : v
+  if (fig.layout) Object.keys(fig.layout).filter(k => /^xaxis/.test(k)).forEach(ax => {
+    if (fig.layout[ax]?.ticktext) fig.layout[ax].ticktext = fig.layout[ax].ticktext.map(rename)
+  })
+  if (fig.data) fig.data.forEach(t => { if (t.x) t.x = t.x.map(rename) })
+  return fig
+}
+
+// ── Pathway Heatmap Modal ─────────────────────────────────────────────────────
+function PathwayHeatmapModal({ pathway, genes, session, pca, annMap, sampleLabels = {}, onClose }) {
+  const { promptDownload, dialog: dlDialog } = useDownloadDialog()
+  const cardRef  = useRef(null)
+  const plotRef  = useRef(null)
+  const [size, setSize] = useState({ width: 1100, height: 720 })
+  const [pos,  setPos]  = useState(null)
+
+  // Controls
+  const [clusterRows, setClusterRows] = useState(true)
+  const [clusterCols, setClusterCols] = useState(true)
+  const [distMethod,  setDistMethod]  = useState('pearson')
+  const [colorBy,     setColorBy]     = useState('group')
+  const [palette,     setPalette]     = useState(['#1565C0', '#ffffff', '#B71C1C'])
+  const debouncedPalette = useDebounce(palette, 700)
+
+  const [loading,  setLoading]  = useState(false)
+  const [error,    setError]    = useState(null)
+  const [hasPlot,  setHasPlot]  = useState(false)
+  const [annGroups, setAnnGroups] = useState([])
+  const [annColors, setAnnColors] = useState({})
+
+  const metaCols = useMemo(() => {
+    if (!pca?.scores?.length) return []
+    return Object.keys(pca.scores[0]).filter(k => k !== 'sample' && !/^PC\d+$/.test(k))
+  }, [pca])
+
+  useEffect(() => {
+    if (!metaCols.length) return
+    if (!metaCols.includes(colorBy)) setColorBy(metaCols[0])
+  }, [metaCols])
+
+  // Reset annotation colors when column changes
+  useEffect(() => { setAnnGroups([]); setAnnColors({}) }, [colorBy])
+
+  // Centre on mount only — generate is explicit (button-only)
+  useEffect(() => {
+    setPos({
+      x: Math.max(0, Math.round((window.innerWidth  - 1100) / 2)),
+      y: Math.max(0, Math.round((window.innerHeight - 720)  / 2)),
+    })
+  }, [])
+
+  // Escape key
+  useEffect(() => {
+    const h = e => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [onClose])
+
+  // Resize Plotly whenever the modal size changes
+  useEffect(() => {
+    if (plotRef.current?._fullLayout) Plotly.Plots.resize(plotRef.current)
+  }, [size])
+
+  async function generate() {
+    if (!session?.sessionId || !genes?.length) return
+    setLoading(true); setError(null); setHasPlot(false)
+    try {
+      const data = await apiFetch('/api/heatmap', {
+        sessionId:    session.sessionId,
+        customGenes:  genes,
+        annMap:       annMap ? (() => { const s = new Set(genes); return Object.fromEntries(Object.entries(annMap).filter(([, sym]) => s.has(sym))) })() : null,
+        pathwayLabel: pathway,
+        topN:         genes.length,
+        mode:         'vst',
+        clusterRows, clusterCols, distMethod,
+        colorBy:      colorBy || '',
+        palette,
+        annColors:    Object.keys(annColors).length ? annColors : null,
+        geneSet:      'union',
+        activeLabels: [],
+      })
+      const fig = JSON.parse(data.plotlyJson)
+      fig.layout = { ...fig.layout, paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
+                     font: { ...(fig.layout?.font || {}), color: '#94a3b8' } }
+      applySymbolsToFig(fig, annMap)
+      applySampleLabelsToFig(fig, sampleLabels)
+      await Plotly.react(plotRef.current, fig.data, fig.layout,
+        { responsive: true, displaylogo: false, modeBarButtonsToRemove: ['lasso2d', 'select2d'] })
+      setHasPlot(true)
+      // Populate annotation color pickers
+      if (data.annGroups?.length) {
+        const defaults = ['#800020', '#228B22', '#C9A227', '#555555', '#4E6E8E', '#A0522D', '#BF5700', '#4B0082']
+        setAnnGroups(data.annGroups)
+        setAnnColors(prev => {
+          const next = { ...prev }
+          data.annGroups.forEach((g, i) => { if (!next[g]) next[g] = defaults[i % defaults.length] })
+          return next
+        })
+      }
+    } catch (e) { setError(e.message) }
+    finally { setLoading(false) }
+  }
+
+  // Drag
+  function onDragStart(e) {
+    if (e.button !== 0) return; e.preventDefault()
+    const sx = e.clientX - (pos?.x ?? 0), sy = e.clientY - (pos?.y ?? 0)
+    const onMove = e => setPos({
+      x: Math.max(0, Math.min(window.innerWidth  - size.width,  e.clientX - sx)),
+      y: Math.max(0, Math.min(window.innerHeight - 60,           e.clientY - sy)),
+    })
+    const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+    window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
+  }
+
+  // Resize
+  function onResizeStart(e) {
+    e.preventDefault(); e.stopPropagation()
+    const sx = e.clientX, sy = e.clientY
+    const sw = cardRef.current?.offsetWidth ?? size.width, sh = cardRef.current?.offsetHeight ?? size.height
+    const onMove = e => setSize({
+      width:  Math.max(640, Math.min(sw + e.clientX - sx, Math.floor(window.innerWidth  * 0.97))),
+      height: Math.max(420, Math.min(sh + e.clientY - sy, Math.floor(window.innerHeight * 0.97))),
+    })
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp)
+      window.addEventListener('click', e => e.stopPropagation(), { capture: true, once: true })
+    }
+    window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
+  }
+
+  const CB = '1px solid var(--border)'
+  const inp = { background: 'var(--bg-card2)', border: CB, borderRadius: 6, padding: '3px 7px',
+                color: 'var(--text-1)', fontSize: '0.76rem', width: '100%', boxSizing: 'border-box' }
+
+  const Switch = ({ val, set, label }) => (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', userSelect: 'none' }}>
+      <div onClick={() => set(v => !v)}
+           style={{ width: 30, height: 16, borderRadius: 8, position: 'relative', cursor: 'pointer', flexShrink: 0,
+                    background: val ? 'var(--accent)' : 'rgba(255,255,255,0.12)',
+                    border: `1px solid ${val ? 'var(--accent)' : 'var(--border)'}`, transition: 'background 0.2s' }}>
+        <div style={{ position: 'absolute', top: 1, left: val ? 13 : 1, width: 12, height: 12,
+                      borderRadius: '50%', background: val ? '#fff' : 'rgba(255,255,255,0.5)',
+                      transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
+      </div>
+      <span style={{ fontSize: '0.75rem', color: val ? 'var(--text-1)' : 'var(--text-3)' }}>{label}</span>
+    </label>
+  )
+
+  if (!pos) return null
+
+  const shortPathway = pathway.length > 48 ? pathway.slice(0, 48) + '…' : pathway
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 101000, pointerEvents: 'none' }}>
+      {/* Backdrop */}
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)',
+                    backdropFilter: 'blur(4px)', pointerEvents: 'auto' }} onClick={onClose} />
+
+      {/* Card */}
+      <div ref={cardRef}
+           style={{ position: 'absolute', left: pos.x, top: pos.y, width: size.width, height: size.height,
+                    background: 'var(--bg-panel)', borderRadius: 16, border: '1px solid var(--border)',
+                    boxShadow: '0 8px 60px rgba(0,0,0,0.45)', display: 'flex', flexDirection: 'column',
+                    pointerEvents: 'auto', overflow: 'hidden', boxSizing: 'border-box' }}
+           onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div onMouseDown={onDragStart}
+             style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      padding: '10px 16px', cursor: 'grab', flexShrink: 0, userSelect: 'none',
+                      borderBottom: CB, background: 'rgba(255,255,255,0.02)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--accent-text)',
+                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                  title={pathway}>
+              {shortPathway}
+            </span>
+            <span style={{ fontSize: '0.65rem', color: 'var(--text-3)', flexShrink: 0 }}>
+              {genes.length} leading-edge genes
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+            <span style={{ fontSize: '0.62rem', color: 'var(--text-4)' }}>drag · resize ↘</span>
+            <button onClick={onClose}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer',
+                             color: 'var(--text-3)', fontSize: '1.3rem', lineHeight: 1 }}>×</button>
+          </div>
+        </div>
+
+        {/* Body: sidebar + plot */}
+        <div style={{ flex: '1 1 0', minHeight: 0, display: 'flex', overflow: 'hidden' }}>
+
+          {/* Controls sidebar */}
+          <div style={{ width: 210, flexShrink: 0, borderRight: CB, padding: '12px 12px',
+                        overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12,
+                        background: 'rgba(255,255,255,0.01)' }}>
+
+            {/* Clustering */}
+            <div>
+              <div style={{ fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.06em',
+                            color: 'var(--text-3)', textTransform: 'uppercase', marginBottom: 6 }}>
+                Clustering
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <Switch val={clusterRows} set={setClusterRows} label="Cluster rows" />
+                <Switch val={clusterCols} set={setClusterCols} label="Cluster cols" />
+              </div>
+              {(clusterRows || clusterCols) && (
+                <select value={distMethod} onChange={e => setDistMethod(e.target.value)}
+                        style={{ ...inp, marginTop: 8 }}>
+                  {DIST_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              )}
+            </div>
+
+            {/* Annotation */}
+            {metaCols.length > 0 && (
+              <div>
+                <div style={{ fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.06em',
+                              color: 'var(--text-3)', textTransform: 'uppercase', marginBottom: 5 }}>
+                  Color by
+                </div>
+                <select value={colorBy} onChange={e => setColorBy(e.target.value)} style={inp}>
+                  {metaCols.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                {annGroups.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 6 }}>
+                    {annGroups.map(grp => (
+                      <label key={grp} title={`Change color for "${grp}"`}
+                             style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                        <input type="color" value={annColors[grp] || '#999999'}
+                               onChange={e => setAnnColors(prev => ({ ...prev, [grp]: e.target.value }))}
+                               style={{ width: 20, height: 20, padding: 0, border: '1px solid var(--border)',
+                                        borderRadius: 3, cursor: 'pointer', flexShrink: 0 }} />
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-2)',
+                                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {grp}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Palette */}
+            <div>
+              <div style={{ fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.06em',
+                            color: 'var(--text-3)', textTransform: 'uppercase', marginBottom: 6 }}>
+                Palette
+              </div>
+              <HMPaletteRow palette={palette} setPalette={setPalette} />
+            </div>
+
+            <div style={{ flex: 1 }} />
+
+            {/* Generate */}
+            <button onClick={generate} disabled={loading}
+                    style={{ padding: '8px 0', borderRadius: 8, border: 'none', cursor: loading ? 'wait' : 'pointer',
+                             background: loading ? 'rgba(99,102,241,0.35)' : 'var(--accent)',
+                             color: '#fff', fontWeight: 700, fontSize: '0.8rem' }}>
+              {loading ? '⟳ Generating…' : '▶ Generate'}
+            </button>
+
+            {/* Download */}
+            <button onClick={() => hasPlot && promptDownload('pathway_heatmap.png', name =>
+                Plotly.downloadImage(plotRef.current, { format: 'png', filename: name.replace(/\.png$/i, ''), width: 1600, height: 1200, scale: 2 })
+              )}
+              disabled={!hasPlot}
+              style={{ padding: '8px 0', borderRadius: 8, border: CB, cursor: hasPlot ? 'pointer' : 'default',
+                       background: 'rgba(255,255,255,0.04)', color: hasPlot ? 'var(--text-1)' : 'var(--text-4)',
+                       fontWeight: 600, fontSize: '0.8rem', opacity: hasPlot ? 1 : 0.4 }}>
+              ↓ Export PNG
+            </button>
+            {dlDialog}
+          </div>
+
+          {/* Plot area */}
+          <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+            {loading && (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+                            alignItems: 'center', justifyContent: 'center', gap: 14, zIndex: 1 }}>
+                <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid rgba(99,102,241,0.2)',
+                              borderTopColor: '#6366f1', animation: 'gsea-spin 0.7s linear infinite' }} />
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-3)' }}>Building heatmap…</span>
+              </div>
+            )}
+            {error && (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+                            justifyContent: 'center', padding: 24 }}>
+                <div style={{ fontSize: '0.82rem', color: '#f87171', textAlign: 'center',
+                              maxWidth: 480, lineHeight: 1.6 }}>⚠ {error}</div>
+              </div>
+            )}
+            <div ref={plotRef} style={{ position: 'absolute', inset: 0,
+                                        opacity: hasPlot ? 1 : 0, transition: 'opacity 0.3s' }} />
+          </div>
+        </div>
+
+        {/* Resize handle */}
+        <div onMouseDown={onResizeStart}
+             style={{ position: 'absolute', bottom: 0, right: 0, width: 18, height: 18,
+                      cursor: 'se-resize', zIndex: 2,
+                      background: 'linear-gradient(135deg, transparent 50%, var(--border) 50%)',
+                      borderBottomRightRadius: 16 }} />
+      </div>
+    </div>
+  )
+}
 
 function extractSets(runs, padjCutoff, topN, searchQ) {
   const q = searchQ.trim().toLowerCase()
@@ -337,7 +730,7 @@ function MethodsPanel() {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function GSEACompare({ session, gseaRuns }) {
+export default function GSEACompare({ session, gseaRuns, pca, annMap, sampleLabels = {} }) {
   const { promptDownload, dialog: dlDialog } = useDownloadDialog()
   const runs = gseaRuns ?? []
 
@@ -345,9 +738,12 @@ export default function GSEACompare({ session, gseaRuns }) {
   const [topN,       setTopN]       = useState(0)
   const [searchQ,    setSearchQ]    = useState('')
   const [selected,   setSelected]   = useState(new Set())
-  const [expandedGenes, setExpandedGenes] = useState(new Set())
-  const [fsPathways, setFsPathways] = useState(false)
-  const [selWarning, setSelWarning] = useState('')
+  const [expandedGenes,    setExpandedGenes]    = useState(new Set())
+  const [fsPathways,       setFsPathways]       = useState(false)
+  const [selWarning,       setSelWarning]       = useState('')
+  const [collapsedContrasts, setCollapsedContrasts] = useState(new Set())
+  const [collapsedRuns,    setCollapsedRuns]    = useState(new Set())
+  const [heatmapTarget,    setHeatmapTarget]    = useState(null) // { pathway, genes }
 
   const SEL_LIMIT   = 100
   const MATRIX_LIMIT = 50   // overlap matrix hidden above this — too dense to read and slow to render
@@ -363,6 +759,19 @@ export default function GSEACompare({ session, gseaRuns }) {
     () => extractSets(runs, padjCutoff, topN, searchQ),
     [runs, padjCutoff, topN, searchQ]
   )
+
+  // Group allSets: contrastLabel → runId → { run, items }
+  const groupedSets = useMemo(() => {
+    const map = new Map() // contrastLabel → Map<runId, { run, items[] }>
+    for (const s of allSets) {
+      const ct = s.run.contrastLabel ?? 'Unknown contrast'
+      if (!map.has(ct)) map.set(ct, new Map())
+      const runMap = map.get(ct)
+      if (!runMap.has(s.run.id)) runMap.set(s.run.id, { run: s.run, items: [] })
+      runMap.get(s.run.id).items.push(s)
+    }
+    return map
+  }, [allSets])
 
   const selectedSets = useMemo(
     () => allSets.filter(s => selected.has(s.id)),
@@ -386,6 +795,34 @@ export default function GSEACompare({ session, gseaRuns }) {
       return next
     })
   }
+
+  function selectGroup(ids) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      let added = 0
+      for (const id of ids) {
+        if (!next.has(id)) {
+          if (next.size >= SEL_LIMIT) {
+            setSelWarning(`Selection capped at ${SEL_LIMIT} pathways. Use filters or search to narrow the list.`)
+            break
+          }
+          next.add(id); added++
+        }
+      }
+      if (added > 0) setSelWarning('')
+      return next
+    })
+  }
+
+  function clearGroup(ids) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      ids.forEach(id => next.delete(id))
+      setSelWarning('')
+      return next
+    })
+  }
+
   function selectAll() {
     if (allSets.length > SEL_LIMIT) {
       setSelected(new Set(allSets.slice(0, SEL_LIMIT).map(s => s.id)))
@@ -396,6 +833,13 @@ export default function GSEACompare({ session, gseaRuns }) {
     }
   }
   function clearAll()  { setSelected(new Set()); setSelWarning('') }
+
+  function toggleContrastCollapse(ct) {
+    setCollapsedContrasts(prev => { const n = new Set(prev); n.has(ct) ? n.delete(ct) : n.add(ct); return n })
+  }
+  function toggleRunCollapse(runId) {
+    setCollapsedRuns(prev => { const n = new Set(prev); n.has(runId) ? n.delete(runId) : n.add(runId); return n })
+  }
 
   function exportTableCSV() {
     const rows = selectedSets.map(s => ({
@@ -444,9 +888,14 @@ export default function GSEACompare({ session, gseaRuns }) {
       overflow: 'auto',
     } : { padding: 14 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-2)', letterSpacing: '0.06em' }}>
-          SELECTED PATHWAYS ({selectedSets.length})
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-2)', letterSpacing: '0.06em' }}>
+            SELECTED PATHWAYS ({selectedSets.length})
+          </span>
+          <span style={{ fontSize: '0.63rem', color: 'var(--text-4)' }}>
+            click row → leading-edge heatmap
+          </span>
+        </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <button onClick={exportTableCSV}
                   style={{ fontSize: '0.68rem', padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
@@ -478,16 +927,26 @@ export default function GSEACompare({ session, gseaRuns }) {
           </thead>
           <tbody>
             {tableRows.map((s, i) => {
-              const showAll = expandedGenes.has(s.id)
-              const preview = showAll ? s.genes : s.genes.slice(0, 2)
+              const showAll  = expandedGenes.has(s.id)
+              const preview  = showAll ? s.genes : s.genes.slice(0, 2)
               const remaining = s.genes.length - 2
+              const isActive  = heatmapTarget?.pathway === s.pathway && heatmapTarget?.genes === s.genes
               return (
                 <tr key={s.id}
-                    style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', transition: 'background 0.1s' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--accent-rgb),0.07)'}
-                    onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)'}>
-                  <td style={{ ...tdBase, whiteSpace: 'nowrap', maxWidth: 220, fontWeight: 500, cursor: 'default' }}
-                      onMouseEnter={e => showTip(s.pathway, e)}
+                    onClick={() => setHeatmapTarget({ pathway: s.pathway, genes: s.genes })}
+                    title="Click to view leading-edge heatmap"
+                    style={{
+                      background: isActive
+                        ? 'rgba(16,185,129,0.08)'
+                        : i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)',
+                      transition: 'background 0.1s',
+                      cursor: 'pointer',
+                      outline: isActive ? '1px solid rgba(16,185,129,0.3)' : 'none',
+                    }}
+                    onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'rgba(var(--accent-rgb),0.07)' }}
+                    onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
+                  <td style={{ ...tdBase, whiteSpace: 'nowrap', maxWidth: 220, fontWeight: 500 }}
+                      onMouseEnter={e => { showTip(s.pathway, e); e.stopPropagation() }}
                       onMouseMove={moveTip}
                       onMouseLeave={hideTip}>
                     <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 220 }}>
@@ -506,8 +965,8 @@ export default function GSEACompare({ session, gseaRuns }) {
                   <td style={{ ...tdBase, whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 600 }}>
                     {s.genes.length}
                   </td>
-                  <td style={{ ...tdBase, whiteSpace: 'nowrap' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                  <td style={{ ...tdBase, whiteSpace: 'nowrap', maxWidth: 260 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 3, overflow: 'hidden', maxWidth: '100%' }}>
                       {preview.map(g => (
                         <span key={g} style={{
                           fontSize: '0.65rem', padding: '1px 5px', borderRadius: 4,
@@ -516,11 +975,11 @@ export default function GSEACompare({ session, gseaRuns }) {
                         }}>{g}</span>
                       ))}
                       {remaining > 0 && (
-                        <button onClick={() => setExpandedGenes(prev => {
+                        <button onClick={e => { e.stopPropagation(); setExpandedGenes(prev => {
                           const next = new Set(prev)
                           showAll ? next.delete(s.id) : next.add(s.id)
                           return next
-                        })} style={{
+                        })}} style={{
                           fontSize: '0.65rem', padding: '1px 6px', borderRadius: 4,
                           background: 'rgba(255,255,255,0.05)', color: 'var(--text-3)',
                           border: '1px solid var(--border)', cursor: 'pointer', flexShrink: 0,
@@ -575,7 +1034,7 @@ export default function GSEACompare({ session, gseaRuns }) {
                      onChange={e => setPadjCutoff(+e.target.value)} style={inputStyle} />
             </label>
             <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <span style={{ fontSize: '0.63rem', color: 'var(--text-3)' }}>Top N (0=all)</span>
+              <span style={{ fontSize: '0.63rem', color: 'var(--text-3)' }}>Top N per run (0=all)</span>
               <input type="number" step="1" min="0" value={topN}
                      onChange={e => setTopN(+e.target.value)} style={inputStyle} />
             </label>
@@ -596,7 +1055,7 @@ export default function GSEACompare({ session, gseaRuns }) {
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 2px' }}>
           <span style={{ fontSize: '0.7rem', color: 'var(--text-3)' }}>
-            {allSets.length} pathways · <strong style={{ color: 'var(--text-2)' }}>{selected.size}</strong> selected
+            {allSets.length} pathways · {groupedSets.size} contrast{groupedSets.size !== 1 ? 's' : ''} · <strong style={{ color: 'var(--text-2)' }}>{selected.size}</strong> selected
           </span>
           <div style={{ display: 'flex', gap: 5 }}>
             {['All', 'Clear'].map(lbl => (
@@ -625,13 +1084,12 @@ export default function GSEACompare({ session, gseaRuns }) {
           </div>
         )}
 
-        <div style={{ overflowY: 'auto', maxHeight: 460, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <div style={{ overflowY: 'auto', maxHeight: 520, display: 'flex', flexDirection: 'column', gap: 0 }}>
           {/* Pinned: selected items not in current search results */}
           {(() => {
             const visibleIds = new Set(allSets.map(s => s.id))
             const hiddenSelected = [...selected].filter(id => !visibleIds.has(id))
             if (!hiddenSelected.length) return null
-            // Reconstruct item objects from all runs for pinned display
             const allItems = extractSets(runs, padjCutoff, 0, '')
             const pinnedItems = hiddenSelected.map(id => allItems.find(s => s.id === id)).filter(Boolean)
             if (!pinnedItems.length) return null
@@ -648,13 +1106,113 @@ export default function GSEACompare({ session, gseaRuns }) {
               </>
             )
           })()}
+
           {allSets.length === 0 ? (
             <div style={{ color: 'var(--text-3)', fontSize: '0.78rem', textAlign: 'center', padding: '20px 0' }}>
               No significant pathways match filters.
             </div>
-          ) : allSets.map(item => (
-            <SetRow key={item.id} item={item} selected={selected.has(item.id)} onToggle={toggleItem} />
-          ))}
+          ) : Array.from(groupedSets.entries()).map(([contrastLabel, runMap], ctIdx) => {
+            const ctIds  = Array.from(runMap.values()).flatMap(r => r.items.map(s => s.id))
+            const ctSel  = ctIds.filter(id => selected.has(id)).length
+            const collapsed = collapsedContrasts.has(contrastLabel)
+            const multiRun  = runMap.size > 1
+
+            // Contrast-level accent color (cycle through palette)
+            const CONTRAST_COLORS = ['#6366f1','#06b6d4','#f59e0b','#10b981','#f43f5e','#a78bfa','#fb923c']
+            const ctColor = CONTRAST_COLORS[ctIdx % CONTRAST_COLORS.length]
+
+            return (
+              <div key={contrastLabel} style={{ marginBottom: 4 }}>
+                {/* Contrast header */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '6px 6px 6px 4px',
+                  borderRadius: 7,
+                  background: `color-mix(in srgb, ${ctColor} 10%, transparent)`,
+                  border: `1px solid color-mix(in srgb, ${ctColor} 25%, transparent)`,
+                  marginBottom: collapsed ? 0 : 4,
+                  cursor: 'pointer', userSelect: 'none',
+                }} onClick={() => toggleContrastCollapse(contrastLabel)}>
+                  <span style={{ fontSize: '0.7rem', color: ctColor, width: 12, textAlign: 'center', flexShrink: 0 }}>
+                    {collapsed ? '▶' : '▼'}
+                  </span>
+                  <span style={{ flex: 1, fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-1)',
+                                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        title={contrastLabel}>
+                    {contrastLabel}
+                  </span>
+                  <span style={{ fontSize: '0.65rem', color: 'var(--text-3)', flexShrink: 0 }}>
+                    {ctSel}/{ctIds.length}
+                  </span>
+                  {/* Per-contrast All / Clear */}
+                  {[['All', () => selectGroup(ctIds)], ['✕', () => clearGroup(ctIds)]].map(([lbl, fn]) => (
+                    <button key={lbl} onClick={e => { e.stopPropagation(); fn() }}
+                            style={{ fontSize: '0.63rem', padding: '1px 6px', borderRadius: 4, cursor: 'pointer',
+                                     background: lbl === 'All' ? `color-mix(in srgb, ${ctColor} 18%, transparent)` : 'rgba(255,255,255,0.04)',
+                                     color: lbl === 'All' ? ctColor : 'var(--text-3)',
+                                     border: `1px solid color-mix(in srgb, ${ctColor} 30%, transparent)`,
+                                     flexShrink: 0 }}>
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+
+                {!collapsed && Array.from(runMap.entries()).map(([runId, { run, items }]) => {
+                  const runIds = items.map(s => s.id)
+                  const runSel = runIds.filter(id => selected.has(id)).length
+                  const runCollapsed = collapsedRuns.has(runId)
+
+                  return (
+                    <div key={runId} style={{ marginLeft: 10, marginBottom: multiRun ? 4 : 2 }}>
+                      {/* Collection sub-header — only show when contrast has multiple runs */}
+                      {multiRun && (
+                        <div style={{
+                          display: 'flex', alignItems: 'center', gap: 5,
+                          padding: '3px 6px 3px 4px',
+                          borderRadius: 5, marginBottom: runCollapsed ? 0 : 2,
+                          background: 'rgba(255,255,255,0.03)',
+                          border: '1px solid var(--border)',
+                          cursor: 'pointer', userSelect: 'none',
+                        }} onClick={() => toggleRunCollapse(runId)}>
+                          <span style={{ fontSize: '0.65rem', color: 'var(--text-3)', width: 10 }}>
+                            {runCollapsed ? '▶' : '▼'}
+                          </span>
+                          <span style={{ flex: 1, fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-2)',
+                                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                title={run.collectionLabel}>
+                            {run.collectionLabel}
+                          </span>
+                          <span style={{ fontSize: '0.63rem', color: 'var(--text-3)', flexShrink: 0 }}>
+                            {runSel}/{runIds.length}
+                          </span>
+                          {[['All', () => selectGroup(runIds)], ['✕', () => clearGroup(runIds)]].map(([lbl, fn]) => (
+                            <button key={lbl} onClick={e => { e.stopPropagation(); fn() }}
+                                    style={{ fontSize: '0.6rem', padding: '1px 5px', borderRadius: 4, cursor: 'pointer',
+                                             background: lbl === 'All' ? 'rgba(99,102,241,0.1)' : 'rgba(255,255,255,0.04)',
+                                             color: lbl === 'All' ? '#818cf8' : 'var(--text-3)',
+                                             border: `1px solid ${lbl === 'All' ? 'rgba(99,102,241,0.25)' : 'var(--border)'}`,
+                                             flexShrink: 0 }}>
+                              {lbl}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {(!multiRun || !runCollapsed) && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          {items.map(item => (
+                            <SetRow key={item.id} item={item}
+                                    selected={selected.has(item.id)}
+                                    onToggle={toggleItem} />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })}
         </div>
       </div>
 
@@ -684,6 +1242,20 @@ export default function GSEACompare({ session, gseaRuns }) {
           )}
         </>}
       </div>
+
+      {/* Pathway heatmap modal */}
+      {heatmapTarget && createPortal(
+        <PathwayHeatmapModal
+          pathway={heatmapTarget.pathway}
+          genes={heatmapTarget.genes}
+          session={session}
+          pca={pca}
+          annMap={annMap}
+          sampleLabels={sampleLabels}
+          onClose={() => setHeatmapTarget(null)}
+        />,
+        document.body
+      )}
     </div>
   )
 }
