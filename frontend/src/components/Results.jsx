@@ -262,6 +262,7 @@ export default function Results({ results, design, onBack, onEditSamples, sessio
             key={session?.sessionId}
             session={session}
             contrastLabel={active?.label}
+            allContrasts={contrastList.map(c => c.label).filter(Boolean)}
             annMap={annMap}
             onRunsChange={onGseaRunsChange}
             initialRuns={initialGseaRuns}

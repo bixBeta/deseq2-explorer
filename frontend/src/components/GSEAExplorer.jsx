@@ -1472,7 +1472,7 @@ function MountainModal({ pathway, result, curveData, curveLoading, curveError, o
 }
 
 // ── Main GSEAExplorer ─────────────────────────────────────────────────────────
-export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsChange, initialRuns }) {
+export default function GSEAExplorer({ session, contrastLabel, allContrasts = [], annMap, onRunsChange, initialRuns }) {
   const { promptDownload, dialog: exportDialog } = useDownloadDialog()
   const [exportLoading,  setExportLoading]  = useState(false)
   const [exportProgress, setExportProgress] = useState(0)   // 0-100
@@ -1493,9 +1493,18 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
   const [histError,    setHistError]    = useState(null)
   const [showDistModal,setShowDistModal]= useState(false)
 
-  const [running,  setRunning]  = useState(false)
-  const [runError, setRunError] = useState(null)
-  const [elapsed,  setElapsed]  = useState(0)
+  const [running,     setRunning]     = useState(false)
+  const [runError,    setRunError]    = useState(null)
+  const [elapsed,     setElapsed]     = useState(0)
+  const [runningAll,  setRunningAll]  = useState(false)
+  const [toast,       setToast]       = useState(null)
+  const toastTimerRef = useRef(null)
+
+  const showToast = useCallback((msg) => {
+    setToast(msg)
+    clearTimeout(toastTimerRef.current)
+    toastTimerRef.current = setTimeout(() => setToast(null), 3500)
+  }, [])
 
   const [runs,        setRuns]        = useState(() => initialRuns ?? [])
   const [activeRunId, setActiveRunId] = useState(null)
@@ -1638,6 +1647,41 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
     } catch(e){ if(e.name!=='AbortError') setRunError(e.message) }
     finally{ clearInterval(timer); setElapsed(0); setRunning(false) }
   },[session,contrastLabel,rankMethod,collection,species,minSize,maxSize,scoreType,nPerm,pAdjMethod,padjCutoff,filterValue,annMap])
+
+  // Run same collection across ALL contrasts in parallel (mirai on backend)
+  const handleRunAll = useCallback(async()=>{
+    if(!session?.sessionId || allContrasts.length < 2) return
+    setRunningAll(true); setRunError(null)
+    const runId = Date.now()
+    try {
+      const r = await fetch('/api/gsea/run_all', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ sessionId:session.sessionId, contrastLabels:allContrasts,
+          rankMethod, collection:collection.id, subcategory:collection.sub, species,
+          minSize, maxSize, scoreType, nPerm, pAdjMethod, padjCutoff,
+          filterMethod:'count', filterValue, annMap:annMap||null, runId }) })
+      const data = await r.json()
+      if(data.error) throw new Error(data.error)
+      const rm = RANK_METHODS.find(m=>m.value===rankMethod)
+      const newRuns = data.results.map((item, i) => ({
+        id: runId + i,
+        sessionId: session.sessionId,
+        collectionLabel: collection.label, collectionKey: collection.key,
+        collectionId: collection.id,       collectionSub: collection.sub,
+        rankMethod, rankShort: rm?.short ?? rankMethod, filterValue, species,
+        scoreType, nPerm, pAdjMethod, padjCutoff,
+        results: item.results, rankedList: item.rankedList, meta: item.meta,
+        timestamp: new Date().toLocaleTimeString(),
+        contrastLabel: item.contrastLabel,
+        params: { rankMethod, pAdjMethod, padjCutoff, minSize, maxSize, filterValue, species }
+      }))
+      setRuns(prev => [...prev, ...newRuns])
+      // Activate the run for the currently viewed contrast
+      const mine = newRuns.find(r => r.contrastLabel === contrastLabel)
+      if(mine){ setActiveRunId(mine.id); setContentTab('results'); curveCacheRef.current={} }
+      showToast(`${collection.label} · ran on ${allContrasts.length} contrasts`)
+    } catch(e){ setRunError(e.message) }
+    finally{ setRunningAll(false) }
+  },[session,allContrasts,contrastLabel,rankMethod,collection,species,minSize,maxSize,scoreType,nPerm,pAdjMethod,padjCutoff,filterValue,annMap,showToast])
 
   // Curve on pathway click
   const fetchCurve = useCallback(async(result, ar)=>{
@@ -1800,10 +1844,19 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
           </div>
 
           {/* Run */}
-          <button onClick={handleRun} disabled={running}
-            style={{ padding:'11px 0', borderRadius:10, border:'none', cursor:running?'wait':'pointer', background:running?`rgba(11,68,111,0.35)`:`linear-gradient(135deg,${V.accent},${V.accent2})`, color:'#fff', fontWeight:700, fontSize:'0.88rem', boxShadow:running?'none':`0 4px 16px rgba(11,68,111,0.45)`, transition:'all 0.15s', marginTop:4 }}>
+          <button onClick={handleRun} disabled={running||runningAll}
+            style={{ padding:'11px 0', borderRadius:10, border:'none', cursor:(running||runningAll)?'wait':'pointer', background:(running||runningAll)?`rgba(11,68,111,0.35)`:`linear-gradient(135deg,${V.accent},${V.accent2})`, color:'#fff', fontWeight:700, fontSize:'0.88rem', boxShadow:(running||runningAll)?'none':`0 4px 16px rgba(11,68,111,0.45)`, transition:'all 0.15s', marginTop:4 }}>
             {running?`Running… ${elapsed}s`:contrastRuns.length?'↺ New Run':'▶ Run GSEA'}
           </button>
+
+          {/* Run All Contrasts — only shown when 2+ contrasts exist */}
+          {allContrasts.length > 1 && (
+            <button onClick={handleRunAll} disabled={running||runningAll}
+              style={{ padding:'9px 0', borderRadius:10, border:`1px solid ${V.border}`, cursor:(running||runningAll)?'wait':'pointer', background:(running||runningAll)?'rgba(255,255,255,0.03)':'rgba(255,255,255,0.05)', color:(running||runningAll)?V.text3:V.text, fontWeight:600, fontSize:'0.82rem', transition:'all 0.15s' }}>
+              {runningAll ? `⟳ Running all contrasts…` : `⟳ Run All Contrasts (${allContrasts.length})`}
+            </button>
+          )}
+
           {runError && <div style={{ padding:'8px 12px', borderRadius:8, fontSize:'0.75rem', background:'rgba(248,113,113,0.08)', color:'#f87171', border:'1px solid rgba(248,113,113,0.2)', lineHeight:1.5 }}>⚠ {runError}</div>}
           {!annMap && <div style={{ padding:'7px 10px', borderRadius:8, fontSize:'0.68rem', background:'rgba(251,191,36,0.07)', color:'#fbbf24', border:'1px solid rgba(251,191,36,0.18)', lineHeight:1.5 }}>⚠ No annotation loaded — run <b>Annotate</b> first for best gene ID matching.</div>}
         </div>
@@ -1896,7 +1949,23 @@ export default function GSEAExplorer({ session, contrastLabel, annMap, onRunsCha
         document.body
       )}
 
-      <style>{`@keyframes gsea-spin { to { transform:rotate(360deg); } }`}</style>
+      {/* Run-all toast notification */}
+      {toast && createPortal(
+        <div style={{
+          position:'fixed', bottom:32, right:32, zIndex:9999,
+          background:`linear-gradient(135deg,${V.accent},${V.accent2})`,
+          color:'#fff', padding:'10px 18px', borderRadius:10,
+          fontSize:'0.82rem', fontWeight:600,
+          boxShadow:'0 4px 20px rgba(0,0,0,0.3)',
+          display:'flex', alignItems:'center', gap:8,
+          animation:'gsea-fadein 0.2s ease',
+        }}>
+          <span>✓</span> {toast}
+        </div>,
+        document.body
+      )}
+
+      <style>{`@keyframes gsea-spin { to { transform:rotate(360deg); } } @keyframes gsea-fadein { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }`}</style>
     </div>
   )
   return fsPanel ? createPortal(_panel, document.body) : _panel

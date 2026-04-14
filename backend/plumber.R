@@ -2012,6 +2012,35 @@ function(req, res) {
   )
 }
 
+# ── GSEA: run same collection across all contrasts in parallel ────────────────
+#* @post /api/gsea/run_all
+#* @serializer unboxedJSON
+function(req, res) {
+  body            <- fromJSON(rawToChar(req$bodyRaw))
+  session_id      <- body$sessionId
+  contrast_labels <- body$contrastLabels
+  if (is.null(session_id)      || session_id == "")   stop("sessionId is required")
+  if (is.null(contrast_labels) || length(contrast_labels) == 0) stop("contrastLabels is required")
+  results <- gsea_run_all(
+    session_id     = session_id,
+    contrast_labels = as.character(contrast_labels),
+    rank_method    = body$rankMethod    %||% "log2FC",
+    collection     = body$collection    %||% "H",
+    subcategory    = body$subcategory,
+    species        = body$species       %||% "Homo sapiens",
+    min_size       = body$minSize       %||% 15L,
+    max_size       = body$maxSize       %||% 500L,
+    score_type     = body$scoreType     %||% "std",
+    n_perm         = body$nPerm         %||% 1000L,
+    padj_method    = body$pAdjMethod    %||% "BH",
+    filter_method  = body$filterMethod  %||% "quantile",
+    filter_value   = body$filterValue   %||% 0.25,
+    ann_map        = body$annMap,
+    run_id         = body$runId
+  )
+  list(results = results)
+}
+
 # ── GSEA: enrichment curve for one pathway (mountain plot data) ────────────────
 #* @post /api/gsea/curve
 #* @serializer unboxedJSON

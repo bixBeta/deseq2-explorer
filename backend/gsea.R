@@ -537,3 +537,56 @@ gsea_export_results <- function(session_id, runs) {
   # Serialize rows as a list for JSON transport
   lapply(seq_len(nrow(combined)), function(i) as.list(combined[i, ]))
 }
+
+# ── gsea_run_all: run the same collection across all contrasts in parallel ─────
+# Uses mirai workers when available (same daemons as DESeq2 parallelisation).
+# Each worker sources gsea.R so all helper functions are available.
+# Falls back to sequential execution when mirai is unavailable or only 1 contrast.
+gsea_run_all <- function(session_id, contrast_labels, rank_method, collection,
+                          subcategory, species, min_size, max_size, score_type,
+                          n_perm, padj_method, filter_method, filter_value,
+                          ann_map, run_id = NULL) {
+
+  gsea_file <- normalizePath(file.path(getwd(), "gsea.R"))
+
+  # Sequential fallback for a single contrast
+  run_one <- function(cl) {
+    result <- gsea_run(session_id, cl, rank_method, collection, subcategory,
+                       species, min_size, max_size, score_type, n_perm,
+                       padj_method, filter_method, filter_value, ann_map, run_id)
+    result$contrastLabel <- cl
+    result
+  }
+
+  has_mirai <- requireNamespace("mirai", quietly = TRUE) && length(contrast_labels) > 1
+
+  if (has_mirai) {
+    jobs <- lapply(contrast_labels, function(cl) {
+      mirai::mirai({
+        source(gsea_file)
+        result <- gsea_run(session_id, cl, rank_method, collection, subcategory,
+                           species, min_size, max_size, score_type, n_perm,
+                           padj_method, filter_method, filter_value, ann_map, run_id)
+        result$contrastLabel <- cl
+        result
+      },
+      gsea_file    = gsea_file,      session_id   = session_id,   cl           = cl,
+      rank_method  = rank_method,    collection   = collection,   subcategory  = subcategory,
+      species      = species,        min_size     = min_size,     max_size     = max_size,
+      score_type   = score_type,     n_perm       = n_perm,       padj_method  = padj_method,
+      filter_method = filter_method, filter_value = filter_value, ann_map      = ann_map,
+      run_id       = run_id)
+    })
+
+    lapply(seq_along(jobs), function(i) {
+      r <- jobs[[i]][]   # block until worker finishes
+      if (inherits(r, "miraiError")) {
+        warning("[gsea_run_all] worker failed for contrast '", contrast_labels[[i]],
+                "' — running sequentially: ", as.character(r))
+        run_one(contrast_labels[[i]])
+      } else r
+    })
+  } else {
+    lapply(contrast_labels, run_one)
+  }
+}
