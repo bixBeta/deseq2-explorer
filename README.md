@@ -15,6 +15,20 @@
   <strong>Built by <a href="https://github.com/bixBeta">@bixBeta</a></strong>
 </p>
 
+<p align="center">
+  <a href="https://github.com/bixBeta/deseq2-explorer/actions/workflows/docker-build.yml">
+    <img src="https://github.com/bixBeta/deseq2-explorer/actions/workflows/docker-build.yml/badge.svg" alt="Docker Build" />
+  </a>
+  <a href="https://hub.docker.com/r/bixbeta/deseq2-explorer">
+    <img src="https://img.shields.io/docker/image-size/bixbeta/deseq2-explorer/latest?label=Docker%20Hub" alt="Docker Image Size" />
+  </a>
+  <a href="https://hub.docker.com/r/bixbeta/deseq2-explorer">
+    <img src="https://img.shields.io/docker/pulls/bixbeta/deseq2-explorer" alt="Docker Pulls" />
+  </a>
+  <img src="https://img.shields.io/badge/R-4.4-276DC3?logo=r" alt="R 4.4" />
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License" />
+</p>
+
 ---
 
 ## Features
@@ -49,6 +63,26 @@ saveRDS(list(
 
 ## Quick Start
 
+### Option A — Desktop (recommended for most users)
+
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+2. Download or clone this repository
+3. Run the launcher:
+
+**macOS / Linux:**
+```bash
+bash launch.sh
+```
+**Windows:** double-click `launch.bat`
+
+The launcher will pull the pre-built image (~1 GB, one-time), start the app, and open your browser to **http://localhost:3000** automatically.
+
+To stop the app: `bash stop.sh` (or `stop.bat` on Windows).
+
+---
+
+### Option B — Self-hosted / server
+
 ### Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/)
@@ -79,19 +113,13 @@ APP_URL=http://localhost
 
 > Email is used to deliver session PINs and optional results notifications. For Gmail, use an [App Password](https://support.google.com/accounts/answer/185833).
 
-### 3. Build and run
+### 3. Run
 
 ```bash
-docker compose up --build
+docker compose up -d
 ```
 
 The app will be available at **http://localhost**.
-
-To run in the background:
-
-```bash
-docker compose up --build -d
-```
 
 ### 4. Try the example session
 
