@@ -7,38 +7,47 @@ COPY frontend/ ./
 RUN npm run build
 
 # ── Stage 2: R + Nginx + supervisord ──────────────────────────────────────────
-# Built on top of qcchecker which already has:
-#   DESeq2, heatmaply, plotly, ggplot2, matrixStats, jsonlite, blastula,
-#   digest, BiocManager, and all their system dependencies
-FROM bixbeta/qcchecker:amd64
+FROM rocker/r-ver:4.4
 
-# Additional system packages not in base image
-# libsodium-dev: required by plumber (sodium package)
-# libsecret-1-dev: required by some plumber deps
+# System dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nginx \
     supervisor \
     curl \
+    libcurl4-openssl-dev \
+    libssl-dev \
+    libxml2-dev \
+    libsqlite3-dev \
     libsodium-dev \
-    libsecret-1-dev \
+    zlib1g-dev \
+    libpng-dev \
+    libtiff-dev \
+    libjpeg-dev \
+    libcairo2-dev \
+    libfontconfig1-dev \
+    libfreetype6-dev \
+    libharfbuzz-dev \
+    libfribidi-dev \
+    libxt-dev \
+    libgit2-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# ── Additional CRAN packages not in qcchecker ─────────────────────────────────
-# Validate each group installs correctly — stops the build loudly on failure
+# ── Install pak for fast parallel package installation ────────────────────────
+RUN R -e "install.packages('pak', repos='https://cloud.r-project.org')"
+
+# ── CRAN packages (pak resolves deps in parallel — much faster than install.packages) ──
 RUN R -e " \
-  pkgs <- c('plumber','DBI','RSQLite','uuid','httr','base64enc','ggpubr','UpSetR','mirai'); \
-  install.packages(pkgs, repos='https://cloud.r-project.org'); \
+  pkgs <- c('BiocManager','plumber','jsonlite','DBI','RSQLite','uuid','digest', \
+            'blastula','httr','base64enc','matrixStats','mirai', \
+            'ggplot2','ggpubr','heatmaply','plotly','UpSetR','msigdbr'); \
+  pak::pak(pkgs); \
   missing <- pkgs[!sapply(pkgs, requireNamespace, quietly=TRUE)]; \
   if (length(missing)) stop(paste('Failed to install:', paste(missing, collapse=', ')))"
 
-# ── Additional Bioconductor packages not in qcchecker ─────────────────────────
+# ── Bioconductor packages ──────────────────────────────────────────────────────
 RUN R -e " \
-  install.packages('msigdbr', repos='https://cloud.r-project.org'); \
-  if (!requireNamespace('msigdbr', quietly=TRUE)) stop('Failed to install msigdbr')"
-
-RUN R -e " \
-  BiocManager::install(c('clusterProfiler','enrichplot'), ask=FALSE, update=FALSE); \
-  missing <- c('clusterProfiler','enrichplot')[!sapply(c('clusterProfiler','enrichplot'), requireNamespace, quietly=TRUE)]; \
+  pak::pak(c('bioc::DESeq2','bioc::clusterProfiler','bioc::enrichplot')); \
+  missing <- c('DESeq2','clusterProfiler','enrichplot')[!sapply(c('DESeq2','clusterProfiler','enrichplot'), requireNamespace, quietly=TRUE)]; \
   if (length(missing)) stop(paste('Failed to install:', paste(missing, collapse=', ')))"
 
 # Copy React build → nginx html dir
