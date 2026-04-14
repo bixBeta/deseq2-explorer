@@ -1,5 +1,5 @@
 # ── DESeq2 Explorer — Desktop launcher ────────────────────────────────────────
-# Pulls the pre-built image from GitHub Container Registry.
+# Pulls the pre-built image from Docker Hub.
 # Run via launch.sh (macOS/Linux) or launch.bat (Windows).
 # To build locally instead: docker compose -f docker-compose.desktop.yml up -d --build
 
@@ -7,7 +7,7 @@ version: "3.9"
 
 services:
   app:
-    image: ghcr.io/bixbeta/deseq2-explorer:latest
+    image: bixbeta/deseq2-explorer:latest
     container_name: deseq2-explorer
     ports:
       - "3000:80"

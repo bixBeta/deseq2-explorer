@@ -5,7 +5,7 @@ REM Double-click this file or run from Command Prompt
 REM =============================================================================
 setlocal EnableDelayedExpansion
 
-set IMAGE=ghcr.io/bixbeta/deseq2-explorer:latest
+set IMAGE=bixbeta/deseq2-explorer:latest
 set COMPOSE_FILE=docker-compose.desktop.yml
 set PORT=3000
 set URL=http://localhost:%PORT%

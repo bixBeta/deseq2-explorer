@@ -5,7 +5,7 @@
 # =============================================================================
 set -euo pipefail
 
-IMAGE="ghcr.io/bixbeta/deseq2-explorer:latest"
+IMAGE="bixbeta/deseq2-explorer:latest"
 COMPOSE_FILE="docker-compose.desktop.yml"
 PORT=3000
 URL="http://localhost:${PORT}"
