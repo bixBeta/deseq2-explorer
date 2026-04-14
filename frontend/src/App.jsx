@@ -478,7 +478,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* ── Main (dot-grid background) ── */}
+      {/* ── Main background ── */}
       <main className="flex-1 flex items-start justify-center p-6 pt-10 dot-grid">
        <ErrorBoundary key={step}>
         {step === 'session' && <SessionGate onAuth={handleAuth} onExample={handleExample} />}

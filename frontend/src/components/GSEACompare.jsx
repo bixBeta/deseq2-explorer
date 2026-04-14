@@ -167,7 +167,8 @@ function PathwayHeatmapModal({ pathway, genes, session, pca, annMap, sampleLabel
       })
       const fig = JSON.parse(data.plotlyJson)
       fig.layout = { ...fig.layout, paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
-                     font: { ...(fig.layout?.font || {}), color: '#94a3b8' } }
+                     font: { ...(fig.layout?.font || {}), color: '#94a3b8' },
+                     hoverlabel: { bgcolor: '#1e293b', bordercolor: '#475569', font: { color: '#e2e8f0' } } }
       applySymbolsToFig(fig, annMap)
       applySampleLabelsToFig(fig, sampleLabels)
       await Plotly.react(plotRef.current, fig.data, fig.layout,

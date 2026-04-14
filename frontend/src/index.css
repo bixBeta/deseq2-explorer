@@ -136,10 +136,43 @@ body {
   transition: background 0.25s, color 0.25s;
 }
 
-/* ── Dot-grid background ─────────────────────────────────────────────────── */
+/* ── Background options — swap class name in App.jsx main element ────────── */
+
+/* Option A: dot-grid (original — subtle dots) */
 .dot-grid {
   background-image: radial-gradient(circle, var(--grid-dot) 1px, transparent 1px);
   background-size: 40px 40px;
+}
+
+/* Option A2: plus-grid — + signs at each grid intersection (dark mode) */
+.plus-grid {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Cpath d='M20 16v8M16 20h8' stroke='rgba(99%2C102%2C241%2C0.35)' stroke-width='1' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-size: 40px 40px;
+}
+body.light .plus-grid {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Cpath d='M20 16v8M16 20h8' stroke='rgba(99%2C102%2C241%2C0.25)' stroke-width='1' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+/* Option B: mesh-grid — thin crosshair lines, more technical/data feel */
+.mesh-grid {
+  background-image:
+    linear-gradient(var(--grid-dot) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-dot) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Option C: bg-glow — clean gradient with accent glow from top, no pattern */
+.bg-glow {
+  background-image: radial-gradient(
+    ellipse 80% 40% at 50% -10%,
+    var(--accent-muted) 0%,
+    transparent 70%
+  );
+}
+
+/* Option D: bg-plain — flat solid color, no pattern (most minimal) */
+.bg-plain {
+  background-image: none;
 }
 
 /* ── Glass cards ─────────────────────────────────────────────────────────── */

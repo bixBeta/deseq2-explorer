@@ -313,6 +313,7 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
         paper_bgcolor: 'transparent',
         plot_bgcolor:  'transparent',
         font: { ...(fig.layout?.font || {}), color: '#94a3b8' },
+        hoverlabel: { bgcolor: '#1e293b', bordercolor: '#475569', font: { color: '#e2e8f0' } },
       }
       applySymbolsToFig(fig, annMap)
       applySampleLabelsToFig(fig, sampleLabels)
