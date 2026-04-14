@@ -53,4 +53,4 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64   # amd64 + Apple Silicon / ARM servers
+          platforms: linux/amd64   # arm64 via QEMU is unreliable for heavy R packages
