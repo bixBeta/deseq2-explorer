@@ -1496,7 +1496,7 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
   const [running,     setRunning]     = useState(false)
   const [runError,    setRunError]    = useState(null)
   const [elapsed,     setElapsed]     = useState(0)
-  const [runningAll,  setRunningAll]  = useState(false)
+  const [runningAll,  setRunningAll]  = useState(null)
   const [toast,       setToast]       = useState(null)
   const [notifyAll,   setNotifyAll]   = useState(() => localStorage.getItem('gsea_notify_all') === 'true')
   const toastTimerRef = useRef(null)
@@ -1649,41 +1649,59 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
     finally{ clearInterval(timer); setElapsed(0); setRunning(false) }
   },[session,contrastLabel,rankMethod,collection,species,minSize,maxSize,scoreType,nPerm,pAdjMethod,padjCutoff,filterValue,annMap])
 
-  // Run same collection across ALL contrasts in parallel (mirai on backend)
+  // Run same collection across ALL contrasts — N parallel /run calls so the
+  // frontend can track individual completions and show a real progress bar.
   const handleRunAll = useCallback(async()=>{
     if(!session?.sessionId || allContrasts.length < 2) return
-    setRunningAll(true); setRunError(null)
-    const runId = Date.now()
+    const total = allContrasts.length
+    setRunningAll({ done:0, total }); setRunError(null)
+    const baseId = Date.now()
+    const rm = RANK_METHODS.find(m=>m.value===rankMethod)
     try {
-      const r = await fetch('/api/gsea/run_all', { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ sessionId:session.sessionId, contrastLabels:allContrasts,
-          rankMethod, collection:collection.id, collectionLabel:collection.label,
-          subcategory:collection.sub, species,
-          minSize, maxSize, scoreType, nPerm, pAdjMethod, padjCutoff,
-          filterMethod:'count', filterValue, annMap:annMap||null, runId,
-          notifyEmail: (notifyAll && session?.email && session.email !== 'example') ? session.email : null }) })
-      const data = await r.json()
-      if(data.error) throw new Error(data.error)
-      const rm = RANK_METHODS.find(m=>m.value===rankMethod)
-      const newRuns = data.results.map((item, i) => ({
-        id: runId + i,
-        sessionId: session.sessionId,
-        collectionLabel: collection.label, collectionKey: collection.key,
-        collectionId: collection.id,       collectionSub: collection.sub,
-        rankMethod, rankShort: rm?.short ?? rankMethod, filterValue, species,
-        scoreType, nPerm, pAdjMethod, padjCutoff,
-        results: item.results, rankedList: item.rankedList, meta: item.meta,
-        timestamp: new Date().toLocaleTimeString(),
-        contrastLabel: item.contrastLabel,
-        params: { rankMethod, pAdjMethod, padjCutoff, minSize, maxSize, filterValue, species }
-      }))
+      // Fire one /api/gsea/run per contrast in parallel; update counter on each completion
+      const promises = allContrasts.map((cl, i) =>
+        fetch('/api/gsea/run', { method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ sessionId:session.sessionId, contrastLabel:cl,
+            rankMethod, collection:collection.id, subcategory:collection.sub, species,
+            minSize, maxSize, scoreType, nPerm, pAdjMethod, padjCutoff,
+            filterMethod:'count', filterValue, annMap:annMap||null, runId:baseId+i }) })
+          .then(r=>r.json())
+          .then(data => {
+            if(data.error) throw new Error(`${cl}: ${data.error}`)
+            setRunningAll(prev => prev ? { ...prev, done: prev.done + 1 } : null)
+            return { id:baseId+i, sessionId:session.sessionId,
+              collectionLabel:collection.label, collectionKey:collection.key,
+              collectionId:collection.id, collectionSub:collection.sub,
+              rankMethod, rankShort:rm?.short??rankMethod, filterValue, species,
+              scoreType, nPerm, pAdjMethod, padjCutoff,
+              results:data.results, rankedList:data.rankedList, meta:data.meta,
+              timestamp:new Date().toLocaleTimeString(), contrastLabel:cl,
+              params:{ rankMethod, pAdjMethod, padjCutoff, minSize, maxSize, filterValue, species } }
+          })
+      )
+      const newRuns = await Promise.all(promises)
       setRuns(prev => [...prev, ...newRuns])
-      // Activate the run for the currently viewed contrast
       const mine = newRuns.find(r => r.contrastLabel === contrastLabel)
       if(mine){ setActiveRunId(mine.id); setContentTab('results'); curveCacheRef.current={} }
-      showToast(`${collection.label} · ran on ${allContrasts.length} contrasts`)
+
+      // Email notification — compute summary from results and POST to /notify
+      if(notifyAll && session?.email && session.email !== 'example') {
+        const padjNum = Number(padjCutoff)
+        const contrastSummary = newRuns.map(r => {
+          const sig = (r.results||[]).filter(p => p.padj!=null && p.padj < padjNum)
+          return { contrast: r.contrastLabel, total: sig.length,
+                   up: sig.filter(p=>p.NES>0).length, down: sig.filter(p=>p.NES<=0).length }
+        })
+        fetch('/api/gsea/notify', { method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ sessionId:session.sessionId, notifyEmail:session.email,
+            collection:collection.id, collectionLabel:collection.label,
+            rankMethod, species, minSize, maxSize, scoreType, nPerm, pAdjMethod, padjCutoff,
+            contrastSummary }) }).catch(()=>{})
+      }
+
+      showToast(`${collection.label} · ran on ${total} contrasts`)
     } catch(e){ setRunError(e.message) }
-    finally{ setRunningAll(false) }
+    finally{ setRunningAll(null) }
   },[session,allContrasts,contrastLabel,rankMethod,collection,species,minSize,maxSize,scoreType,nPerm,pAdjMethod,padjCutoff,filterValue,annMap,notifyAll,showToast])
 
   // Curve on pathway click
@@ -1847,7 +1865,7 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
           </div>
 
           {/* Run */}
-          <button onClick={handleRun} disabled={running||runningAll}
+          <button onClick={handleRun} disabled={!!(running||runningAll)}
             style={{ padding:'11px 0', borderRadius:10, border:'none', cursor:(running||runningAll)?'wait':'pointer', background:(running||runningAll)?`rgba(11,68,111,0.35)`:`linear-gradient(135deg,${V.accent},${V.accent2})`, color:'#fff', fontWeight:700, fontSize:'0.88rem', boxShadow:(running||runningAll)?'none':`0 4px 16px rgba(11,68,111,0.45)`, transition:'all 0.15s', marginTop:4 }}>
             {running?`Running… ${elapsed}s`:contrastRuns.length?'↺ New Run':'▶ Run GSEA'}
           </button>
@@ -1855,10 +1873,27 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
           {/* Run All Contrasts — only shown when 2+ contrasts exist */}
           {allContrasts.length > 1 && (
             <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-              <button onClick={handleRunAll} disabled={running||runningAll}
-                style={{ padding:'9px 0', borderRadius:10, border:`1px solid ${V.border}`, cursor:(running||runningAll)?'wait':'pointer', background:(running||runningAll)?'rgba(255,255,255,0.03)':'rgba(255,255,255,0.05)', color:(running||runningAll)?'var(--text-3)':V.text, fontWeight:600, fontSize:'0.82rem', transition:'all 0.15s' }}>
-                {runningAll ? `⟳ Running all contrasts…` : `⟳ Run All Contrasts (${allContrasts.length})`}
+              {/* Button with inline progress fill when running */}
+              <button onClick={handleRunAll} disabled={!!(running||runningAll)}
+                style={{ position:'relative', overflow:'hidden', padding:'9px 0', borderRadius:10,
+                         border:`1px solid ${V.border}`, cursor:(running||runningAll)?'default':'pointer',
+                         background:'rgba(255,255,255,0.05)', color: runningAll?V.text:running?'var(--text-3)':V.text,
+                         fontWeight:600, fontSize:'0.82rem', transition:'all 0.15s' }}>
+                {/* progress fill — slides in as contrasts complete */}
+                {runningAll && (
+                  <div style={{
+                    position:'absolute', inset:0,
+                    width:`${(runningAll.done / runningAll.total) * 100}%`,
+                    background: V.muted, transition:'width 0.35s ease', borderRadius:'inherit',
+                  }} />
+                )}
+                <span style={{ position:'relative', zIndex:1 }}>
+                  {runningAll
+                    ? `⟳ ${runningAll.done} / ${runningAll.total} · ${collection.label}`
+                    : `⟳ Run All Contrasts (${allContrasts.length})`}
+                </span>
               </button>
+
               {/* Email notification toggle — uses login email, hidden for example sessions */}
               {session?.email && session.email !== 'example' && (
                 <button
@@ -1871,7 +1906,7 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
                     transition:'all 0.15s',
                   }}>
                   <span style={{ fontSize:'0.76rem', color: notifyAll ? V.text : 'var(--text-3)', letterSpacing:'0.01em' }}>
-                    ✉&nbsp;{notifyAll ? session.email : 'Notify when done'}
+                    ✉&nbsp;Enable email notifications
                   </span>
                   {/* pill toggle */}
                   <div style={{ width:28, height:15, borderRadius:8, flexShrink:0, position:'relative',

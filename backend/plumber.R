@@ -2082,6 +2082,54 @@ function(req, res) {
   list(results = results)
 }
 
+# ── GSEA: send email summary (called by frontend after parallel runs complete) ─
+#* @post /api/gsea/notify
+#* @serializer unboxedJSON
+function(req, res) {
+  body         <- fromJSON(rawToChar(req$bodyRaw))
+  notify_email <- trimws(body$notifyEmail %||% "")
+  session_id   <- body$sessionId %||% ""
+
+  if (nchar(notify_email) == 0) return(list(ok = FALSE, reason = "no email"))
+
+  # contrast_summary arrives as a data.frame when length>1, or a list when length==1
+  raw_cs <- body$contrastSummary
+  if (is.data.frame(raw_cs)) {
+    ct_summary <- lapply(seq_len(nrow(raw_cs)), function(i)
+      list(contrast = raw_cs$contrast[i],
+           total    = as.integer(raw_cs$total[i]),
+           up       = as.integer(raw_cs$up[i]),
+           down     = as.integer(raw_cs$down[i])))
+  } else {
+    ct_summary <- lapply(raw_cs, function(x)
+      list(contrast = as.character(x$contrast %||% "?"),
+           total    = as.integer(x$total    %||% 0L),
+           up       = as.integer(x$up       %||% 0L),
+           down     = as.integer(x$down     %||% 0L)))
+  }
+
+  gsea_params_for_email <- list(
+    collection      = body$collection      %||% "?",
+    collectionLabel = body$collectionLabel %||% body$collection %||% "?",
+    rankMethod      = body$rankMethod      %||% "log2FC",
+    species         = body$species         %||% "Homo sapiens",
+    minSize         = body$minSize         %||% 15L,
+    maxSize         = body$maxSize         %||% 500L,
+    scoreType       = body$scoreType       %||% "std",
+    nPerm           = body$nPerm           %||% 1000L,
+    pAdjMethod      = body$pAdjMethod      %||% "BH",
+    padjCutoff      = as.numeric(body$padjCutoff %||% 0.25)
+  )
+
+  ok <- send_gsea_email(
+    to_email         = notify_email,
+    gsea_params      = gsea_params_for_email,
+    contrast_summary = ct_summary,
+    session_id       = session_id
+  )
+  list(ok = isTRUE(ok))
+}
+
 # ── GSEA: enrichment curve for one pathway (mountain plot data) ────────────────
 #* @post /api/gsea/curve
 #* @serializer unboxedJSON
