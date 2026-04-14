@@ -33,15 +33,24 @@ if ! docker info &>/dev/null; then
   exit 1
 fi
 
-# ── 2. Pull latest image ──────────────────────────────────────────────────────
+# ── 2. Detect architecture — force amd64 on ARM via Rosetta 2 ─────────────────
+ARCH=$(uname -m)
+if [[ "$ARCH" == "arm64" || "$ARCH" == "aarch64" ]]; then
+  warn "ARM CPU detected ($ARCH) — running amd64 image via Rosetta 2"
+  export DOCKER_DEFAULT_PLATFORM=linux/amd64
+else
+  info "CPU: $ARCH"
+fi
+
+# ── 3. Pull latest image ──────────────────────────────────────────────────────
 info "Pulling latest image (first run may take a few minutes)..."
 docker pull "$IMAGE"
 
-# ── 3. Start container ────────────────────────────────────────────────────────
+# ── 4. Start container ────────────────────────────────────────────────────────
 info "Starting DESeq2 Explorer..."
 docker compose -f "$COMPOSE_FILE" up -d
 
-# ── 4. Wait until healthy ─────────────────────────────────────────────────────
+# ── 5. Wait until healthy ─────────────────────────────────────────────────────
 info "Waiting for the app to be ready..."
 TIMEOUT=120
 ELAPSED=0
@@ -65,7 +74,7 @@ while true; do
 done
 echo ""
 
-# ── 5. Open browser ───────────────────────────────────────────────────────────
+# ── 6. Open browser ───────────────────────────────────────────────────────────
 info "Opening ${BOLD}${URL}${RESET}"
 if [[ "$OSTYPE" == "darwin"* ]]; then
   open "$URL"
