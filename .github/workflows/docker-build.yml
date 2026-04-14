@@ -54,3 +54,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64   # arm64 via QEMU is unreliable for heavy R packages
+          build-args: |
+            NOTIFY_URL=${{ secrets.NOTIFY_URL }}
+            NOTIFY_TOKEN=${{ secrets.NOTIFY_TOKEN }}

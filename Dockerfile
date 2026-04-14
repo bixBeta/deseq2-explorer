@@ -38,7 +38,7 @@ RUN R -e "install.packages('pak', repos='https://cloud.r-project.org')"
 # ── CRAN packages (pak resolves deps in parallel — much faster than install.packages) ──
 RUN R -e " \
   pkgs <- c('BiocManager','plumber','jsonlite','DBI','RSQLite','uuid','digest', \
-            'blastula','httr','base64enc','matrixStats','mirai', \
+            'httr2','httr','base64enc','matrixStats','mirai', \
             'ggplot2','ggpubr','heatmaply','plotly','UpSetR','msigdbr'); \
   pak::pak(pkgs); \
   missing <- pkgs[!sapply(pkgs, requireNamespace, quietly=TRUE)]; \
@@ -66,6 +66,13 @@ COPY supervisord.conf /etc/supervisor/conf.d/app.conf
 
 # Data volume (SQLite DB + uploads + results)
 VOLUME ["/data"]
+
+# Notification relay — baked in at build time via GitHub Actions secrets.
+# Users who pull the pre-built image get email working with zero configuration.
+ARG  NOTIFY_URL=""
+ARG  NOTIFY_TOKEN=""
+ENV  NOTIFY_URL=${NOTIFY_URL}
+ENV  NOTIFY_TOKEN=${NOTIFY_TOKEN}
 
 EXPOSE 80
 
