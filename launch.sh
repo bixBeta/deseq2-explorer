@@ -46,11 +46,14 @@ fi
 info "Pulling latest image (first run may take a few minutes)..."
 docker pull "$IMAGE"
 
-# ── 4. Start container ────────────────────────────────────────────────────────
+# ── 4. Ensure data volume exists ─────────────────────────────────────────────
+docker volume create deseq2_data &>/dev/null || true
+
+# ── 5. Start container ────────────────────────────────────────────────────────
 info "Starting DESeq2 Explorer..."
 docker compose -f "$COMPOSE_FILE" up -d
 
-# ── 5. Wait until healthy ─────────────────────────────────────────────────────
+# ── 6. Wait until healthy ─────────────────────────────────────────────────────
 info "Waiting for the app to be ready..."
 TIMEOUT=120
 ELAPSED=0
@@ -74,7 +77,7 @@ while true; do
 done
 echo ""
 
-# ── 6. Open browser ───────────────────────────────────────────────────────────
+# ── 7. Open browser ───────────────────────────────────────────────────────────
 info "Opening ${BOLD}${URL}${RESET}"
 if [[ "$OSTYPE" == "darwin"* ]]; then
   open "$URL"

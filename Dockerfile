@@ -13,19 +13,33 @@ RUN npm run build
 FROM bixbeta/qcchecker:amd64
 
 # Additional system packages not in base image
+# libsodium-dev: required by plumber (sodium package)
+# libsecret-1-dev: required by some plumber deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nginx \
     supervisor \
     curl \
+    libsodium-dev \
+    libsecret-1-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Additional CRAN packages not in qcchecker ─────────────────────────────────
-RUN R -e "install.packages(c('plumber','DBI','RSQLite','uuid','httr','base64enc','ggpubr','UpSetR','mirai'), repos='https://cloud.r-project.org')"
+# Validate each group installs correctly — stops the build loudly on failure
+RUN R -e " \
+  pkgs <- c('plumber','DBI','RSQLite','uuid','httr','base64enc','ggpubr','UpSetR','mirai'); \
+  install.packages(pkgs, repos='https://cloud.r-project.org'); \
+  missing <- pkgs[!sapply(pkgs, requireNamespace, quietly=TRUE)]; \
+  if (length(missing)) stop(paste('Failed to install:', paste(missing, collapse=', ')))"
 
 # ── Additional Bioconductor packages not in qcchecker ─────────────────────────
-# msigdbr is CRAN; clusterProfiler + enrichplot pull fgsea, DOSE, enrichplot
-RUN R -e "install.packages('msigdbr', repos='https://cloud.r-project.org')"
-RUN R -e "BiocManager::install(c('clusterProfiler','enrichplot'), ask=FALSE, update=FALSE)"
+RUN R -e " \
+  install.packages('msigdbr', repos='https://cloud.r-project.org'); \
+  if (!requireNamespace('msigdbr', quietly=TRUE)) stop('Failed to install msigdbr')"
+
+RUN R -e " \
+  BiocManager::install(c('clusterProfiler','enrichplot'), ask=FALSE, update=FALSE); \
+  missing <- c('clusterProfiler','enrichplot')[!sapply(c('clusterProfiler','enrichplot'), requireNamespace, quietly=TRUE)]; \
+  if (length(missing)) stop(paste('Failed to install:', paste(missing, collapse=', ')))"
 
 # Copy React build → nginx html dir
 COPY --from=builder /app/frontend/dist /usr/share/nginx/html
