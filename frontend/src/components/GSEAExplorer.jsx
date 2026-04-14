@@ -1498,6 +1498,7 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
   const [elapsed,     setElapsed]     = useState(0)
   const [runningAll,  setRunningAll]  = useState(false)
   const [toast,       setToast]       = useState(null)
+  const [notifyEmail, setNotifyEmail] = useState(() => localStorage.getItem('gsea_notify_email') ?? '')
   const toastTimerRef = useRef(null)
 
   const showToast = useCallback((msg) => {
@@ -1656,9 +1657,11 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
     try {
       const r = await fetch('/api/gsea/run_all', { method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ sessionId:session.sessionId, contrastLabels:allContrasts,
-          rankMethod, collection:collection.id, subcategory:collection.sub, species,
+          rankMethod, collection:collection.id, collectionLabel:collection.label,
+          subcategory:collection.sub, species,
           minSize, maxSize, scoreType, nPerm, pAdjMethod, padjCutoff,
-          filterMethod:'count', filterValue, annMap:annMap||null, runId }) })
+          filterMethod:'count', filterValue, annMap:annMap||null, runId,
+          notifyEmail: notifyEmail.trim() || null }) })
       const data = await r.json()
       if(data.error) throw new Error(data.error)
       const rm = RANK_METHODS.find(m=>m.value===rankMethod)
@@ -1681,7 +1684,7 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
       showToast(`${collection.label} · ran on ${allContrasts.length} contrasts`)
     } catch(e){ setRunError(e.message) }
     finally{ setRunningAll(false) }
-  },[session,allContrasts,contrastLabel,rankMethod,collection,species,minSize,maxSize,scoreType,nPerm,pAdjMethod,padjCutoff,filterValue,annMap,showToast])
+  },[session,allContrasts,contrastLabel,rankMethod,collection,species,minSize,maxSize,scoreType,nPerm,pAdjMethod,padjCutoff,filterValue,annMap,notifyEmail,showToast])
 
   // Curve on pathway click
   const fetchCurve = useCallback(async(result, ar)=>{
@@ -1851,10 +1854,26 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
 
           {/* Run All Contrasts — only shown when 2+ contrasts exist */}
           {allContrasts.length > 1 && (
-            <button onClick={handleRunAll} disabled={running||runningAll}
-              style={{ padding:'9px 0', borderRadius:10, border:`1px solid ${V.border}`, cursor:(running||runningAll)?'wait':'pointer', background:(running||runningAll)?'rgba(255,255,255,0.03)':'rgba(255,255,255,0.05)', color:(running||runningAll)?V.text3:V.text, fontWeight:600, fontSize:'0.82rem', transition:'all 0.15s' }}>
-              {runningAll ? `⟳ Running all contrasts…` : `⟳ Run All Contrasts (${allContrasts.length})`}
-            </button>
+            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+              <button onClick={handleRunAll} disabled={running||runningAll}
+                style={{ padding:'9px 0', borderRadius:10, border:`1px solid ${V.border}`, cursor:(running||runningAll)?'wait':'pointer', background:(running||runningAll)?'rgba(255,255,255,0.03)':'rgba(255,255,255,0.05)', color:(running||runningAll)?'var(--text-3)':V.text, fontWeight:600, fontSize:'0.82rem', transition:'all 0.15s' }}>
+                {runningAll ? `⟳ Running all contrasts…` : `⟳ Run All Contrasts (${allContrasts.length})`}
+              </button>
+              {/* Email notification for Run All */}
+              <input
+                type="email"
+                value={notifyEmail}
+                onChange={e => { setNotifyEmail(e.target.value); localStorage.setItem('gsea_notify_email', e.target.value) }}
+                placeholder="✉ Notify email (optional)"
+                style={{
+                  padding:'6px 10px', borderRadius:8,
+                  border:`1px solid ${V.border}`,
+                  background:'rgba(255,255,255,0.03)',
+                  color:'var(--text-1)', fontSize:'0.76rem',
+                  outline:'none', width:'100%', boxSizing:'border-box',
+                }}
+              />
+            </div>
           )}
 
           {runError && <div style={{ padding:'8px 12px', borderRadius:8, fontSize:'0.75rem', background:'rgba(248,113,113,0.08)', color:'#f87171', border:'1px solid rgba(248,113,113,0.2)', lineHeight:1.5 }}>⚠ {runError}</div>}

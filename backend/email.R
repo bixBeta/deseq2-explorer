@@ -32,7 +32,7 @@ send_results_email <- function(to_email, deseq2_params, contrast_summary,
   }
 
   n_contrasts <- length(contrast_summary)
-  subject     <- sprintf("DESeq2 ExploreR: analysis complete (%d contrast%s)",
+  subject     <- sprintf("DESeq2 ExploreR [DESeq2]: analysis complete (%d contrast%s)",
                           n_contrasts, if (n_contrasts == 1) "" else "s")
   html        <- .build_email_html(deseq2_params, contrast_summary, session_id, app_url)
 
@@ -182,6 +182,182 @@ send_results_email <- function(to_email, deseq2_params, contrast_summary,
     contrast_rows,
     # CTA button
     app_url, .C$grad_hdr,
+    # footer
+    .C$border, .C$bg_card, .C$text_3, .C$text_2, session_id
+  )
+}
+
+# ── send_gsea_email ───────────────────────────────────────────────────────────
+# Sends a GSEA run-complete notification. Same relay + auth as DESeq2 email.
+# gsea_params  : list(collectionLabel, rankMethod, species, minSize, maxSize,
+#                     scoreType, nPerm, pAdjMethod, padjCutoff)
+# contrast_summary : list of list(contrast, total, up, down) — one per contrast
+send_gsea_email <- function(to_email, gsea_params, contrast_summary, session_id) {
+  notify_url   <- Sys.getenv("NOTIFY_URL",   "")
+  notify_token <- Sys.getenv("NOTIFY_TOKEN", "")
+
+  if (nchar(notify_url) == 0) {
+    message("[email] NOTIFY_URL not configured — skipping GSEA notification")
+    return(invisible(FALSE))
+  }
+
+  n_contrasts <- length(contrast_summary)
+  collection  <- gsea_params$collectionLabel %||% gsea_params$collection %||% "?"
+  subject     <- sprintf("DESeq2 ExploreR [GSEA]: run complete (%d contrast%s · %s)",
+                          n_contrasts, if (n_contrasts == 1) "" else "s", collection)
+  html        <- .build_gsea_email_html(gsea_params, contrast_summary, session_id)
+
+  tryCatch({
+    resp <- request(notify_url) |>
+      req_headers(
+        Authorization  = paste("Bearer", notify_token),
+        `Content-Type` = "application/json"
+      ) |>
+      req_body_json(list(to = to_email, subject = subject, html = html)) |>
+      req_error(is_error = \(r) FALSE) |>
+      req_perform()
+
+    if (resp_status(resp) == 200L) {
+      message("[email] GSEA notification sent to ", to_email)
+      invisible(TRUE)
+    } else {
+      message("[email] Relay returned ", resp_status(resp), ": ", resp_body_string(resp))
+      invisible(FALSE)
+    }
+  }, error = function(e) {
+    message("[email] Failed: ", e$message)
+    invisible(FALSE)
+  })
+}
+
+# ── GSEA HTML email builder ───────────────────────────────────────────────────
+.build_gsea_email_html <- function(gsea_params, contrast_summary, session_id) {
+
+  collection <- gsea_params$collectionLabel %||% gsea_params$collection %||% "?"
+
+  # ── GSEA parameters table ──
+  param_labels <- c("Collection", "Rank method", "Species",
+                    "Min gene set size", "Max gene set size",
+                    "Score type", "N permutations",
+                    "p-adj method", "Significance threshold")
+  param_values <- list(
+    collection,
+    gsea_params$rankMethod  %||% "—",
+    gsea_params$species     %||% "—",
+    gsea_params$minSize     %||% 15L,
+    gsea_params$maxSize     %||% 500L,
+    gsea_params$scoreType   %||% "std",
+    gsea_params$nPerm       %||% 1000L,
+    gsea_params$pAdjMethod  %||% "BH",
+    gsea_params$padjCutoff  %||% 0.25
+  )
+
+  param_rows <- paste(mapply(function(label, value, i) {
+    val_str <- if (is.logical(value)) ifelse(value, "TRUE", "FALSE") else as.character(value)
+    row_bg  <- if (i %% 2 == 0) .C$bg_card else .C$bg_panel
+    sprintf('
+      <tr style="background:%s">
+        <td style="padding:9px 16px;border-bottom:1px solid %s;color:%s;font-size:13px;width:55%%">%s</td>
+        <td style="padding:9px 16px;border-bottom:1px solid %s;color:%s;font-size:13px;font-family:monospace">%s</td>
+      </tr>',
+      row_bg,
+      .C$border, .C$text_2, label,
+      .C$border, .C$text_1, .htmlEscape(val_str)
+    )
+  }, param_labels, param_values, seq_along(param_labels)), collapse = "")
+
+  # ── Per-contrast GSEA results table rows ──
+  contrast_rows <- paste(mapply(function(ct, i) {
+    row_bg <- if (i %% 2 == 0) .C$bg_card else .C$bg_panel
+    sprintf('
+      <tr style="background:%s">
+        <td style="padding:9px 16px;border-bottom:1px solid %s;color:%s;font-size:13px">%s</td>
+        <td style="padding:9px 16px;border-bottom:1px solid %s;color:%s;font-size:14px;font-weight:700;text-align:center">%d</td>
+        <td style="padding:9px 16px;border-bottom:1px solid %s;color:%s;font-size:14px;font-weight:700;text-align:center">%d</td>
+        <td style="padding:9px 16px;border-bottom:1px solid %s;color:%s;font-size:14px;font-weight:700;text-align:center">%d</td>
+      </tr>',
+      row_bg,
+      .C$border, .C$text_1, .htmlEscape(ct$contrast),
+      .C$border, .C$accent, ct$total,
+      .C$border, .C$up,     ct$up,
+      .C$border, .C$down,   ct$down
+    )
+  }, contrast_summary, seq_along(contrast_summary)), collapse = "")
+
+  sprintf('<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+</head>
+<body style="margin:0;padding:0;background:%s;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;color:%s">
+  <div style="max-width:600px;margin:36px auto;background:%s;border:1px solid %s;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.07)">
+
+    <!-- Header -->
+    <div style="background:%s;padding:24px 28px">
+      <table cellpadding="0" cellspacing="0" border="0" style="width:100%%"><tr>
+        <td style="width:72px;vertical-align:middle;padding-right:16px">
+          <img src="https://raw.githubusercontent.com/bixBeta/deseq2-explorer/main/frontend/public/email-logo.png"
+               width="60" height="60" alt="DESeq2 ExploreR"
+               style="display:block;border-radius:14px;border:0" />
+        </td>
+        <td style="vertical-align:middle">
+          <div style="font-size:20px;font-weight:700;color:#fff;letter-spacing:-.01em">DESeq2 ExploreR</div>
+          <div style="font-size:13px;color:rgba(255,255,255,0.8);margin-top:3px">GSEA Run Complete</div>
+        </td>
+      </tr></table>
+    </div>
+
+    <div style="padding:28px">
+
+      <!-- GSEA Parameters -->
+      <div style="font-size:11px;font-weight:600;color:%s;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">GSEA Parameters</div>
+      <table cellpadding="0" cellspacing="0" style="width:100%%;border-collapse:collapse;border:1px solid %s;border-radius:8px;overflow:hidden;margin-bottom:28px">
+        <tbody>%s</tbody>
+      </table>
+
+      <!-- Results Summary -->
+      <div style="font-size:11px;font-weight:600;color:%s;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Pathway Summary</div>
+      <table cellpadding="0" cellspacing="0" style="width:100%%;border-collapse:collapse;border:1px solid %s;border-radius:8px;overflow:hidden;margin-bottom:28px">
+        <thead>
+          <tr style="background:%s">
+            <th style="text-align:left;padding:9px 16px;border-bottom:1px solid %s;color:%s;font-size:12px;font-weight:600">Contrast</th>
+            <th style="text-align:center;padding:9px 16px;border-bottom:1px solid %s;color:%s;font-size:12px;font-weight:600">Sig paths</th>
+            <th style="text-align:center;padding:9px 16px;border-bottom:1px solid %s;color:%s;font-size:12px;font-weight:600">NES &gt; 0</th>
+            <th style="text-align:center;padding:9px 16px;border-bottom:1px solid %s;color:%s;font-size:12px;font-weight:600">NES &lt; 0</th>
+          </tr>
+        </thead>
+        <tbody>%s</tbody>
+      </table>
+
+    </div>
+
+    <!-- Footer -->
+    <div style="padding:14px 28px;border-top:1px solid %s;background:%s;font-size:11px;color:%s;text-align:center">
+      Session ID: <code style="color:%s;font-family:monospace;font-size:11px">%s</code>
+    </div>
+
+  </div>
+</body>
+</html>',
+    # body bg, body text
+    .C$bg_app, .C$text_1,
+    # container bg, border
+    .C$bg_panel, .C$border,
+    # header gradient
+    .C$grad_hdr,
+    # params section label, params table border, param rows
+    .C$text_3, .C$border, param_rows,
+    # pathway summary label, results table border
+    .C$text_3, .C$border,
+    # thead bg, thead border×4, thead text colors
+    .C$bg_card,
+    .C$border, .C$text_2,
+    .C$border, .C$accent,
+    .C$border, .C$up,
+    .C$border, .C$down,
+    # contrast rows
+    contrast_rows,
     # footer
     .C$border, .C$bg_card, .C$text_3, .C$text_2, session_id
   )

@@ -2038,6 +2038,47 @@ function(req, res) {
     ann_map        = body$annMap,
     run_id         = body$runId
   )
+
+  # ── Email notification (optional) ──
+  notify_email <- trimws(body$notifyEmail %||% "")
+  if (nchar(notify_email) > 0) {
+    gsea_padj <- as.numeric(body$padjCutoff %||% 0.25)
+
+    ct_summary <- lapply(results, function(item) {
+      res <- item$results
+      if (is.null(res) || !is.data.frame(res) || nrow(res) == 0)
+        return(list(contrast = as.character(item$contrastLabel %||% "?"),
+                    total = 0L, up = 0L, down = 0L))
+      sig <- res[!is.na(res$padj) & res$padj < gsea_padj, , drop = FALSE]
+      list(
+        contrast = as.character(item$contrastLabel %||% "?"),
+        total    = nrow(sig),
+        up       = sum(sig$NES > 0, na.rm = TRUE),
+        down     = sum(sig$NES < 0, na.rm = TRUE)
+      )
+    })
+
+    gsea_params_for_email <- list(
+      collection      = body$collection      %||% "H",
+      collectionLabel = body$collectionLabel %||% body$collection %||% "?",
+      rankMethod      = body$rankMethod      %||% "log2FC",
+      species         = body$species         %||% "Homo sapiens",
+      minSize         = body$minSize         %||% 15L,
+      maxSize         = body$maxSize         %||% 500L,
+      scoreType       = body$scoreType       %||% "std",
+      nPerm           = body$nPerm           %||% 1000L,
+      pAdjMethod      = body$pAdjMethod      %||% "BH",
+      padjCutoff      = gsea_padj
+    )
+
+    send_gsea_email(
+      to_email         = notify_email,
+      gsea_params      = gsea_params_for_email,
+      contrast_summary = ct_summary,
+      session_id       = session_id
+    )
+  }
+
   list(results = results)
 }
 
