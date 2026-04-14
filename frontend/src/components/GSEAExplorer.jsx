@@ -1498,7 +1498,7 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
   const [elapsed,     setElapsed]     = useState(0)
   const [runningAll,  setRunningAll]  = useState(false)
   const [toast,       setToast]       = useState(null)
-  const [notifyEmail, setNotifyEmail] = useState(() => localStorage.getItem('gsea_notify_email') ?? '')
+  const [notifyAll,   setNotifyAll]   = useState(() => localStorage.getItem('gsea_notify_all') === 'true')
   const toastTimerRef = useRef(null)
 
   const showToast = useCallback((msg) => {
@@ -1661,7 +1661,7 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
           subcategory:collection.sub, species,
           minSize, maxSize, scoreType, nPerm, pAdjMethod, padjCutoff,
           filterMethod:'count', filterValue, annMap:annMap||null, runId,
-          notifyEmail: notifyEmail.trim() || null }) })
+          notifyEmail: (notifyAll && session?.email && session.email !== 'example') ? session.email : null }) })
       const data = await r.json()
       if(data.error) throw new Error(data.error)
       const rm = RANK_METHODS.find(m=>m.value===rankMethod)
@@ -1684,7 +1684,7 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
       showToast(`${collection.label} · ran on ${allContrasts.length} contrasts`)
     } catch(e){ setRunError(e.message) }
     finally{ setRunningAll(false) }
-  },[session,allContrasts,contrastLabel,rankMethod,collection,species,minSize,maxSize,scoreType,nPerm,pAdjMethod,padjCutoff,filterValue,annMap,notifyEmail,showToast])
+  },[session,allContrasts,contrastLabel,rankMethod,collection,species,minSize,maxSize,scoreType,nPerm,pAdjMethod,padjCutoff,filterValue,annMap,notifyAll,showToast])
 
   // Curve on pathway click
   const fetchCurve = useCallback(async(result, ar)=>{
@@ -1859,20 +1859,28 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
                 style={{ padding:'9px 0', borderRadius:10, border:`1px solid ${V.border}`, cursor:(running||runningAll)?'wait':'pointer', background:(running||runningAll)?'rgba(255,255,255,0.03)':'rgba(255,255,255,0.05)', color:(running||runningAll)?'var(--text-3)':V.text, fontWeight:600, fontSize:'0.82rem', transition:'all 0.15s' }}>
                 {runningAll ? `⟳ Running all contrasts…` : `⟳ Run All Contrasts (${allContrasts.length})`}
               </button>
-              {/* Email notification for Run All */}
-              <input
-                type="email"
-                value={notifyEmail}
-                onChange={e => { setNotifyEmail(e.target.value); localStorage.setItem('gsea_notify_email', e.target.value) }}
-                placeholder="✉ Notify email (optional)"
-                style={{
-                  padding:'6px 10px', borderRadius:8,
-                  border:`1px solid ${V.border}`,
-                  background:'rgba(255,255,255,0.03)',
-                  color:'var(--text-1)', fontSize:'0.76rem',
-                  outline:'none', width:'100%', boxSizing:'border-box',
-                }}
-              />
+              {/* Email notification toggle — uses login email, hidden for example sessions */}
+              {session?.email && session.email !== 'example' && (
+                <button
+                  onClick={() => setNotifyAll(v => { const next = !v; localStorage.setItem('gsea_notify_all', String(next)); return next })}
+                  style={{
+                    display:'flex', alignItems:'center', justifyContent:'space-between',
+                    padding:'6px 10px', borderRadius:8, cursor:'pointer', width:'100%',
+                    border:`1px solid ${notifyAll ? V.border : 'rgba(255,255,255,0.08)'}`,
+                    background: notifyAll ? V.muted : 'rgba(255,255,255,0.03)',
+                    transition:'all 0.15s',
+                  }}>
+                  <span style={{ fontSize:'0.76rem', color: notifyAll ? V.text : 'var(--text-3)', letterSpacing:'0.01em' }}>
+                    ✉&nbsp;{notifyAll ? session.email : 'Notify when done'}
+                  </span>
+                  {/* pill toggle */}
+                  <div style={{ width:28, height:15, borderRadius:8, flexShrink:0, position:'relative',
+                                background: notifyAll ? V.accent : 'rgba(255,255,255,0.15)', transition:'background 0.2s' }}>
+                    <div style={{ position:'absolute', top:2, left: notifyAll ? 14 : 2, width:11, height:11,
+                                  borderRadius:'50%', background:'#fff', transition:'left 0.2s' }} />
+                  </div>
+                </button>
+              )}
             </div>
           )}
 
