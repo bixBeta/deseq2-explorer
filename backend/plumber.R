@@ -800,20 +800,38 @@ function(req, res) {
 
   # ── Email notification ──
   if (notify) {
-    sig_rows  <- result_dfs[[1]][!is.na(result_dfs[[1]]$padj) & result_dfs[[1]]$padj < alpha, ]
-    sig_count <- nrow(sig_rows); up_count <- sum(sig_rows$log2FC > 0, na.rm = TRUE)
-    top_genes <- lapply(seq_len(min(10, nrow(sig_rows))), function(i)
-      list(gene = sig_rows$gene[i], log2FC = sig_rows$log2FC[i], padj = sig_rows$padj[i]))
-    con <- get_db()
+    con        <- get_db()
     email_addr <- dbGetQuery(con, "SELECT email FROM sessions WHERE id=?", list(session_id))$email
     dbDisconnect(con)
-    ct_summary <- paste(sapply(contrasts_list, function(ct)
-                    paste(ct$treatment, "vs", ct$reference)), collapse = ", ")
+
+    # Per-contrast DEG summary (all contrasts, not just first)
+    ct_summary <- lapply(seq_along(contrasts_list), function(i) {
+      ct  <- contrasts_list[[i]]
+      sig <- result_dfs[[i]][!is.na(result_dfs[[i]]$padj) & result_dfs[[i]]$padj < alpha, ]
+      list(
+        contrast = paste(ct$treatment, "vs", ct$reference),
+        total    = nrow(sig),
+        up       = sum(sig$log2FC >  0, na.rm = TRUE),
+        down     = sum(sig$log2FC <= 0, na.rm = TRUE)
+      )
+    })
+
+    deseq2_params <- list(
+      alpha               = alpha,
+      lfcThreshold        = lfc_thresh,
+      minCount            = min_count,
+      minSamples          = min_samp,
+      fitType             = fit_type,
+      independentFiltering = ind_filt,
+      cooksCutoff         = cooks_cut
+    )
+
     send_results_email(
-      to_email   = email_addr,
-      design     = list(contrast = ct_summary),
-      sig_count  = sig_count, up_count = up_count, dn_count = sig_count - up_count,
-      top_genes  = top_genes, session_id = session_id, app_url = APP_URL
+      to_email         = email_addr,
+      deseq2_params    = deseq2_params,
+      contrast_summary = ct_summary,
+      session_id       = session_id,
+      app_url          = APP_URL
     )
   }
 

@@ -36,14 +36,19 @@
 - **Full DESeq2 pipeline** — `varianceStabilizingTransformation()` normalization, multiple contrasts in a single run, parallel execution via `mirai`
 - **Interactive visualizations** — PCA, MA plots, heatmaps (Z-scored VST counts), UpSet plots, violin plots
 - **Gene annotation** — g:Profiler (client-side), Ensembl REST API + BioMart fallback, NCBI E-utilities for RefSeq / numeric gene IDs (bacteria, fungi, archaea, any organism), GTF/GFF upload
-- **Multi-contrast Compare panel** — Toggle individual contrasts on/off across all plots; all contrasts preserved in session
+- **Multi-contrast Compare panel** — Toggle individual contrasts on/off across all plots; heatmaps with custom annotation color pickers and on-demand generation
+- **GSEA & pathway analysis** — clusterProfiler GSEA with MSigDB gene sets; mountain plots, dot, ridge, heat, network plots; pathway heatmap with leading-edge genes
+- **STAR count file support** — Auto-detects `ReadsPerGene.out.tab` format; strandedness picker with column-sum suggestion
 - **Session persistence** — SQLite-backed sessions with email + PIN authentication; results survive server restarts
-- **Export** — Download plots as PNG; email results summary on completion
-- **No local R required** — Fully containerized via Docker
+- **Email notifications** — Zero-config for end users; delivered via Cloudflare Worker relay (credentials never on user machines)
+- **Export** — Download plots as PNG; email results summary on analysis completion
+- **No local R required** — Fully containerized via Docker; self-updating launcher scripts for macOS, Linux, and Windows
 
 ---
 
 ## Input Format
+
+### Option A — RDS file (recommended)
 
 The app expects a single **RDS file** containing a named R list with two elements:
 
@@ -58,6 +63,19 @@ saveRDS(list(
 - `metadata` — sample sheet with at least one grouping column (e.g. `condition`, `treatment`)
 
 > Column names of `counts` must match row names of `metadata`.
+
+### Option B — Build an RDS with the Data Prep Tool
+
+The bundled **Data Prep Tool** (accessible at `/prep` or as a [standalone web app](https://github.com/bixBeta/deseq2-prep)) builds the RDS entirely in the browser via WebR — no R installation required.
+
+Supported input formats:
+
+| Format | Detection | Notes |
+|--------|-----------|-------|
+| Full matrix (TSV/CSV) | Any tab/comma-separated file | First column = gene IDs; remaining columns = samples |
+| Per-sample count files | Multiple files dropped together | One file per sample; gene union is computed automatically |
+| **STAR** `ReadsPerGene.out.tab` | Auto-detected (4 columns + `N_unmapped` rows) | Strandedness picker shown automatically; column-sum suggestion highlights the best option |
+| featureCounts, HTSeq-count | Auto-detected by suffix stripping | Treated as standard per-sample count files |
 
 ---
 
@@ -94,24 +112,23 @@ git clone https://github.com/bixBeta/deseq2-explorer.git
 cd deseq2-explorer
 ```
 
-### 2. Configure environment variables
+### 2. Configure environment variables (optional)
+
+Email notifications are delivered via a Cloudflare Worker relay — credentials are baked into the pre-built image and never stored on user machines. Desktop users need no `.env` at all.
+
+If you are **building the image yourself** (not using the pre-built Docker Hub image), create a `.env` file:
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` with your SMTP credentials (required for email notifications and PIN delivery):
-
 ```env
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=yourapp@gmail.com
-SMTP_PASS=your-app-password
-FROM_EMAIL=yourapp@gmail.com
-APP_URL=http://localhost
+NOTIFY_URL=https://deseq2-notify.YOUR_SUBDOMAIN.workers.dev/send
+NOTIFY_TOKEN=your-relay-token
+APP_URL=http://your-server-address
 ```
 
-> Email is used to deliver session PINs and optional results notifications. For Gmail, use an [App Password](https://support.google.com/accounts/answer/185833).
+See [`relay/README.md`](relay/README.md) for one-time Cloudflare Worker setup instructions.
 
 ### 3. Run
 
@@ -203,11 +220,13 @@ A detailed description of all statistical methods used — including DESeq2 mode
 | Layer | Technology |
 |-------|-----------|
 | Frontend | React 19, Vite 5, Tailwind CSS 3, Plotly.js |
-| Backend | R 4.4, Plumber, DESeq2, mirai, heatmaply, UpSetR, ggpubr |
+| Backend | R 4.4, Plumber, DESeq2, clusterProfiler, mirai, heatmaply, UpSetR, ggpubr |
 | Database | SQLite (via RSQLite) |
 | Proxy | nginx (reverse proxy, SPA routing, 512 MB upload limit) |
 | Process mgmt | supervisord |
 | Container | Docker (multi-stage build), Docker Compose |
+| CI/CD | GitHub Actions — auto-build and push to Docker Hub + GHCR on every push to `main` |
+| Email relay | Cloudflare Worker + Resend — zero-config notifications; SMTP credentials never on user machines |
 
 ---
 
@@ -328,12 +347,14 @@ docker compose up --build
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SMTP_HOST` | `smtp.gmail.com` | SMTP server host |
-| `SMTP_PORT` | `587` | SMTP port (STARTTLS) |
-| `SMTP_USER` | — | SMTP username / sender address |
-| `SMTP_PASS` | — | SMTP password or app password |
-| `FROM_EMAIL` | — | From address in sent emails |
-| `APP_URL` | `http://localhost` | Base URL used in email links |
+| `NOTIFY_URL` | *(baked into image)* | Cloudflare Worker relay endpoint |
+| `NOTIFY_TOKEN` | *(baked into image)* | Bearer token for relay authentication |
+| `APP_URL` | `http://localhost:3000` | Base URL used in email notification links |
+| `DB_PATH` | `/data/sessions.db` | SQLite database path |
+| `UPLOAD_DIR` | `/data/uploads` | Uploaded RDS file directory |
+| `RESULTS_DIR` | `/data/results` | Cached DESeq2 result directory |
+
+> `NOTIFY_URL` and `NOTIFY_TOKEN` are injected at image build time via GitHub Actions secrets. Desktop users who pull `bixbeta/deseq2-explorer:latest` never need to set these manually.
 
 ---
 
@@ -346,8 +367,12 @@ MIT
 ## Acknowledgements
 
 - [DESeq2](https://bioconductor.org/packages/DESeq2/) — Love et al., *Genome Biology* 2014
+- [clusterProfiler](https://bioconductor.org/packages/clusterProfiler/) — Yu et al., *OMICS* 2012
+- [msigdbr](https://cran.r-project.org/package=msigdbr) — MSigDB gene sets in R
 - [heatmaply](https://github.com/talgalili/heatmaply) — Interactive heatmaps
 - [UpSetR](https://github.com/hms-dbmi/UpSetR) — UpSet visualizations
 - [ggpubr](https://github.com/kassambara/ggpubr) — Publication-ready plots and statistical annotations
 - [Plumber](https://www.rplumber.io/) — R REST API framework
 - [Plotly.js](https://plotly.com/javascript/) — Interactive charts
+- [Resend](https://resend.com) — Transactional email delivery
+- [Cloudflare Workers](https://workers.cloudflare.com) — Serverless notification relay

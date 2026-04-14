@@ -7,4 +7,4 @@ compatibility_date = "2025-01-01"
 # Then paste the returned id below.
 [[kv_namespaces]]
 binding    = "RATE_KV"
-id         = "REPLACE_WITH_KV_NAMESPACE_ID"
+id         = "e889cbda17e645be85fcaac47c398783"

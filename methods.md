@@ -29,6 +29,26 @@ Counts are rounded to the nearest integer before analysis. Metadata columns are 
 
 Alternatively, a plain `prcomp` object or a named list with `$scores`/`$variance`/`$loadings` elements can be supplied for PCA-only sessions.
 
+### Data Prep Tool — count matrix construction
+
+The bundled Data Prep Tool (WebR, runs entirely in the browser) can assemble the RDS from raw count files before upload. The following input formats are supported:
+
+**Standard per-sample count files** (featureCounts, HTSeq-count, generic `.counts`)
+Two-column tab/comma-separated files with gene IDs in column 1 and counts in column 2. When multiple files are dropped, a union gene matrix is built: gene IDs are unioned across all files in first-appearance order; missing values are filled with 0. Summary rows beginning with `__` or `N_` are skipped.
+
+**STAR `ReadsPerGene.out.tab`**
+STAR outputs four columns per file: gene ID, unstranded counts, forward-strand counts, and reverse-strand counts. Files are auto-detected by the presence of four tab-delimited columns and at least one `N_unmapped` summary row in the first 10 lines.
+
+After detection, a strandedness picker modal is shown. Column totals (summed across all files, reported in millions) are computed to help users identify the correct strandedness:
+
+| Selection | Column used | Typical protocol |
+|-----------|-------------|-----------------|
+| Unstranded | Column 2 | Non-strand-specific libraries |
+| Forward (1st read strand) | Column 3 | dUTP-based kits (e.g. TruSeq Stranded) |
+| Reverse (2nd read strand) | Column 4 | Illumina TruSeq RF |
+
+The column with the highest total count sum is auto-suggested as the most likely correct strandedness. The user can override this selection before confirming matrix construction.
+
 ---
 
 ## Pre-filtering
@@ -238,7 +258,11 @@ The heatmap colour palette is user-configurable. A three-point colour gradient (
 
 ### Column annotation
 
-An optional annotation bar above the sample columns is drawn using sample metadata. The user selects a metadata column (e.g. treatment group); group colours are assigned from a fixed qualitative palette.
+An optional annotation bar above the sample columns is drawn using sample metadata. The user selects a metadata column (e.g. treatment group). Group colours are assigned from a default qualitative palette and can be individually overridden via per-group colour pickers in the sidebar. Custom colours are passed to `heatmaply` as a named palette function and applied to the annotation track.
+
+### On-demand generation
+
+Heatmaps are generated only when the user explicitly clicks **Generate Heatmap**. Parameter changes (clustering method, colour scale, annotation column, custom colours) do not trigger automatic re-renders, preventing unintended recomputation on large gene sets.
 
 ---
 
@@ -540,3 +564,11 @@ All three metrics are displayed in the pairwise overlap matrix. The matrix can b
 ### Pathway selection
 
 Pathways are drawn from all GSEA runs in the current session. Runs are filterable by adjusted p-value cutoff and by a top-N per run limit. A free-text search box further narrows the pathway list by name. Selected pathways are summarised in a detail table (paginated, 20 rows per page) showing pathway name, run label, contrast, NES, padj, and leading-edge gene count, with row hover highlighting for readability.
+
+### Pathway Heatmap
+
+For one or more selected pathways, a heatmap of leading-edge gene expression across samples can be generated on demand. Expression values are Z-score standardized VST counts (identical to the DE heatmap). Only genes present in the leading-edge set of at least one selected pathway are included; all leading-edge genes are shown (no Top N truncation).
+
+Gene IDs are resolved to display symbols using the session's annotation map when available. The `annMap` is pre-filtered to the leading-edge gene set before the backend call to avoid sending irrelevant mappings.
+
+Column annotation, clustering method, and colour palette follow the same logic as the DE heatmap (see [Heatmap](#heatmap) above). Per-group annotation colours can be customised via colour pickers in the sidebar. The heatmap is generated only on explicit user action (**Generate Heatmap** button).
