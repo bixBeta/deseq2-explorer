@@ -12,6 +12,11 @@ RESULTS_DIR   <- Sys.getenv("RESULTS_DIR", file.path(dirname(getwd()), "data", "
 APP_URL       <- Sys.getenv("APP_URL",     "http://localhost")
 SESSION_LIMIT <- 5L
 
+#* Health-check — used by Docker HEALTHCHECK and launcher scripts
+#* @get /api/ping
+#* @serializer unboxedJSON
+function() list(status = "ok", time = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"))
+
 dir.create(UPLOAD_DIR,  showWarnings = FALSE, recursive = TRUE)
 dir.create(RESULTS_DIR, showWarnings = FALSE, recursive = TRUE)
 

@@ -19,6 +19,7 @@ FROM rocker/r-ver:4.4
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nginx \
     supervisor \
+    curl \
     libcurl4-openssl-dev \
     libssl-dev \
     libxml2-dev \
@@ -74,5 +75,8 @@ COPY supervisord.conf /etc/supervisor/conf.d/app.conf
 VOLUME ["/data"]
 
 EXPOSE 80
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=90s --retries=8 \
+  CMD curl -sf http://localhost/api/ping || exit 1
 
 CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisor/conf.d/app.conf"]
