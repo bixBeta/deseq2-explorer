@@ -12,8 +12,8 @@
  * KV binding (RATE_KV) is used for rate limiting — see wrangler.toml.
  */
 
-const RATE_LIMIT  = 3;      // max emails per recipient per window
-const WINDOW_SECS = 21600;  // 6 hours
+const RATE_LIMIT  = 50;     // max emails per recipient per window
+const WINDOW_SECS = 86400;  // 24 hours
 
 export default {
   async fetch(request, env) {
@@ -49,13 +49,16 @@ export default {
       return json({ error: 'Invalid to address' }, 400);
     }
 
-    // ── Rate limit (per recipient, per window) ────────────────────────────────
+    // ── Rate limit (per recipient, fixed window) ─────────────────────────────
+    // TTL is set only when the window first opens so the clock doesn't keep
+    // sliding forward every time an email is sent.
     const kvKey  = `rl:${to.toLowerCase()}`;
     const current = parseInt((await env.RATE_KV.get(kvKey)) ?? '0', 10);
     if (current >= RATE_LIMIT) {
       return json({ error: 'Rate limit exceeded — try again later' }, 429);
     }
-    await env.RATE_KV.put(kvKey, String(current + 1), { expirationTtl: WINDOW_SECS });
+    const putOpts = current === 0 ? { expirationTtl: WINDOW_SECS } : {};
+    await env.RATE_KV.put(kvKey, String(current + 1), putOpts);
 
     // ── Send via Resend ───────────────────────────────────────────────────────
     const resendRes = await fetch('https://api.resend.com/emails', {
