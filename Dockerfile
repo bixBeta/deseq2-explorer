@@ -32,44 +32,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgit2-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# ── Install pak for fast parallel package installation ────────────────────────
-RUN R -e "install.packages('pak', repos='https://cloud.r-project.org')"
-
-# Helper: install with up to 3 retries and a generous download timeout.
-# Transient CRAN mirror blips or slow GHA runners won't kill the build.
-ENV R_INSTALL_STAGED=false
+# ── CRAN packages via Posit Package Manager (pre-compiled binaries for jammy)
+#    PPM gives us pre-built .deb-style binaries — no compilation, no missing
+#    system headers, and install.packages gives clear per-package error output.
 RUN R -e " \
-  retry_pak <- function(pkgs) { \
-    options(timeout = 300); \
-    for (i in seq_len(3)) { \
-      ok <- tryCatch({ pak::pak(pkgs, ask=FALSE); TRUE }, \
-                     error = function(e) { message('Attempt ', i, ' failed: ', e\$message); FALSE }); \
-      if (ok) return(invisible(NULL)); \
-      if (i < 3) Sys.sleep(20); \
-    }; \
-    stop('Installation failed after 3 attempts') \
-  }; \
-  # Group 1: core API + data layer \
-  retry_pak(c('BiocManager','plumber','jsonlite','DBI','RSQLite','uuid','digest','httr2','httr','base64enc','matrixStats')); \
-  # Group 2: async parallelism \
-  retry_pak('mirai'); \
-  # Group 3: base plotting \
-  retry_pak(c('ggplot2','ggpubr')); \
-  # Group 4: interactive / HTML widgets (largest dep tree) \
-  retry_pak(c('plotly','heatmaply')); \
-  # Group 5: set visualisation + gene sets \
-  retry_pak(c('UpSetR','msigdbr'))"
+  options( \
+    repos   = c(PPM = 'https://packagemanager.posit.co/cran/__linux__/jammy/latest'), \
+    timeout = 300 \
+  ); \
+  install.packages(c( \
+    'BiocManager','plumber','jsonlite','DBI','RSQLite','uuid','digest', \
+    'httr2','httr','base64enc','matrixStats','mirai', \
+    'ggplot2','ggpubr','plotly','heatmaply','UpSetR','msigdbr' \
+  ), Ncpus = 4)"
 
-# ── Bioconductor packages ──────────────────────────────────────────────────────
+# ── Bioconductor packages via BiocManager ─────────────────────────────────────
 RUN R -e " \
   options(timeout = 300); \
-  for (i in seq_len(3)) { \
-    ok <- tryCatch({ pak::pak(c('bioc::DESeq2','bioc::clusterProfiler','bioc::enrichplot'), ask=FALSE); TRUE }, \
-                   error = function(e) { message('Attempt ', i, ' failed: ', e\$message); FALSE }); \
-    if (ok) break; \
-    if (i == 3) stop('Bioc installation failed after 3 attempts'); \
-    Sys.sleep(30); \
-  }"
+  BiocManager::install( \
+    c('DESeq2','clusterProfiler','enrichplot'), \
+    ask = FALSE, update = FALSE \
+  )"
 
 # Copy React build → nginx html dir
 COPY --from=builder /app/frontend/dist /usr/share/nginx/html
