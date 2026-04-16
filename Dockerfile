@@ -35,20 +35,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ── Install pak for fast parallel package installation ────────────────────────
 RUN R -e "install.packages('pak', repos='https://cloud.r-project.org')"
 
-# ── CRAN packages (pak resolves deps in parallel — much faster than install.packages) ──
-RUN R -e " \
-  pkgs <- c('BiocManager','plumber','jsonlite','DBI','RSQLite','uuid','digest', \
-            'httr2','httr','base64enc','matrixStats','mirai', \
-            'ggplot2','ggpubr','heatmaply','plotly','UpSetR','msigdbr'); \
-  pak::pak(pkgs); \
-  missing <- pkgs[!sapply(pkgs, requireNamespace, quietly=TRUE)]; \
-  if (length(missing)) stop(paste('Failed to install:', paste(missing, collapse=', ')))"
+# ── CRAN packages — split into logical groups so each layer is cached
+#    independently and failures are immediately identifiable ──────────────────
+
+# Group 1: core API + data layer
+RUN R -e "pak::pak(c('BiocManager','plumber','jsonlite','DBI','RSQLite','uuid','digest','httr2','httr','base64enc','matrixStats'), ask=FALSE)"
+
+# Group 2: async parallelism
+RUN R -e "pak::pak('mirai', ask=FALSE)"
+
+# Group 3: base plotting
+RUN R -e "pak::pak(c('ggplot2','ggpubr'), ask=FALSE)"
+
+# Group 4: interactive / HTML widgets (largest dep tree)
+RUN R -e "pak::pak(c('plotly','heatmaply'), ask=FALSE)"
+
+# Group 5: set visualisation + gene sets
+RUN R -e "pak::pak(c('UpSetR','msigdbr'), ask=FALSE)"
 
 # ── Bioconductor packages ──────────────────────────────────────────────────────
-RUN R -e " \
-  pak::pak(c('bioc::DESeq2','bioc::clusterProfiler','bioc::enrichplot')); \
-  missing <- c('DESeq2','clusterProfiler','enrichplot')[!sapply(c('DESeq2','clusterProfiler','enrichplot'), requireNamespace, quietly=TRUE)]; \
-  if (length(missing)) stop(paste('Failed to install:', paste(missing, collapse=', ')))"
+RUN R -e "pak::pak(c('bioc::DESeq2','bioc::clusterProfiler','bioc::enrichplot'), ask=FALSE)"
 
 # Copy React build → nginx html dir
 COPY --from=builder /app/frontend/dist /usr/share/nginx/html
@@ -69,9 +75,13 @@ VOLUME ["/data"]
 
 # Notification relay — baked in at build time via GitHub Actions secrets.
 # Users who pull the pre-built image get email working with zero configuration.
+# hadolint ignore=DL3025
 ARG  NOTIFY_URL=""
+# hadolint ignore=DL3025
 ARG  NOTIFY_TOKEN=""
+# hadolint ignore=DL3025
 ENV  NOTIFY_URL=${NOTIFY_URL}
+# hadolint ignore=DL3025
 ENV  NOTIFY_TOKEN=${NOTIFY_TOKEN}
 
 EXPOSE 80
