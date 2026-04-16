@@ -67,21 +67,26 @@ if errorlevel 1 (
 
 REM ── 5. Wait until ready ──────────────────────────────────────────────────────
 echo.
-echo [4/4] Waiting for app to be ready (this may take ~60s on first run)...
+echo [4/4] Waiting for app to be ready (this may take ~90s on first run)...
 set TRIES=0
 :wait_loop
 timeout /t 5 /nobreak >nul
 curl -sf %URL%/api/ping >nul 2>&1
 if not errorlevel 1 goto ready
 set /a TRIES+=1
-if %TRIES% geq 24 (
+if %TRIES% geq 36 (
     echo.
-    echo [ERROR] App did not become ready in time.
-    echo Check logs with: docker compose -f %COMPOSE_FILE% logs
+    echo [ERROR] App did not become ready after 3 minutes.
+    echo.
+    echo Showing container logs to help diagnose:
+    docker logs --tail 40 deseq2-explorer
+    echo.
+    echo If you see R errors above, try: docker compose -f %COMPOSE_FILE% down
+    echo then run this script again. If the problem persists, please report it.
     pause
     exit /b 1
 )
-echo        Still starting... (%TRIES%/24)
+echo        Still starting... (%TRIES%/36)
 goto wait_loop
 
 :ready

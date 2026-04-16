@@ -32,12 +32,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgit2-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# ── CRAN packages via Posit Package Manager (pre-compiled binaries for jammy)
-#    PPM gives us pre-built .deb-style binaries — no compilation, no missing
-#    system headers, and install.packages gives clear per-package error output.
+# ── CRAN packages via Posit Package Manager (pre-compiled binaries for noble)
+#    rocker/r-ver:4.4 is Ubuntu 24.04 (noble); use the matching PPM snapshot so
+#    shared-library versions (libicu74, libssl3, etc.) align with the base image.
 RUN R -e " \
   options( \
-    repos   = c(PPM = 'https://packagemanager.posit.co/cran/__linux__/jammy/latest'), \
+    repos   = c(PPM = 'https://packagemanager.posit.co/cran/__linux__/noble/latest'), \
     timeout = 300 \
   ); \
   install.packages(c( \
@@ -47,8 +47,12 @@ RUN R -e " \
   ), Ncpus = 4)"
 
 # ── Bioconductor packages via BiocManager ─────────────────────────────────────
+#    Pass the same PPM repo so any CRAN deps BiocManager pulls are also binaries.
 RUN R -e " \
-  options(timeout = 300); \
+  options( \
+    repos   = c(PPM = 'https://packagemanager.posit.co/cran/__linux__/noble/latest'), \
+    timeout = 300 \
+  ); \
   BiocManager::install( \
     c('DESeq2','clusterProfiler','enrichplot'), \
     ask = FALSE, update = FALSE \
