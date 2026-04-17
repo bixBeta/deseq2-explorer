@@ -32,7 +32,34 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgit2-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# ── Pin ggplot2 to 3.4.4 before any other installs ───────────────────────────
+# ggtree 3.14.0 (Bioc 3.20) has importFrom(ggplot2, check_linewidth) in its
+# NAMESPACE.  ggplot2 3.5.0 (Feb 2024) removed check_linewidth from its
+# *exports*, so any R session that loads ggtree fails with
+# "object 'check_linewidth' not found".
+#
+# Fix: install ggplot2 3.4.4 (Oct 2023 — last version that exports
+# check_linewidth) BEFORE the big CRAN step.  install.packages() will not
+# upgrade a package that already satisfies the stated requirement, so ggplot2
+# stays at 3.4.4 through the Bioc install.  BiocManager::install with
+# update=FALSE keeps it pinned there too.
+RUN R -e " \
+  options( \
+    repos   = c(PPM = 'https://packagemanager.posit.co/cran/__linux__/noble/latest'), \
+    timeout = 300 \
+  ); \
+  install.packages('remotes')"
+
+RUN R -e " \
+  options(timeout = 300); \
+  remotes::install_version( \
+    'ggplot2', version = '3.4.4', \
+    repos   = 'https://cran.r-project.org', \
+    upgrade = 'never' \
+  )"
+
 # ── CRAN packages — pre-compiled noble binaries from PPM ─────────────────────
+# ggplot2 is already installed above; install.packages will not upgrade it.
 RUN R -e " \
   options( \
     repos   = c(PPM = 'https://packagemanager.posit.co/cran/__linux__/noble/latest'), \
@@ -41,19 +68,8 @@ RUN R -e " \
   install.packages(c( \
     'BiocManager','plumber','jsonlite','DBI','RSQLite','uuid','digest', \
     'httr2','httr','base64enc','matrixStats','mirai', \
-    'ggplot2','ggpubr','plotly','heatmaply','UpSetR','msigdbr' \
+    'ggpubr','plotly','heatmaply','UpSetR','msigdbr' \
   ), Ncpus = 4)"
-
-# ── ggplot2 / ggtree compatibility shim ──────────────────────────────────────
-# ggplot2 3.5 removed check_linewidth from its exports; ggtree 3.14.0 (Bioc
-# 3.20) still has importFrom(ggplot2, check_linewidth) in its NAMESPACE.
-#
-# R CMD INSTALL reads /usr/local/lib/R/etc/Rprofile.site in every subprocess
-# (it uses --no-save --no-restore, NOT --no-site-file). By registering an
-# onLoad hook here we add check_linewidth to ggplot2's namespace before R
-# resolves ggtree's importFrom declarations — no source patching needed.
-RUN printf '\nsetHook(packageEvent("ggplot2","onLoad"),function(...){\n  ns <- getNamespace("ggplot2")\n  if (!exists("check_linewidth", envir=ns, inherits=FALSE))\n    assignInNamespace("check_linewidth",\n      function(data, name) invisible(NULL), ns="ggplot2")\n})\n' \
-      >> /usr/local/lib/R/etc/Rprofile.site
 
 # ── Bioconductor packages — install + verify atomically ──────────────────────
 RUN R -e " \
