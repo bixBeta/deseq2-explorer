@@ -58,6 +58,24 @@ RUN R -e " \
     ask = FALSE, update = FALSE \
   )"
 
+# ── Verify every package the app needs actually loads ─────────────────────────
+#    This RUN step fails the build immediately if any library() call errors,
+#    so a broken image can never be pushed to the registry.
+RUN R -e " \
+  pkgs <- c( \
+    'plumber','jsonlite','DBI','RSQLite','uuid','digest', \
+    'httr2','httr','base64enc','matrixStats','mirai', \
+    'ggplot2','ggpubr','plotly','heatmaply','UpSetR','msigdbr', \
+    'DESeq2','clusterProfiler','enrichplot' \
+  ); \
+  failed <- character(0); \
+  for (p in pkgs) { \
+    ok <- tryCatch({ library(p, character.only=TRUE); TRUE }, \
+                   error = function(e) { message('MISSING: ', p, ' — ', e\$message); FALSE }); \
+    if (!ok) failed <- c(failed, p); \
+  }; \
+  if (length(failed)) stop('Build failed — packages not loadable: ', paste(failed, collapse=', '))"
+
 # Copy React build → nginx html dir
 COPY --from=builder /app/frontend/dist /usr/share/nginx/html
 
