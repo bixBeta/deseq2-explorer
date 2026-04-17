@@ -378,12 +378,21 @@ gsea_plots <- function(session_id, contrast_label, collection, subcategory, spec
       },
 
       "ridgeplot" = {
-        # showCategory must be numeric (double), not integer
-        # NOTE: do NOT add scale_fill_gradient after ridgeplot — enrichplot adds
-        # its own fill scale internally, and ggplot2 >= 3.5.0 changed duplicate
-        # scale addition from a suppressable warning to a hard error, which
-        # produced an empty-message failure here.  Let enrichplot own the scale.
-        ridgeplot(gsea_result, showCategory = as.numeric(n_show)) +
+        # showCategory must be numeric (double), not integer.
+        # enrichplot::ridgeplot() adds its own scale_fill_* internally.
+        # ggplot2 >= 3.5.0 throws a hard error (not a warning) for duplicate
+        # scales, so we cannot do `p + scale_fill_gradient(...)` directly.
+        # Solution: build the ridge plot, strip its fill scale from the ggplot
+        # object's scale list, then add our custom gradient — no duplicate,
+        # no error, user colours work as expected.
+        if (!requireNamespace("ggridges", quietly = TRUE))
+          stop("R package 'ggridges' must be installed for ridgeplot")
+        p_r <- ridgeplot(gsea_result, showCategory = as.numeric(n_show))
+        p_r$scales$scales <- Filter(
+          function(s) !("fill" %in% s$aesthetics), p_r$scales$scales
+        )
+        p_r +
+          scale_fill_gradient(low = color_neg, high = color_pos) +
           theme_bw(base_size = font_size) +
           ggtitle("GSEA Ridge Plot — Leading Edge Expression")
       },

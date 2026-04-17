@@ -48,7 +48,7 @@ RUN R -e " \
   pak::pak(c( \
     'plumber','jsonlite','DBI','RSQLite','uuid','digest', \
     'httr2','httr','base64enc','matrixStats','mirai', \
-    'ggplot2','ggpubr','plotly','heatmaply','UpSetR','msigdbr', \
+    'ggplot2','ggpubr','plotly','heatmaply','UpSetR','msigdbr','ggridges', \
     'bioc::DESeq2','bioc::clusterProfiler','bioc::enrichplot' \
   ), ask = FALSE)"
 
@@ -59,7 +59,7 @@ RUN R -e " \
   pkgs <- c( \
     'plumber','jsonlite','DBI','RSQLite','uuid','digest', \
     'httr2','httr','base64enc','matrixStats','mirai', \
-    'ggplot2','ggpubr','plotly','heatmaply','UpSetR','msigdbr', \
+    'ggplot2','ggpubr','plotly','heatmaply','UpSetR','msigdbr','ggridges', \
     'DESeq2','clusterProfiler','enrichplot' \
   ); \
   failed <- character(0); \
