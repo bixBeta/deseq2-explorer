@@ -44,10 +44,30 @@ RUN R -e " \
     'ggplot2','ggpubr','plotly','heatmaply','UpSetR','msigdbr' \
   ), Ncpus = 4)"
 
-# ── Bioconductor packages — install then verify in one atomic step ────────────
-#    Combining install + requireNamespace check in a single RUN means this layer
-#    is only cached once all three packages confirm they can be loaded.
-#    force=TRUE bypasses any "already installed" skipping inside BiocManager.
+# ── ggtree (patched) — fixes ggplot2 3.5+ incompatibility ────────────────────
+#    ggtree 3.14.0 has importFrom(ggplot2, check_linewidth) in its NAMESPACE,
+#    but ggplot2 3.5 removed check_linewidth from its exports, so ggtree fails
+#    to install → enrichplot fails → clusterProfiler fails.
+#    Fix: download ggtree source, strip the broken import, add a local no-op
+#    stub, then install from the patched source.
+RUN R -q -e " \
+  options(timeout = 300); \
+  tmp <- tempdir(); \
+  url <- 'https://bioconductor.org/packages/3.20/bioc/src/contrib/ggtree_3.14.0.tar.gz'; \
+  download.file(url, file.path(tmp, 'ggtree.tar.gz'), quiet = TRUE); \
+  untar(file.path(tmp, 'ggtree.tar.gz'), exdir = tmp); \
+  gd <- file.path(tmp, 'ggtree'); \
+  ns_file <- file.path(gd, 'NAMESPACE'); \
+  writeLines(grep('check_linewidth', readLines(ns_file), \
+                  value = TRUE, invert = TRUE), ns_file); \
+  writeLines('check_linewidth <- function(data, name) invisible(NULL)', \
+             file.path(gd, 'R', 'compat-ggplot2-35.R')); \
+  install.packages(gd, repos = NULL, type = 'source', Ncpus = 4); \
+  if (!requireNamespace('ggtree', quietly = TRUE)) stop('ggtree install failed')"
+
+# ── Bioconductor packages — install + verify atomically ──────────────────────
+#    ggtree is already present (patched above) so BiocManager skips it.
+#    update=FALSE keeps our patched ggtree; force=TRUE ensures fresh installs.
 RUN R -e " \
   options( \
     repos   = c(PPM = 'https://packagemanager.posit.co/cran/__linux__/noble/latest'), \
