@@ -51,8 +51,8 @@ function TRExLogo({ size = 34 }) {
     <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 417 417"
          style={{ borderRadius: r, display: 'block', flexShrink: 0 }} aria-label="TREx">
       <rect width="417" height="417" rx="65" fill="#0b446f" stroke="#2f2f2f" strokeLinejoin="round" strokeWidth="1"/>
-      <text x="208.5" y="258" fill="#fff" fontSize="116" fontFamily="Inter, system-ui, sans-serif"
-            fontWeight="700" textAnchor="middle" letterSpacing="-2">TREx</text>
+      <text x="208.5" y="260" fill="#fff" fontSize="116" fontFamily="Montserrat, 'Avenir Next', Avenir, system-ui, sans-serif"
+            fontWeight="800" textAnchor="middle" letterSpacing="-3">TREx</text>
     </svg>
   )
 }
