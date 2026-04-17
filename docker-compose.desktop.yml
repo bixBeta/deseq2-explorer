@@ -16,6 +16,12 @@ services:
         required: false          # desktop users don't need SMTP
     environment:
       - APP_URL=http://localhost:3000
+      # Redirect R data paths into the named volume at /data.
+      # The R defaults resolve to /app/data (dirname of workdir), which is the
+      # container writable layer and is lost on `docker compose down`.
+      - DB_PATH=/data/sessions.db
+      - UPLOAD_DIR=/data/uploads
+      - RESULTS_DIR=/data/results
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost/api/ping"]

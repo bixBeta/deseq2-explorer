@@ -85,6 +85,12 @@ COPY backend/ ./
 COPY supervisord.conf /etc/supervisor/conf.d/app.conf
 
 # Data volume (SQLite DB + uploads + results)
+# Point R path defaults at /data so they land inside the named volume.
+# Without these, Sys.getenv() falls back to dirname(getwd())/data = /app/data,
+# which is the container's writable layer and is destroyed by `docker compose down`.
+ENV DB_PATH=/data/sessions.db \
+    UPLOAD_DIR=/data/uploads \
+    RESULTS_DIR=/data/results
 VOLUME ["/data"]
 
 # Notification relay — baked in at build time via GitHub Actions secrets.
