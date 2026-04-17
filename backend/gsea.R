@@ -378,14 +378,14 @@ gsea_plots <- function(session_id, contrast_label, collection, subcategory, spec
       },
 
       "ridgeplot" = {
-        # showCategory must be numeric (double), not integer — inherits(n, "numeric") is FALSE for integers
-        # scale_fill_gradient replaces ridgeplot's internal fill scale (expected, suppress the warning)
-        suppressWarnings(
-          ridgeplot(gsea_result, showCategory = as.numeric(n_show)) +
-            scale_fill_gradient(low = color_neg, high = color_pos) +
-            theme_bw(base_size = font_size) +
-            ggtitle("GSEA Ridge Plot — Leading Edge Expression")
-        )
+        # showCategory must be numeric (double), not integer
+        # NOTE: do NOT add scale_fill_gradient after ridgeplot — enrichplot adds
+        # its own fill scale internally, and ggplot2 >= 3.5.0 changed duplicate
+        # scale addition from a suppressable warning to a hard error, which
+        # produced an empty-message failure here.  Let enrichplot own the scale.
+        ridgeplot(gsea_result, showCategory = as.numeric(n_show)) +
+          theme_bw(base_size = font_size) +
+          ggtitle("GSEA Ridge Plot — Leading Edge Expression")
       },
 
       "upsetplot" = {
@@ -476,7 +476,14 @@ gsea_plots <- function(session_id, contrast_label, collection, subcategory, spec
 
       stop(paste0("Unknown plot type: ", plot_type))
     )
-  }, error = function(e) stop("Plot generation failed: ", e$message))
+  }, error = function(e) {
+    # e$message is "" for rlang/cli errors; conditionMessage() returns the
+    # fully-formatted string (including bullet lines) for all condition types.
+    msg <- tryCatch(paste(conditionMessage(e), collapse = " | "),
+                    error = function(ee) "")
+    if (!nzchar(trimws(msg))) msg <- paste0("[", class(e)[1], "] (no message)")
+    stop("Plot generation failed: ", msg)
+  })
 
   ggplot2::ggsave(tmp, p, width = w, height = h, dpi = 150, bg = "white")
   b64 <- paste0("data:image/png;base64,",
