@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, Component } from 'react'
 import deseq2Logo from './assets/deseq2-applogo.svg'
-import trexLogo   from './assets/trex-applogo.svg'
 import SessionGate   from './components/SessionGate'
 import SessionPicker from './components/SessionPicker'
 import Uploader      from './components/Uploader'
@@ -43,8 +42,19 @@ class ErrorBoundary extends Component {
   }
 }
 
+// Inline SVG so the text renders with the document's Inter font on every
+// platform.  Using <img src="...svg"> blocks external fonts (browser security),
+// which caused Avenir Next to fall back to random system fonts on Windows/Linux.
 function TRExLogo({ size = 34 }) {
-  return <img src={trexLogo} width={size} height={size} alt="TREx" style={{ borderRadius: Math.round(size * 0.21) }} />
+  const r = Math.round(size * 0.21)
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 417 417"
+         style={{ borderRadius: r, display: 'block', flexShrink: 0 }} aria-label="TREx">
+      <rect width="417" height="417" rx="65" fill="#0b446f" stroke="#2f2f2f" strokeLinejoin="round" strokeWidth="1"/>
+      <text x="208.5" y="258" fill="#fff" fontSize="116" fontFamily="Inter, system-ui, sans-serif"
+            fontWeight="700" textAnchor="middle" letterSpacing="-2">TREx</text>
+    </svg>
+  )
 }
 
 function AppIcon() {
