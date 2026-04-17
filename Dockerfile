@@ -44,48 +44,18 @@ RUN R -e " \
     'ggplot2','ggpubr','plotly','heatmaply','UpSetR','msigdbr' \
   ), Ncpus = 4)"
 
-# ── Bioconductor packages — three-step process for ggtree compat ─────────────
+# ── ggplot2 / ggtree compatibility shim ──────────────────────────────────────
+# ggplot2 3.5 removed check_linewidth from its exports; ggtree 3.14.0 (Bioc
+# 3.20) still has importFrom(ggplot2, check_linewidth) in its NAMESPACE.
 #
-#  ggtree 3.14.0 (Bioc 3.20) has importFrom(ggplot2, check_linewidth) but
-#  ggplot2 3.5 removed that export → ggtree fails → enrichplot fails →
-#  clusterProfiler fails.
-#
-#  Step A: First BiocManager pass — installs all transitive deps.
-#          ggtree/enrichplot/clusterProfiler fail with R warnings (exit 0).
-RUN R -e " \
-  options( \
-    repos   = c(PPM = 'https://packagemanager.posit.co/cran/__linux__/noble/latest'), \
-    timeout = 300 \
-  ); \
-  BiocManager::install( \
-    c('DESeq2','clusterProfiler','enrichplot'), \
-    ask = FALSE, update = FALSE \
-  )"
+# R CMD INSTALL reads /usr/local/lib/R/etc/Rprofile.site in every subprocess
+# (it uses --no-save --no-restore, NOT --no-site-file). By registering an
+# onLoad hook here we add check_linewidth to ggplot2's namespace before R
+# resolves ggtree's importFrom declarations — no source patching needed.
+RUN printf '\nsetHook(packageEvent("ggplot2","onLoad"),function(...){\n  ns <- getNamespace("ggplot2")\n  if (!exists("check_linewidth", envir=ns, inherits=FALSE))\n    assignInNamespace("check_linewidth",\n      function(data, name) invisible(NULL), ns="ggplot2")\n})\n' \
+      >> /usr/local/lib/R/etc/Rprofile.site
 
-#  Step B: Download ggtree source, remove the broken importFrom line,
-#          add a local no-op stub, install from patched source.
-#          All deps are now present from Step A so repos=NULL is fine.
-RUN R -q -e " \
-  options(timeout = 300); \
-  tmp <- tempdir(); \
-  download.file( \
-    'https://bioconductor.org/packages/3.20/bioc/src/contrib/ggtree_3.14.0.tar.gz', \
-    file.path(tmp, 'ggtree.tar.gz'), quiet = TRUE); \
-  untar(file.path(tmp, 'ggtree.tar.gz'), exdir = tmp); \
-  gd <- file.path(tmp, 'ggtree'); \
-  writeLines( \
-    grep('check_linewidth', readLines(file.path(gd,'NAMESPACE')), \
-         value = TRUE, invert = TRUE), \
-    file.path(gd, 'NAMESPACE')); \
-  writeLines( \
-    'check_linewidth <- function(data, name) invisible(NULL)', \
-    file.path(gd, 'R', 'compat-ggplot2-35.R')); \
-  install.packages(gd, repos = NULL, type = 'source', Ncpus = 4); \
-  if (!requireNamespace('ggtree', quietly = TRUE)) stop('ggtree install failed')"
-
-#  Step C: Second BiocManager pass — enrichplot + clusterProfiler are missing
-#          (removed when ggtree failed in Step A); ggtree is now present so
-#          both install cleanly. Verify all three load.
+# ── Bioconductor packages — install + verify atomically ──────────────────────
 RUN R -e " \
   options( \
     repos   = c(PPM = 'https://packagemanager.posit.co/cran/__linux__/noble/latest'), \
