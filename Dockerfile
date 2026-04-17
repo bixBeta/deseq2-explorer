@@ -32,58 +32,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgit2-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# ── Pin ggplot2 to 3.4.4 before any other installs ───────────────────────────
-# ggtree 3.14.0 (Bioc 3.20) has importFrom(ggplot2, check_linewidth) in its
-# NAMESPACE.  ggplot2 3.5.0 (Feb 2024) removed check_linewidth from its
-# *exports*, so any R session that loads ggtree fails with
-# "object 'check_linewidth' not found".
-#
-# Fix: install ggplot2 3.4.4 (Oct 2023 — last version that exports
-# check_linewidth) BEFORE the big CRAN step.  install.packages() will not
-# upgrade a package that already satisfies the stated requirement, so ggplot2
-# stays at 3.4.4 through the Bioc install.  BiocManager::install with
-# update=FALSE keeps it pinned there too.
+# ── Install pak ───────────────────────────────────────────────────────────────
 RUN R -e " \
   options( \
     repos   = c(PPM = 'https://packagemanager.posit.co/cran/__linux__/noble/latest'), \
     timeout = 300 \
   ); \
-  install.packages('remotes')"
+  install.packages('pak')"
 
+# ── All R packages via pak ────────────────────────────────────────────────────
+# pak resolves CRAN + Bioconductor in one pass, uses PPM pre-built binaries
+# for noble where available, and handles circular deps correctly.
 RUN R -e " \
   options(timeout = 300); \
-  remotes::install_version( \
-    'ggplot2', version = '3.4.4', \
-    repos   = 'https://cran.r-project.org', \
-    upgrade = 'never' \
-  )"
-
-# ── CRAN packages — pre-compiled noble binaries from PPM ─────────────────────
-# ggplot2 is already installed above; install.packages will not upgrade it.
-RUN R -e " \
-  options( \
-    repos   = c(PPM = 'https://packagemanager.posit.co/cran/__linux__/noble/latest'), \
-    timeout = 300 \
-  ); \
-  install.packages(c( \
-    'BiocManager','plumber','jsonlite','DBI','RSQLite','uuid','digest', \
+  pak::pak(c( \
+    'plumber','jsonlite','DBI','RSQLite','uuid','digest', \
     'httr2','httr','base64enc','matrixStats','mirai', \
-    'ggpubr','plotly','heatmaply','UpSetR','msigdbr' \
-  ), Ncpus = 4)"
-
-# ── Bioconductor packages — install + verify atomically ──────────────────────
-RUN R -e " \
-  options( \
-    repos   = c(PPM = 'https://packagemanager.posit.co/cran/__linux__/noble/latest'), \
-    timeout = 300 \
-  ); \
-  BiocManager::install( \
-    c('DESeq2','clusterProfiler','enrichplot'), \
-    ask = FALSE, update = FALSE \
-  ); \
-  bad <- Filter(function(p) !requireNamespace(p, quietly = TRUE), \
-                c('DESeq2','clusterProfiler','enrichplot')); \
-  if (length(bad)) stop('Bioc install incomplete — missing: ', paste(bad, collapse = ', '))"
+    'ggplot2','ggpubr','plotly','heatmaply','UpSetR','msigdbr', \
+    'bioc::DESeq2','bioc::clusterProfiler','bioc::enrichplot' \
+  ), ask = FALSE)"
 
 # ── Verify every package the app needs actually loads ─────────────────────────
 #    This RUN step fails the build immediately if any library() call errors,
