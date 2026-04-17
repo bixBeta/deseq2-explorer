@@ -32,25 +32,34 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgit2-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# ── All R packages via Posit Package Manager — pre-compiled binaries ──────────
-#    rocker/r-ver:4.4 is Ubuntu 24.04 (noble). PPM serves both CRAN *and*
-#    Bioconductor packages as pre-built binaries for noble, so every .so links
-#    against the same libicu74 / libssl3 / etc. that ships with the base image.
-#    No source compilation, no BiocManager source installs, no library mismatches.
+# ── CRAN packages — pre-compiled noble binaries from PPM ─────────────────────
 RUN R -e " \
   options( \
-    repos = c( \
-      BioC = 'https://packagemanager.posit.co/bioconductor/__linux__/noble/3.20', \
-      PPM  = 'https://packagemanager.posit.co/cran/__linux__/noble/latest' \
-    ), \
+    repos   = c(PPM = 'https://packagemanager.posit.co/cran/__linux__/noble/latest'), \
     timeout = 300 \
   ); \
   install.packages(c( \
     'BiocManager','plumber','jsonlite','DBI','RSQLite','uuid','digest', \
     'httr2','httr','base64enc','matrixStats','mirai', \
-    'ggplot2','ggpubr','plotly','heatmaply','UpSetR','msigdbr', \
-    'DESeq2','clusterProfiler','enrichplot' \
+    'ggplot2','ggpubr','plotly','heatmaply','UpSetR','msigdbr' \
   ), Ncpus = 4)"
+
+# ── Bioconductor packages — install then verify in one atomic step ────────────
+#    Combining install + requireNamespace check in a single RUN means this layer
+#    is only cached once all three packages confirm they can be loaded.
+#    force=TRUE bypasses any "already installed" skipping inside BiocManager.
+RUN R -e " \
+  options( \
+    repos   = c(PPM = 'https://packagemanager.posit.co/cran/__linux__/noble/latest'), \
+    timeout = 300 \
+  ); \
+  BiocManager::install( \
+    c('DESeq2','clusterProfiler','enrichplot'), \
+    ask = FALSE, update = FALSE, force = TRUE \
+  ); \
+  bad <- Filter(function(p) !requireNamespace(p, quietly = TRUE), \
+                c('DESeq2','clusterProfiler','enrichplot')); \
+  if (length(bad)) stop('Bioc install incomplete — missing: ', paste(bad, collapse = ', '))"
 
 # ── Verify every package the app needs actually loads ─────────────────────────
 #    This RUN step fails the build immediately if any library() call errors,
