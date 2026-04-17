@@ -32,31 +32,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgit2-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# ── CRAN packages via Posit Package Manager (pre-compiled binaries for noble)
-#    rocker/r-ver:4.4 is Ubuntu 24.04 (noble); use the matching PPM snapshot so
-#    shared-library versions (libicu74, libssl3, etc.) align with the base image.
+# ── All R packages via Posit Package Manager — pre-compiled binaries ──────────
+#    rocker/r-ver:4.4 is Ubuntu 24.04 (noble). PPM serves both CRAN *and*
+#    Bioconductor packages as pre-built binaries for noble, so every .so links
+#    against the same libicu74 / libssl3 / etc. that ships with the base image.
+#    No source compilation, no BiocManager source installs, no library mismatches.
 RUN R -e " \
   options( \
-    repos   = c(PPM = 'https://packagemanager.posit.co/cran/__linux__/noble/latest'), \
+    repos = c( \
+      BioC = 'https://packagemanager.posit.co/bioconductor/__linux__/noble/3.20', \
+      PPM  = 'https://packagemanager.posit.co/cran/__linux__/noble/latest' \
+    ), \
     timeout = 300 \
   ); \
   install.packages(c( \
     'BiocManager','plumber','jsonlite','DBI','RSQLite','uuid','digest', \
     'httr2','httr','base64enc','matrixStats','mirai', \
-    'ggplot2','ggpubr','plotly','heatmaply','UpSetR','msigdbr' \
+    'ggplot2','ggpubr','plotly','heatmaply','UpSetR','msigdbr', \
+    'DESeq2','clusterProfiler','enrichplot' \
   ), Ncpus = 4)"
-
-# ── Bioconductor packages via BiocManager ─────────────────────────────────────
-#    Pass the same PPM repo so any CRAN deps BiocManager pulls are also binaries.
-RUN R -e " \
-  options( \
-    repos   = c(PPM = 'https://packagemanager.posit.co/cran/__linux__/noble/latest'), \
-    timeout = 300 \
-  ); \
-  BiocManager::install( \
-    c('DESeq2','clusterProfiler','enrichplot'), \
-    ask = FALSE, update = FALSE \
-  )"
 
 # ── Verify every package the app needs actually loads ─────────────────────────
 #    This RUN step fails the build immediately if any library() call errors,
