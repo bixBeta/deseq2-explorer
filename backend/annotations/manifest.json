@@ -1,0 +1,57 @@
+[
+  {
+    "id": "canfam4",
+    "label": "Canis familiaris canFam4 (NCBI)",
+    "taxon": null,
+    "ncbi": "CanFam4",
+    "file": "canfam4.tsv",
+    "genes": 42692,
+    "hasCoords": false,
+    "hasSymbol": false,
+    "created": "2026-04-05"
+  },
+  {
+    "id": "felis_catus9_0",
+    "label": "Felis catus  (v9.0 ENSEMBL)",
+    "taxon": null,
+    "ncbi": "Felis_catus9.0",
+    "file": "felis_catus9_0.tsv",
+    "genes": 26681,
+    "hasCoords": false,
+    "hasSymbol": true,
+    "created": "2026-04-05"
+  },
+  {
+    "id": "grch38",
+    "label": "Homo sapiens (GRCh38))",
+    "taxon": null,
+    "ncbi": "GRCh38",
+    "file": "grch38.tsv",
+    "genes": 58884,
+    "hasCoords": false,
+    "hasSymbol": true,
+    "created": "2026-04-21"
+  },
+  {
+    "id": "grcm38",
+    "label": "Mus musculus GRCm38",
+    "taxon": null,
+    "ncbi": "GRCm38",
+    "file": "grcm38.tsv",
+    "genes": 55536,
+    "hasCoords": false,
+    "hasSymbol": true,
+    "created": "2026-04-05"
+  },
+  {
+    "id": "grcm39",
+    "label": "Mus musculus GRCm39",
+    "taxon": null,
+    "ncbi": "GRCm39",
+    "file": "grcm39.tsv",
+    "genes": 78318,
+    "hasCoords": false,
+    "hasSymbol": true,
+    "created": "2026-04-05"
+  }
+]
