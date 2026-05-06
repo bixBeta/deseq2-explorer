@@ -615,6 +615,15 @@ gsea_export_rds <- function(session_id, runs) {
         subcategory      = run$subcategory      %||% NA_character_,
         species          = run$species          %||% "",
         rank_method      = run$rank_method      %||% "",
+        # GSEA run parameters
+        min_gs_size      = run$min_size         %||% NA_integer_,
+        max_gs_size      = run$max_size         %||% NA_integer_,
+        score_type       = run$score_type       %||% NA_character_,
+        n_perm           = run$n_perm           %||% NA_integer_,
+        padj_method      = run$padj_method      %||% NA_character_,
+        padj_cutoff      = run$padj_cutoff      %||% NA_real_,
+        basemean_filter  = run$filter_value     %||% NA_real_,
+        used_orthologs   = isTRUE(run$used_orthologs),
         exported_at      = format(Sys.time(), "%Y-%m-%d %H:%M:%S UTC")
       )
     )

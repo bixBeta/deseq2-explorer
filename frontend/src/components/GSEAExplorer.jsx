@@ -1694,6 +1694,15 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
         run_id:           r.id,
         collection_label: r.collectionLabel,
         rank_method:      r.rankMethod,
+        // run params — for meta provenance in exported RDS
+        min_size:         r.params?.minSize    ?? null,
+        max_size:         r.params?.maxSize    ?? null,
+        score_type:       r.scoreType          ?? null,
+        n_perm:           r.nPerm              ?? null,
+        padj_method:      r.pAdjMethod         ?? r.params?.pAdjMethod  ?? null,
+        padj_cutoff:      r.padjCutoff         ?? r.params?.padjCutoff  ?? null,
+        filter_value:     r.filterValue        ?? r.params?.filterValue ?? null,
+        used_orthologs:   r.usedOrthologs      ?? false,
       }))
       const resp = await fetch('/api/gsea/export_rds', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
