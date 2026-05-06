@@ -264,6 +264,7 @@ export default function Results({ results, design, onBack, onEditSamples, sessio
             contrastLabel={active?.label}
             allContrasts={contrastList.map(c => c.label).filter(Boolean)}
             annMap={annMap}
+            annDetails={annDetails}
             onRunsChange={onGseaRunsChange}
             initialRuns={initialGseaRuns}
           />

@@ -188,34 +188,49 @@ gsea_preview <- function(session_id, contrast_label) {
   result
 }
 
-# ── gsea_run: clusterProfiler::GSEA against a MSigDB collection ───────────────
+# ── gsea_run: clusterProfiler::GSEA against a MSigDB collection or custom GMT ──
 gsea_run <- function(session_id, contrast_label, rank_method, collection, subcategory,
                      species, min_size, max_size, score_type, n_perm, padj_method,
-                     filter_method, filter_value, ann_map, run_id = NULL) {
+                     filter_method, filter_value, ann_map, run_id = NULL,
+                     custom_gmt = NULL) {
   if (!requireNamespace("clusterProfiler", quietly = TRUE)) stop("R package 'clusterProfiler' is not installed on the server")
-  if (!requireNamespace("msigdbr",         quietly = TRUE)) stop("R package 'msigdbr' is not installed on the server")
-  library(clusterProfiler); library(msigdbr)
+  library(clusterProfiler)
 
   stats_vec <- .build_ranked_vec(session_id, contrast_label, rank_method,
                                   filter_method, filter_value, ann_map)
 
   use_symbols <- !is.null(ann_map) && length(ann_map) > 0
 
-  msig <- tryCatch(
-    msigdbr(species = species, category = collection, subcategory = subcategory),
-    error = function(e) stop("Failed to load MSigDB gene sets: ", e$message)
-  )
-  if (nrow(msig) == 0) stop("No gene sets returned for the selected collection/species")
-
-  # TERM2GENE: two-column data frame required by clusterProfiler::GSEA
-  term2gene <- if (use_symbols) {
-    msig[, c("gs_name", "gene_symbol")]
+  # TERM2GENE: two-column data frame (term, gene) for clusterProfiler::GSEA
+  # Source: custom GMT upload (if provided) OR MSigDB via msigdbr
+  if (!is.null(custom_gmt) && length(custom_gmt) > 0) {
+    rows <- Filter(Negate(is.null), lapply(names(custom_gmt), function(nm) {
+      genes <- as.character(unlist(custom_gmt[[nm]]))
+      genes <- genes[nzchar(genes)]
+      if (length(genes) == 0) return(NULL)
+      data.frame(term = nm, gene = genes, stringsAsFactors = FALSE)
+    }))
+    if (length(rows) == 0) stop("Custom GMT contains no valid gene-set entries")
+    term2gene <- do.call(rbind, rows)
+    message("[gsea] Using custom GMT: ", length(unique(term2gene$term)),
+            " gene sets, ", nrow(term2gene), " gene-set memberships")
   } else {
-    msig_ens <- msig[!is.na(msig$ensembl_gene) & nchar(msig$ensembl_gene) > 0, ]
-    msig_ens[, c("gs_name", "ensembl_gene")]
+    if (!requireNamespace("msigdbr", quietly = TRUE)) stop("R package 'msigdbr' is not installed on the server")
+    library(msigdbr)
+    msig <- tryCatch(
+      msigdbr(species = species, category = collection, subcategory = subcategory),
+      error = function(e) stop("Failed to load MSigDB gene sets: ", e$message)
+    )
+    if (nrow(msig) == 0) stop("No gene sets returned for the selected collection/species")
+    term2gene <- if (use_symbols) {
+      msig[, c("gs_name", "gene_symbol")]
+    } else {
+      msig_ens <- msig[!is.na(msig$ensembl_gene) & nchar(msig$ensembl_gene) > 0, ]
+      msig_ens[, c("gs_name", "ensembl_gene")]
+    }
+    colnames(term2gene) <- c("term", "gene")
+    if (nrow(term2gene) == 0) stop("No gene sets found for the selected collection")
   }
-  colnames(term2gene) <- c("term", "gene")
-  if (nrow(term2gene) == 0) stop("No gene sets found for the selected collection")
 
   padj_method <- padj_method %||% "BH"
 
@@ -561,7 +576,7 @@ gsea_export_results <- function(session_id, runs) {
 gsea_run_all <- function(session_id, contrast_labels, rank_method, collection,
                           subcategory, species, min_size, max_size, score_type,
                           n_perm, padj_method, filter_method, filter_value,
-                          ann_map, run_id = NULL) {
+                          ann_map, run_id = NULL, custom_gmt = NULL) {
 
   gsea_file <- normalizePath(file.path(getwd(), "gsea.R"))
 
@@ -569,7 +584,8 @@ gsea_run_all <- function(session_id, contrast_labels, rank_method, collection,
   run_one <- function(cl) {
     result <- gsea_run(session_id, cl, rank_method, collection, subcategory,
                        species, min_size, max_size, score_type, n_perm,
-                       padj_method, filter_method, filter_value, ann_map, run_id)
+                       padj_method, filter_method, filter_value, ann_map,
+                       run_id, custom_gmt)
     result$contrastLabel <- cl
     result
   }
@@ -582,7 +598,8 @@ gsea_run_all <- function(session_id, contrast_labels, rank_method, collection,
         source(gsea_file)
         result <- gsea_run(session_id, cl, rank_method, collection, subcategory,
                            species, min_size, max_size, score_type, n_perm,
-                           padj_method, filter_method, filter_value, ann_map, run_id)
+                           padj_method, filter_method, filter_value, ann_map,
+                           run_id, custom_gmt)
         result$contrastLabel <- cl
         result
       },
@@ -591,7 +608,7 @@ gsea_run_all <- function(session_id, contrast_labels, rank_method, collection,
       species      = species,        min_size     = min_size,     max_size     = max_size,
       score_type   = score_type,     n_perm       = n_perm,       padj_method  = padj_method,
       filter_method = filter_method, filter_value = filter_value, ann_map      = ann_map,
-      run_id       = run_id)
+      run_id       = run_id,         custom_gmt   = custom_gmt)
     })
 
     lapply(seq_along(jobs), function(i) {

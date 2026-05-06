@@ -2008,7 +2008,8 @@ function(req, res) {
     filter_method  = body$filterMethod  %||% "quantile",
     filter_value   = body$filterValue   %||% 0.25,
     ann_map        = body$annMap,
-    run_id         = body$runId
+    run_id         = body$runId,
+    custom_gmt     = body$customGmt
   )
 }
 
@@ -2036,7 +2037,8 @@ function(req, res) {
     filter_method  = body$filterMethod  %||% "quantile",
     filter_value   = body$filterValue   %||% 0.25,
     ann_map        = body$annMap,
-    run_id         = body$runId
+    run_id         = body$runId,
+    custom_gmt     = body$customGmt
   )
 
   # ── Email notification (optional) ──

@@ -56,6 +56,8 @@ export default function CountsPlot({ countDist, design, metadata, sampleLabels =
     return { metaCols: cols, sampleMeta: lookup }
   }, [metadata])
 
+  const nSamplesCount = countDist?.vst?.length ?? 0
+
   // Resize observer — keeps Plotly in sync when user drags the handle
   useEffect(() => {
     if (!outerRef.current || !plotRef.current) return
@@ -71,6 +73,7 @@ export default function CountsPlot({ countDist, design, metadata, sampleLabels =
     const c      = getThemeColors()
     const data   = countDist[countType]
     if (!data?.length) return
+    if (data.length > 60) return   // skip rendering — warning shown in JSX
 
     // Resolve group value per sample using colorBy column (fall back to condition)
     const getGroup = (d) => {
@@ -263,11 +266,38 @@ export default function CountsPlot({ countDist, design, metadata, sampleLabels =
         </div>
       </div>
 
-      {/* Violin plot — resizable */}
+      {/* Violin plot — resizable, or large-cohort warning */}
       <div ref={outerRef}
            className="resizable-plot"
            style={{ width: '100%', height: 538 }}>
-        <div ref={plotRef} style={{ width: '100%', height: '100%' }} />
+        {nSamplesCount > 60 ? (
+          <div style={{
+            height: '100%', display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', gap: 14,
+            padding: '24px 40px', textAlign: 'center',
+          }}>
+            <span style={{ fontSize: '2.2rem', opacity: 0.35 }}>🎻</span>
+            <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-2)' }}>
+              Violin plot disabled for large cohorts
+            </div>
+            <div style={{ fontSize: '0.77rem', color: 'var(--text-3)', lineHeight: 1.75, maxWidth: 440 }}>
+              Rendering <strong>{nSamplesCount} individual violin traces</strong> would
+              freeze the browser. Use the <strong>GSEA → Pre-filter</strong> tab to inspect
+              per-sample count distributions and outlier flags. DESeq2 results, MA plot,
+              PCA, and all downstream analyses are unaffected.
+            </div>
+            <div style={{
+              fontSize: '0.71rem', padding: '5px 14px', borderRadius: 6,
+              background: 'rgba(var(--accent-rgb),0.06)',
+              border: '1px solid rgba(var(--accent-rgb),0.2)',
+              color: 'var(--accent)',
+            }}>
+              Limit: 60 samples · {nSamplesCount} detected
+            </div>
+          </div>
+        ) : (
+          <div ref={plotRef} style={{ width: '100%', height: '100%' }} />
+        )}
       </div>
     </div>
   )

@@ -456,6 +456,20 @@ export default function DesignPanel({
 
         {/* Actions */}
         <div className="flex gap-2 pt-1">
+          {nSamples >= 100 && !loading && (
+            <div style={{ padding:'9px 13px', borderRadius:8, fontSize:'0.74rem', lineHeight:1.55,
+              background:'rgba(251,191,36,0.07)', border:'1px solid rgba(251,191,36,0.25)',
+              color:'#d97706', display:'flex', gap:8, alignItems:'flex-start' }}>
+              <span style={{ flexShrink:0 }}>⏱</span>
+              <span>
+                <strong>{nSamples} samples detected.</strong>{' '}
+                DESeq2 fitting may take{' '}
+                {nSamples >= 200 ? '15–30 minutes' : '5–15 minutes'}.
+                Do not close this tab.
+                {params.noFilter && <> Unchecking <strong>No Pre-filtering</strong> will significantly speed things up.</>}
+              </span>
+            </div>
+          )}
           {onBack && (
             <button className="btn-ghost" onClick={onBack}>
               {isAppending ? '← Results' : '← Samples'}

@@ -1,5 +1,16 @@
 [
   {
+    "id": "canfam4_ensembl",
+    "label": "Canis familiaris canFam4 (ENSEMBL)",
+    "taxon": null,
+    "ncbi": "canFam4_ensembl",
+    "file": "canfam4_ensembl.tsv",
+    "genes": 30951,
+    "hasCoords": false,
+    "hasSymbol": true,
+    "created": "2026-04-25"
+  },
+  {
     "id": "canfam4",
     "label": "Canis familiaris canFam4 (NCBI)",
     "taxon": null,

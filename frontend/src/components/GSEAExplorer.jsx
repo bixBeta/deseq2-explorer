@@ -24,16 +24,17 @@ const SAMPLE_COLORS = [
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const COLLECTIONS = [
-  { id:'H',  sub:null,               key:'H',      label:'Hallmarks',    icon:'★', desc:'50 curated hallmark gene sets' },
-  { id:'C2', sub:'CP:KEGG_LEGACY',  key:'KEGG',   label:'KEGG',         icon:'⬡', desc:'KEGG canonical pathways' },
-  { id:'C2', sub:'CP:REACTOME',     key:'REACT',  label:'Reactome',     icon:'◎', desc:'Reactome biological pathways' },
-  { id:'C2', sub:'CP:WIKIPATHWAYS', key:'WIKI',   label:'WikiPathways', icon:'◈', desc:'Community-curated pathways' },
-  { id:'C5', sub:'GO:BP',           key:'GOBP',   label:'GO: BP',       icon:'●', desc:'GO Biological Process (large)' },
-  { id:'C5', sub:'GO:MF',           key:'GOMF',   label:'GO: MF',       icon:'◆', desc:'GO Molecular Function' },
-  { id:'C5', sub:'GO:CC',           key:'GOCC',   label:'GO: CC',       icon:'▲', desc:'GO Cellular Component' },
-  { id:'C6', sub:null,              key:'C6',     label:'Oncogenic',    icon:'⬟', desc:'Oncogenic signatures (C6)' },
-  { id:'C7', sub:'IMMUNESIGDB',     key:'IMMUNE', label:'ImmuneSigDB',  icon:'⬡', desc:'Immune cell signatures (C7)' },
-  { id:'C8', sub:null,              key:'C8',     label:'Cell Types',   icon:'◉', desc:'Cell type gene sets (C8)' },
+  { id:'H',      sub:null,               key:'H',      label:'Hallmarks',    icon:'★', desc:'50 curated hallmark gene sets' },
+  { id:'C2',     sub:'CP:KEGG_LEGACY',  key:'KEGG',   label:'KEGG',         icon:'⬡', desc:'KEGG canonical pathways' },
+  { id:'C2',     sub:'CP:REACTOME',     key:'REACT',  label:'Reactome',     icon:'◎', desc:'Reactome biological pathways' },
+  { id:'C2',     sub:'CP:WIKIPATHWAYS', key:'WIKI',   label:'WikiPathways', icon:'◈', desc:'Community-curated pathways' },
+  { id:'C5',     sub:'GO:BP',           key:'GOBP',   label:'GO: BP',       icon:'●', desc:'GO Biological Process (large)' },
+  { id:'C5',     sub:'GO:MF',           key:'GOMF',   label:'GO: MF',       icon:'◆', desc:'GO Molecular Function' },
+  { id:'C5',     sub:'GO:CC',           key:'GOCC',   label:'GO: CC',       icon:'▲', desc:'GO Cellular Component' },
+  { id:'C6',     sub:null,              key:'C6',     label:'Oncogenic',    icon:'⬟', desc:'Oncogenic signatures (C6)' },
+  { id:'C7',     sub:'IMMUNESIGDB',     key:'IMMUNE', label:'ImmuneSigDB',  icon:'⬡', desc:'Immune cell signatures (C7)' },
+  { id:'C8',     sub:null,              key:'C8',     label:'Cell Types',   icon:'◉', desc:'Cell type gene sets (C8)' },
+  { id:'CUSTOM', sub:null,              key:'CUSTOM', label:'Custom GMT',   icon:'📂', desc:'Import your own .gmt file' },
 ]
 const SPECIES      = ['Homo sapiens','Mus musculus','Rattus norvegicus','Danio rerio','Drosophila melanogaster','Caenorhabditis elegans']
 const RANK_METHODS = [
@@ -65,6 +66,48 @@ function genesAbove(medsSample, cutoff, nTotal) {
   let lo=0, hi=medsSample.length
   while (lo<hi) { const mid=(lo+hi)>>1; if (medsSample[mid]<cutoff) lo=mid+1; else hi=mid }
   return Math.round(((medsSample.length-lo)/medsSample.length)*nTotal)
+}
+
+// ── GMT file parser: returns { sets: { name:[genes] }, pathwayCount, geneCount } ─
+// GMT format: name \t description \t gene1 \t gene2 ...
+// Smart label: merges description into name (spaces→underscores) when description
+// adds real information (i.e. not a URL, not blank/NA, not identical to the name).
+function parseGmt(text) {
+  const isUrl   = s => /^https?:\/\//i.test(s)
+  const isBlank = s => !s || /^(na|none|n\/a|-|null|unknown)$/i.test(s.trim())
+
+  const sets = {}
+  let totalGenes = 0
+
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    const parts = trimmed.split('\t')
+    if (parts.length < 3) continue
+
+    const rawName = parts[0].trim()
+    const rawDesc = parts[1].trim()
+    const genes   = parts.slice(2).map(g => g.trim()).filter(Boolean)
+    if (!rawName || !genes.length) continue
+
+    // Build a display label: append description when it adds real info
+    let label = rawName
+    if (!isBlank(rawDesc) && !isUrl(rawDesc) && rawDesc !== rawName) {
+      // Replace whitespace with underscores so the label is a clean single token
+      const descClean = rawDesc.trim().replace(/\s+/g, '_')
+      label = `${rawName}_${descClean}`
+    }
+
+    // Guard against duplicate labels (edge case in poorly-formatted GMT files)
+    let finalLabel = label
+    let suffix = 1
+    while (sets[finalLabel]) { finalLabel = `${label}_${++suffix}` }
+
+    sets[finalLabel] = genes
+    totalGenes += genes.length
+  }
+
+  return { sets, pathwayCount: Object.keys(sets).length, geneCount: totalGenes }
 }
 
 // ── Section divider ───────────────────────────────────────────────────────────
@@ -104,6 +147,7 @@ function DualDensityChart({ histData, cutoffLog, height = 300 }) {
 
   useEffect(() => {
     if (!histData?.kdes || !preRef.current || !postRef.current) return
+    if (histData.kdes.length > 60) return   // skip — warning shown in JSX instead
     const { kdes } = histData
     const showLegend = kdes.length <= 16
     const textColor  = getComputedStyle(document.documentElement).getPropertyValue('--text-3').trim() || '#94a3b8'
@@ -229,14 +273,40 @@ function DualDensityChart({ histData, cutoffLog, height = 300 }) {
         </span>
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, flex:'1 1 0' }}>
-        <div style={{ border:`1px solid ${V.border}`, borderRadius:10, overflow:'hidden' }}>
-          <div ref={preRef} style={{ width:'100%' }} />
+      {histData?.kdes?.length > 60 ? (
+        /* ── Large-cohort warning — density curves disabled ── */
+        <div style={{
+          flex:'1 1 0', display:'flex', flexDirection:'column',
+          alignItems:'center', justifyContent:'center', gap:14,
+          padding:'24px 40px', textAlign:'center',
+        }}>
+          <span style={{ fontSize:'2.2rem', opacity:0.35 }}>📈</span>
+          <div style={{ fontSize:'0.92rem', fontWeight:700, color:'var(--text-2)' }}>
+            Density preview disabled for large cohorts
+          </div>
+          <div style={{ fontSize:'0.77rem', color:'var(--text-3)', lineHeight:1.75, maxWidth:440 }}>
+            Rendering <strong>{histData.kdes.length} individual density curves</strong> would
+            freeze the browser. Use the <strong>Sample Medians</strong> tab above to inspect
+            per-sample expression levels and flag outliers. The gene-filter slider and
+            all downstream analyses work normally.
+          </div>
+          <div style={{
+            fontSize:'0.71rem', padding:'5px 14px', borderRadius:6,
+            background: V.muted, border:`1px solid ${V.border}`, color:V.text,
+          }}>
+            Limit: 60 samples · {histData.kdes.length} detected
+          </div>
         </div>
-        <div style={{ border:`1px solid ${V.border}`, borderRadius:10, overflow:'hidden' }}>
-          <div ref={postRef} style={{ width:'100%' }} />
+      ) : (
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, flex:'1 1 0' }}>
+          <div style={{ border:`1px solid ${V.border}`, borderRadius:10, overflow:'hidden' }}>
+            <div ref={preRef} style={{ width:'100%' }} />
+          </div>
+          <div style={{ border:`1px solid ${V.border}`, borderRadius:10, overflow:'hidden' }}>
+            <div ref={postRef} style={{ width:'100%' }} />
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
@@ -1472,7 +1542,7 @@ function MountainModal({ pathway, result, curveData, curveLoading, curveError, o
 }
 
 // ── Main GSEAExplorer ─────────────────────────────────────────────────────────
-export default function GSEAExplorer({ session, contrastLabel, allContrasts = [], annMap, onRunsChange, initialRuns }) {
+export default function GSEAExplorer({ session, contrastLabel, allContrasts = [], annMap, annDetails, onRunsChange, initialRuns }) {
   const { promptDownload, dialog: exportDialog } = useDownloadDialog()
   const [exportLoading,  setExportLoading]  = useState(false)
   const [exportProgress, setExportProgress] = useState(0)   // 0-100
@@ -1480,6 +1550,30 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
   const [rankMethod,   setRankMethod]   = useState('log2FC')
   const [collection,   setCollection]   = useState(COLLECTIONS[0])
   const [species,      setSpecies]      = useState('Homo sapiens')
+
+  // ── Human ortholog substitution for non-human species ────────────────────────
+  // Build gene ID → human ortholog symbol from annDetails (populated by BioMart
+  // or Built-in DB when "Fetch 1:1 human orthologs" was ticked during annotation).
+  const orthoMap = useMemo(() => {
+    if (!annDetails) return {}
+    const m = {}
+    for (const [gid, det] of Object.entries(annDetails)) {
+      const h = det?.humanOrtholog
+      if (h && typeof h === 'string' && h.trim()) m[gid] = h.trim()
+    }
+    return m
+  }, [annDetails])
+  const hasOrthologs  = Object.keys(orthoMap).length > 0
+  const [useOrthologs, setUseOrthologs] = useState(false)
+  // When ortholog mode is on, swap the gene → symbol map for gene → human-ortholog
+  // and force the MSigDB species to Homo sapiens (all collections are human-based).
+  const effectiveAnnMap  = useOrthologs && hasOrthologs ? orthoMap  : (annMap  ?? null)
+  const effectiveSpecies = useOrthologs && hasOrthologs ? 'Homo sapiens' : species
+
+  // Custom GMT state — { filename, sets: { name: [genes] }, pathwayCount, geneCount }
+  const [customGmt, setCustomGmt] = useState(null)
+  const [gmtDragOver, setGmtDragOver] = useState(false)
+
   const [minSize,      setMinSize]      = useState(15)
   const [maxSize,      setMaxSize]      = useState(500)
   const [scoreType,    setScoreType]    = useState('std')
@@ -1619,64 +1713,74 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
   // Run GSEA
   const handleRun = useCallback(async()=>{
     if(!session?.sessionId) return
+    const isCustom = collection.key === 'CUSTOM'
+    if(isCustom && !customGmt?.sets) { setRunError('Please load a .gmt file before running.'); return }
     runCtrlRef.current?.abort()
     const ctrl=new AbortController(); runCtrlRef.current=ctrl
     setRunning(true); setRunError(null)
     let tick=0; const timer=setInterval(()=>setElapsed(++tick),1000)
     try {
       const runId = Date.now()
+      const collectionLabel = isCustom ? (customGmt.filename ?? 'Custom GMT') : collection.label
       const r=await fetch('/api/gsea/run',{ method:'POST', headers:{'Content-Type':'application/json'},
         body:JSON.stringify({ sessionId:session.sessionId, contrastLabel, rankMethod,
-          collection:collection.id, subcategory:collection.sub, species,
+          collection:collection.id, subcategory:collection.sub, species:effectiveSpecies,
           minSize, maxSize, scoreType, nPerm, pAdjMethod, padjCutoff,
-          filterMethod:'count', filterValue, annMap:annMap||null, runId }), signal:ctrl.signal })
+          filterMethod:'count', filterValue, annMap:effectiveAnnMap, runId,
+          ...(isCustom && { customGmt: customGmt.sets }) }), signal:ctrl.signal })
       const data=await r.json()
       if(data.error) throw new Error(data.error)
       const rm=RANK_METHODS.find(m=>m.value===rankMethod)
       const newRun={ id:runId, sessionId:session?.sessionId,
-        collectionLabel:collection.label, collectionKey:collection.key,
+        collectionLabel, collectionKey:collection.key,
         collectionId:collection.id, collectionSub:collection.sub,
-        rankMethod, rankShort:rm?.short??rankMethod, filterValue, species,
+        rankMethod, rankShort:rm?.short??rankMethod, filterValue, species:effectiveSpecies,
         scoreType, nPerm, pAdjMethod, padjCutoff,
         results:data.results, rankedList:data.rankedList, meta:data.meta,
         timestamp:new Date().toLocaleTimeString(), contrastLabel,
-        params: { rankMethod, pAdjMethod, padjCutoff, minSize, maxSize, filterValue, species } }
+        usedOrthologs: useOrthologs && hasOrthologs,
+        params: { rankMethod, pAdjMethod, padjCutoff, minSize, maxSize, filterValue, species:effectiveSpecies } }
       setRuns(prev=>[...prev,newRun])
       setActiveRunId(newRun.id)
       setContentTab('results'); curveCacheRef.current={}
       setSelPathway(null); setCurveData(null); setCurveError(null)
     } catch(e){ if(e.name!=='AbortError') setRunError(e.message) }
     finally{ clearInterval(timer); setElapsed(0); setRunning(false) }
-  },[session,contrastLabel,rankMethod,collection,species,minSize,maxSize,scoreType,nPerm,pAdjMethod,padjCutoff,filterValue,annMap])
+  },[session,contrastLabel,rankMethod,collection,species,minSize,maxSize,scoreType,nPerm,pAdjMethod,padjCutoff,filterValue,annMap,useOrthologs,orthoMap,customGmt])
 
   // Run same collection across ALL contrasts — N parallel /run calls so the
   // frontend can track individual completions and show a real progress bar.
   const handleRunAll = useCallback(async()=>{
     if(!session?.sessionId || allContrasts.length < 2) return
+    const isCustom = collection.key === 'CUSTOM'
+    if(isCustom && !customGmt?.sets) { setRunError('Please load a .gmt file before running.'); return }
     const total = allContrasts.length
     setRunningAll({ done:0, total }); setRunError(null)
     const baseId = Date.now()
     const rm = RANK_METHODS.find(m=>m.value===rankMethod)
+    const collectionLabel = isCustom ? (customGmt?.filename ?? 'Custom GMT') : collection.label
     try {
       // Fire one /api/gsea/run per contrast in parallel; update counter on each completion
       const promises = allContrasts.map((cl, i) =>
         fetch('/api/gsea/run', { method:'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({ sessionId:session.sessionId, contrastLabel:cl,
-            rankMethod, collection:collection.id, subcategory:collection.sub, species,
+            rankMethod, collection:collection.id, subcategory:collection.sub, species:effectiveSpecies,
             minSize, maxSize, scoreType, nPerm, pAdjMethod, padjCutoff,
-            filterMethod:'count', filterValue, annMap:annMap||null, runId:baseId+i }) })
+            filterMethod:'count', filterValue, annMap:effectiveAnnMap, runId:baseId+i,
+            ...(isCustom && { customGmt: customGmt.sets }) }) })
           .then(r=>r.json())
           .then(data => {
             if(data.error) throw new Error(`${cl}: ${data.error}`)
             setRunningAll(prev => prev ? { ...prev, done: prev.done + 1 } : null)
             return { id:baseId+i, sessionId:session.sessionId,
-              collectionLabel:collection.label, collectionKey:collection.key,
+              collectionLabel, collectionKey:collection.key,
               collectionId:collection.id, collectionSub:collection.sub,
-              rankMethod, rankShort:rm?.short??rankMethod, filterValue, species,
+              rankMethod, rankShort:rm?.short??rankMethod, filterValue, species:effectiveSpecies,
               scoreType, nPerm, pAdjMethod, padjCutoff,
               results:data.results, rankedList:data.rankedList, meta:data.meta,
               timestamp:new Date().toLocaleTimeString(), contrastLabel:cl,
-              params:{ rankMethod, pAdjMethod, padjCutoff, minSize, maxSize, filterValue, species } }
+              usedOrthologs: useOrthologs && hasOrthologs,
+              params:{ rankMethod, pAdjMethod, padjCutoff, minSize, maxSize, filterValue, species:effectiveSpecies } }
           })
       )
       const newRuns = await Promise.all(promises)
@@ -1695,14 +1799,14 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
         fetch('/api/gsea/notify', { method:'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({ sessionId:session.sessionId, notifyEmail:session.email,
             collection:collection.id, collectionLabel:collection.label,
-            rankMethod, species, minSize, maxSize, scoreType, nPerm, pAdjMethod, padjCutoff,
+            rankMethod, species:effectiveSpecies, minSize, maxSize, scoreType, nPerm, pAdjMethod, padjCutoff,
             contrastSummary }) }).catch(()=>{})
       }
 
       showToast(`${collection.label} · ran on ${total} contrasts`)
     } catch(e){ setRunError(e.message) }
     finally{ setRunningAll(null) }
-  },[session,allContrasts,contrastLabel,rankMethod,collection,species,minSize,maxSize,scoreType,nPerm,pAdjMethod,padjCutoff,filterValue,annMap,notifyAll,showToast])
+  },[session,allContrasts,contrastLabel,rankMethod,collection,species,minSize,maxSize,scoreType,nPerm,pAdjMethod,padjCutoff,filterValue,annMap,useOrthologs,orthoMap,notifyAll,showToast,customGmt])
 
   // Curve on pathway click
   const fetchCurve = useCallback(async(result, ar)=>{
@@ -1812,6 +1916,80 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
           <div>
             <SectionLabel>Gene set collection</SectionLabel>
             <CollectionGrid selected={collection} onChange={setCollection} />
+
+            {/* Custom GMT drop zone — shown when Custom GMT tile is selected */}
+            {collection.key === 'CUSTOM' && (
+              <div style={{ marginTop:10 }}>
+                {/* Drop zone / file picker */}
+                <label
+                  onDragOver={e => { e.preventDefault(); setGmtDragOver(true) }}
+                  onDragLeave={() => setGmtDragOver(false)}
+                  onDrop={e => {
+                    e.preventDefault(); setGmtDragOver(false)
+                    const file = e.dataTransfer.files[0]
+                    if (!file) return
+                    const reader = new FileReader()
+                    reader.onload = ev => {
+                      const parsed = parseGmt(ev.target.result)
+                      setCustomGmt({ filename: file.name, ...parsed })
+                    }
+                    reader.readAsText(file)
+                  }}
+                  style={{
+                    display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                    gap:6, padding:'14px 10px', borderRadius:9, cursor:'pointer', textAlign:'center',
+                    border:`1.5px dashed ${gmtDragOver ? V.accent2 : V.border}`,
+                    background: gmtDragOver ? V.muted : 'rgba(255,255,255,0.02)',
+                    transition:'all 0.15s',
+                  }}>
+                  <input type="file" accept=".gmt,.txt,.tsv" style={{ display:'none' }}
+                    onChange={e => {
+                      const file = e.target.files[0]
+                      if (!file) return
+                      const reader = new FileReader()
+                      reader.onload = ev => {
+                        const parsed = parseGmt(ev.target.result)
+                        setCustomGmt({ filename: file.name, ...parsed })
+                      }
+                      reader.readAsText(file)
+                      e.target.value = ''
+                    }} />
+                  <span style={{ fontSize:'1.4rem', opacity:0.5 }}>📂</span>
+                  <span style={{ fontSize:'0.72rem', color:'var(--text-3)', lineHeight:1.4 }}>
+                    Drop a <strong style={{ color:V.text }}>.gmt</strong> file here<br/>or click to browse
+                  </span>
+                </label>
+
+                {/* Loaded GMT summary */}
+                {customGmt && (
+                  <div style={{
+                    marginTop:8, padding:'8px 11px', borderRadius:8,
+                    background: V.muted, border:`1px solid ${V.border}`,
+                    display:'flex', flexDirection:'column', gap:4,
+                  }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                      <span style={{ fontSize:'0.7rem', fontWeight:700, color:V.text, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:130 }}>
+                        {customGmt.filename}
+                      </span>
+                      <button onClick={() => setCustomGmt(null)}
+                        style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text-4)', fontSize:'0.85rem', lineHeight:1, padding:'1px 2px', flexShrink:0 }}>×</button>
+                    </div>
+                    <div style={{ display:'flex', gap:10, fontSize:'0.68rem', color:'var(--text-3)' }}>
+                      <span><strong style={{ color:'var(--text-2)' }}>{customGmt.pathwayCount.toLocaleString()}</strong> gene sets</span>
+                      <span><strong style={{ color:'var(--text-2)' }}>{customGmt.geneCount.toLocaleString()}</strong> total genes</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Warning if no GMT loaded */}
+                {!customGmt && (
+                  <div style={{ marginTop:6, padding:'5px 9px', borderRadius:7, fontSize:'0.68rem', lineHeight:1.45,
+                    background:'rgba(251,191,36,0.06)', border:'1px solid rgba(251,191,36,0.22)', color:'#ca8a04' }}>
+                    ⚠ Load a .gmt file to run. Species selector is ignored — gene symbols must match your data.
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Sizes */}
@@ -1831,10 +2009,43 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
           {/* Species */}
           <div>
             <SectionLabel>Species</SectionLabel>
-            <select value={species} onChange={e=>setSpecies(e.target.value)}
-              style={{ width:'100%', padding:'6px 10px', fontSize:'0.78rem', background:'rgba(255,255,255,0.05)', border:`1px solid ${V.border}`, borderRadius:7, color:'var(--text-1)' }}>
+            <select value={useOrthologs && hasOrthologs ? 'Homo sapiens' : species}
+              onChange={e=>setSpecies(e.target.value)}
+              disabled={useOrthologs && hasOrthologs}
+              style={{ width:'100%', padding:'6px 10px', fontSize:'0.78rem', background:'rgba(255,255,255,0.05)', border:`1px solid ${V.border}`, borderRadius:7, color:'var(--text-1)',
+                       opacity: useOrthologs && hasOrthologs ? 0.45 : 1, cursor: useOrthologs && hasOrthologs ? 'not-allowed' : 'default' }}>
               {SPECIES.map(s=><option key={s}>{s}</option>)}
             </select>
+
+            {/* Ortholog toggle — only rendered when annDetails has 1:1 human orthologs */}
+            {hasOrthologs && (
+              <button
+                onClick={() => setUseOrthologs(v => !v)}
+                style={{
+                  display:'flex', alignItems:'center', gap:8, width:'100%',
+                  marginTop:8, padding:'8px 10px', borderRadius:8, cursor:'pointer',
+                  border:`1px solid ${useOrthologs ? 'rgba(124,58,237,0.4)' : V.border}`,
+                  background: useOrthologs ? 'rgba(124,58,237,0.1)' : 'rgba(255,255,255,0.03)',
+                  transition:'all 0.15s', textAlign:'left',
+                }}>
+                {/* pill toggle */}
+                <div style={{ width:28, height:15, borderRadius:8, flexShrink:0, position:'relative',
+                              background: useOrthologs ? '#7c3aed' : 'rgba(255,255,255,0.15)', transition:'background 0.2s' }}>
+                  <div style={{ position:'absolute', top:2, left: useOrthologs ? 14 : 2, width:11, height:11,
+                                borderRadius:'50%', background:'#fff', transition:'left 0.2s' }} />
+                </div>
+                <div>
+                  <div style={{ fontSize:'0.73rem', fontWeight:600, color: useOrthologs ? '#a78bfa' : 'var(--text-2)' }}>
+                    Use human orthologs
+                  </div>
+                  <div style={{ fontSize:'0.66rem', color:'var(--text-3)', marginTop:1, lineHeight:1.4 }}>
+                    {useOrthologs
+                      ? `${Object.keys(orthoMap).length.toLocaleString()} genes → human symbols · forces Homo sapiens`
+                      : `${Object.keys(orthoMap).length.toLocaleString()} 1:1 orthologs available`}
+                  </div>
+                </div>
+              </button>
+            )}
           </div>
 
           {/* Run options */}
@@ -1920,7 +2131,7 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
           )}
 
           {runError && <div style={{ padding:'8px 12px', borderRadius:8, fontSize:'0.75rem', background:'rgba(248,113,113,0.08)', color:'#f87171', border:'1px solid rgba(248,113,113,0.2)', lineHeight:1.5 }}>⚠ {runError}</div>}
-          {!annMap && <div style={{ padding:'7px 10px', borderRadius:8, fontSize:'0.68rem', background:'rgba(251,191,36,0.07)', color:'#fbbf24', border:'1px solid rgba(251,191,36,0.18)', lineHeight:1.5 }}>⚠ No annotation loaded — run <b>Annotate</b> first for best gene ID matching.</div>}
+          {!effectiveAnnMap && <div style={{ padding:'7px 10px', borderRadius:8, fontSize:'0.68rem', background:'rgba(251,191,36,0.07)', color:'#fbbf24', border:'1px solid rgba(251,191,36,0.18)', lineHeight:1.5 }}>⚠ No annotation loaded — run <b>Annotate</b> first for best gene ID matching.</div>}
         </div>
 
         {/* ── RIGHT CONTENT ──────────────────────────────────────────────── */}
