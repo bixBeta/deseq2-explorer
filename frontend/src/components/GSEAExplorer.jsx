@@ -2290,50 +2290,50 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
 
       {/* RDS export modal */}
       {rdsModalOpen && createPortal(
-        <div style={{ position:'fixed', inset:0, zIndex:99999, background:'rgba(0,0,0,0.55)', display:'flex', alignItems:'center', justifyContent:'center' }}
-             onClick={e => { if(e.target === e.currentTarget) setRdsModalOpen(false) }}>
-          <div style={{ background:'var(--bg-panel)', border:`1px solid ${V.border}`, borderRadius:14,
-                        padding:'22px 24px', width:420, maxWidth:'92vw', boxShadow:'0 12px 40px rgba(0,0,0,0.4)', display:'flex', flexDirection:'column', gap:16 }}>
+        <div onClick={e => { if(e.target === e.currentTarget) setRdsModalOpen(false) }}
+             style={{ position:'fixed', inset:0, zIndex:99999, background:'rgba(0,0,0,0.45)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <div style={{ background:'var(--bg-panel)', border:'1px solid var(--border)', borderRadius:12,
+                        padding:'20px', width:400, maxWidth:'92vw', boxShadow:'0 16px 48px rgba(0,0,0,0.35)',
+                        display:'flex', flexDirection:'column', gap:14 }}>
 
             {/* Header */}
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8 }}>
               <div>
-                <div style={{ fontSize:'0.92rem', fontWeight:700, color:'var(--text-1)' }}>Export RDS</div>
-                <div style={{ fontSize:'0.72rem', color:'var(--text-3)', marginTop:2 }}>
-                  Select runs to include — exported as a named R list
-                </div>
+                <div style={{ fontSize:'0.88rem', fontWeight:700, color:V.accent }}>Export RDS</div>
+                <div style={{ fontSize:'0.71rem', color:'var(--text-3)', marginTop:2 }}>Select runs to bundle into a named R list</div>
               </div>
               <button onClick={() => setRdsModalOpen(false)}
-                style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text-3)', fontSize:'1.1rem', lineHeight:1, padding:'2px 4px' }}>×</button>
+                style={{ background:'none', border:'none', cursor:'pointer', fontSize:'1rem', color:'var(--text-3)', lineHeight:1, padding:2, flexShrink:0 }}>×</button>
             </div>
 
-            {/* Run checklist */}
-            <div style={{ display:'flex', flexDirection:'column', gap:6, maxHeight:280, overflowY:'auto' }}>
+            {/* Run list */}
+            <div style={{ display:'flex', flexDirection:'column', gap:2, maxHeight:260, overflowY:'auto' }}>
               {contrastRuns.map(r => {
-                const checked = !!rdsSelected[r.id]
+                const checked  = !!rdsSelected[r.id]
                 const isActive = r.id === activeRunId
+                const rKey     = `${(r.collectionLabel ?? r.collectionId ?? 'run').replace(/[^A-Za-z0-9]/g,'_')}_${r.rankMethod ?? 'LFC'}`
                 return (
-                  <label key={r.id} style={{
-                    display:'flex', alignItems:'flex-start', gap:10, padding:'9px 11px', borderRadius:8, cursor:'pointer',
-                    border:`1px solid ${checked ? V.border : 'transparent'}`,
-                    background: checked ? V.muted : 'rgba(255,255,255,0.02)',
-                    transition:'all 0.12s',
-                  }}>
-                    <input type="checkbox" checked={checked}
-                      onChange={e => setRdsSelected(prev => ({ ...prev, [r.id]: e.target.checked }))}
-                      style={{ marginTop:2, accentColor: V.accent2, flexShrink:0 }} />
+                  <label key={r.id} onClick={() => setRdsSelected(prev => ({ ...prev, [r.id]: !prev[r.id] }))}
+                    style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', borderRadius:7,
+                             cursor:'pointer', userSelect:'none',
+                             background: checked ? V.muted : 'transparent',
+                             border: `1px solid ${checked ? V.border : 'transparent'}` }}>
+                    <input type="checkbox" checked={checked} readOnly
+                      style={{ width:14, height:14, accentColor:V.accent2, flexShrink:0, pointerEvents:'none' }} />
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                        <span style={{ fontSize:'0.78rem', fontWeight:600, color:'var(--text-1)' }}>{r.collectionLabel}</span>
-                        {isActive && <span style={{ fontSize:'0.62rem', padding:'1px 6px', borderRadius:4, background:V.muted, color:V.text, border:`1px solid ${V.border}` }}>active</span>}
+                        <span style={{ fontSize:'0.78rem', fontWeight:600, color:V.accent }}>{r.collectionLabel}</span>
+                        {isActive && <span style={{ fontSize:'0.6rem', padding:'0 5px', borderRadius:3,
+                          background:V.muted, color:V.text, border:`1px solid ${V.border}` }}>active</span>}
                       </div>
-                      <div style={{ fontSize:'0.68rem', color:'var(--text-3)', marginTop:2, display:'flex', gap:10 }}>
-                        <span>{r.rankMethod}</span>
-                        <span>{r.results?.length ?? '?'} pathways</span>
-                        <span>{r.timestamp}</span>
+                      <div style={{ display:'flex', gap:10, marginTop:1 }}>
+                        <span style={{ fontSize:'0.67rem', color:'var(--text-3)' }}>{r.rankMethod}</span>
+                        <span style={{ fontSize:'0.67rem', color:'var(--text-3)' }}>{r.results?.length ?? '?'} pathways</span>
+                        <span style={{ fontSize:'0.67rem', color:'var(--text-3)' }}>{r.timestamp}</span>
                       </div>
-                      <div style={{ fontSize:'0.65rem', color:'var(--text-4)', marginTop:1, fontFamily:'monospace', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                        ${(r.collectionLabel ?? r.collectionId ?? 'run').replace(/\s+/g,'_').replace(/[^A-Za-z0-9._]/g,'_')}_{r.rankMethod ?? 'LFC'}
+                      <div style={{ fontSize:'0.63rem', color:V.text, fontFamily:'monospace', marginTop:1,
+                                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', opacity:0.75 }}>
+                        result${rKey}
                       </div>
                     </div>
                   </label>
@@ -2341,34 +2341,34 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
               })}
             </div>
 
-            {/* Select all / none */}
-            <div style={{ display:'flex', gap:8 }}>
-              <button onClick={() => { const s = {}; contrastRuns.forEach(r => { s[r.id] = true }); setRdsSelected(s) }}
-                style={{ fontSize:'0.7rem', padding:'3px 10px', borderRadius:6, border:`1px solid ${V.border}`, background:'none', color:V.text, cursor:'pointer' }}>All</button>
-              <button onClick={() => setRdsSelected({})}
-                style={{ fontSize:'0.7rem', padding:'3px 10px', borderRadius:6, border:`1px solid ${V.border}`, background:'none', color:V.text, cursor:'pointer' }}>None</button>
-              <span style={{ fontSize:'0.7rem', color:'var(--text-3)', alignSelf:'center', marginLeft:4 }}>
-                {Object.values(rdsSelected).filter(Boolean).length} of {contrastRuns.length} selected
+            {/* Select all / none + count */}
+            <div style={{ display:'flex', alignItems:'center', gap:6, borderTop:`1px solid var(--border)`, paddingTop:10 }}>
+              {[['All', true], ['None', false]].map(([lbl, val]) => (
+                <button key={lbl} onClick={() => { const s = {}; if(val) contrastRuns.forEach(r => { s[r.id] = true }); setRdsSelected(s) }}
+                  style={{ fontSize:'0.7rem', padding:'3px 10px', borderRadius:5, cursor:'pointer',
+                    border:`1px solid ${V.border}`, background:'none', color:V.text }}>{lbl}</button>
+              ))}
+              <span style={{ fontSize:'0.7rem', color:'var(--text-3)', marginLeft:2 }}>
+                {Object.values(rdsSelected).filter(Boolean).length} / {contrastRuns.length} selected
               </span>
             </div>
 
-            {/* Usage hint */}
-            <div style={{ fontSize:'0.68rem', color:'var(--text-3)', padding:'7px 10px', borderRadius:7, background:'rgba(255,255,255,0.03)', border:`1px solid ${V.border}`, fontFamily:'monospace', lineHeight:1.7 }}>
-              result &lt;- readRDS("gsea_....rds")<br/>
-              result$Hallmarks_LFC$gsea_result<br/>
-              result$Hallmarks_LFC$ranked_list
-            </div>
-
-            {rdsError && <div style={{ fontSize:'0.72rem', color:'#f87171', padding:'6px 10px', borderRadius:7, background:'rgba(248,113,113,0.08)', border:'1px solid rgba(248,113,113,0.25)' }}>{rdsError}</div>}
+            {rdsError && (
+              <div style={{ fontSize:'0.72rem', color:'#dc2626', padding:'6px 10px', borderRadius:6,
+                background:'rgba(220,38,38,0.07)', border:'1px solid rgba(220,38,38,0.2)' }}>{rdsError}</div>
+            )}
 
             {/* Actions */}
             <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
               <button onClick={() => setRdsModalOpen(false)}
-                style={{ padding:'7px 16px', borderRadius:8, border:`1px solid ${V.border}`, background:'none', color:'var(--text-2)', fontSize:'0.78rem', cursor:'pointer' }}>Cancel</button>
-              <button onClick={handleExportRds} disabled={rdsLoading || !Object.values(rdsSelected).some(Boolean)}
-                style={{ padding:'7px 18px', borderRadius:8, border:'none', cursor:rdsLoading?'wait':'pointer',
+                style={{ padding:'7px 16px', borderRadius:7, border:'1px solid var(--border)',
+                  background:'none', color:'var(--text-2)', fontSize:'0.78rem', cursor:'pointer' }}>Cancel</button>
+              <button onClick={handleExportRds}
+                disabled={rdsLoading || !Object.values(rdsSelected).some(Boolean)}
+                style={{ padding:'7px 20px', borderRadius:7, border:'none', fontSize:'0.78rem', fontWeight:700,
+                  cursor: rdsLoading || !Object.values(rdsSelected).some(Boolean) ? 'default' : 'pointer',
                   background:`linear-gradient(135deg,${V.accent},${V.accent2})`, color:'#fff',
-                  fontSize:'0.78rem', fontWeight:700, opacity: (!Object.values(rdsSelected).some(Boolean) || rdsLoading) ? 0.5 : 1 }}>
+                  opacity: rdsLoading || !Object.values(rdsSelected).some(Boolean) ? 0.5 : 1 }}>
                 {rdsLoading ? 'Exporting…' : 'Download RDS'}
               </button>
             </div>
