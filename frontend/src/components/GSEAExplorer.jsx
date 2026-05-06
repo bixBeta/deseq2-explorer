@@ -1665,6 +1665,34 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
     }
   },[histData, filterValue])
 
+  // Export clusterProfiler RDS for the active run (single run)
+  const [rdsLoading, setRdsLoading] = useState(false)
+  const handleExportRds = useCallback(async () => {
+    if (!session?.sessionId || !activeRun) return
+    setRdsLoading(true)
+    try {
+      const resp = await fetch('/api/gsea/export_rds', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId:     session.sessionId,
+          runId:         activeRun.id,
+          contrastLabel: activeRun.contrastLabel,
+          collection:    activeRun.collectionId,
+          subcategory:   activeRun.collectionSub ?? null,
+          species:       activeRun.species,
+        })
+      })
+      if (!resp.ok) { const e = await resp.json(); throw new Error(e.error ?? `HTTP ${resp.status}`) }
+      const blob = await resp.blob()
+      const url  = URL.createObjectURL(blob)
+      const label = (activeRun.contrastLabel ?? 'contrast').replace(/\s+/g, '_')
+      const col   = (activeRun.collectionLabel ?? activeRun.collectionId ?? 'gsea').replace(/\s+/g, '_')
+      const a = Object.assign(document.createElement('a'), { href: url, download: `gsea_${label}_${col}.rds` })
+      a.click(); URL.revokeObjectURL(url)
+    } catch(e) { console.error('[GSEA RDS export]', e) }
+    finally { setRdsLoading(false) }
+  }, [session, activeRun])
+
   // Export full clusterProfiler results for all runs in this contrast
   const handleExportAll = useCallback(async()=>{
     if(!session?.sessionId || !contrastRuns.length) return
@@ -2158,19 +2186,35 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
             <>
               <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
                 <RunChips runs={contrastRuns} activeRunId={activeRunId} onSelect={id=>{ setActiveRunId(id); setSelPathway(null); setCurveData(null) }} onRemove={removeRun} />
-                <button onClick={handleExportAll} disabled={exportLoading}
-                  title="Export full clusterProfiler results for all runs in this contrast"
-                  style={{ marginLeft:'auto', flexShrink:0, padding:'4px 12px', borderRadius:8,
-                    border:`1px solid ${V.border}`, background:V.muted, color:V.text,
-                    fontSize:'0.72rem', fontWeight:600, cursor:exportLoading?'wait':'pointer',
-                    opacity:exportLoading?0.6:1, whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:5 }}>
-                  {exportLoading
-                    ? '…'
-                    : <><svg width="11" height="11" viewBox="0 0 14 14" fill="none" style={{flexShrink:0}}>
+                <div style={{ marginLeft:'auto', display:'flex', gap:6, alignItems:'center', flexShrink:0 }}>
+                  {/* Export RDS — active run only */}
+                  {activeRun && (
+                    <button onClick={handleExportRds} disabled={rdsLoading}
+                      title={`Export clusterProfiler RDS for active run (${activeRun.collectionLabel}) — load in RStudio with readRDS()`}
+                      style={{ padding:'4px 12px', borderRadius:8,
+                        border:`1px solid ${V.border}`, background:V.muted, color:V.text,
+                        fontSize:'0.72rem', fontWeight:600, cursor:rdsLoading?'wait':'pointer',
+                        opacity:rdsLoading?0.6:1, whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:5 }}>
+                      {rdsLoading ? '…' : <><svg width="11" height="11" viewBox="0 0 14 14" fill="none" style={{flexShrink:0}}>
                         <path d="M7 1v8M4 6l3 3 3-3M2 11h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>Export Results</>
-                  }
-                </button>
+                      </svg>Export RDS</>}
+                    </button>
+                  )}
+                  {/* Export CSV — all runs for this contrast */}
+                  <button onClick={handleExportAll} disabled={exportLoading}
+                    title="Export full clusterProfiler results for all runs in this contrast"
+                    style={{ padding:'4px 12px', borderRadius:8,
+                      border:`1px solid ${V.border}`, background:V.muted, color:V.text,
+                      fontSize:'0.72rem', fontWeight:600, cursor:exportLoading?'wait':'pointer',
+                      opacity:exportLoading?0.6:1, whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:5 }}>
+                    {exportLoading
+                      ? '…'
+                      : <><svg width="11" height="11" viewBox="0 0 14 14" fill="none" style={{flexShrink:0}}>
+                          <path d="M7 1v8M4 6l3 3 3-3M2 11h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>Export Results</>
+                    }
+                  </button>
+                </div>
                 {exportDialog}
               </div>
               {exportLoading && (

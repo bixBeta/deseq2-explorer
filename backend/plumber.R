@@ -2169,6 +2169,55 @@ function(req, res) {
   )
 }
 
+# ── GSEA: export clusterProfiler RDS for a single run ────────────────────────
+#* @post /api/gsea/export_rds
+function(req, res) {
+  body           <- fromJSON(rawToChar(req$bodyRaw))
+  session_id     <- body$sessionId     %||% ""
+  contrast_label <- body$contrastLabel %||% ""
+  collection     <- body$collection    %||% "H"
+  subcategory    <- body$subcategory
+  species        <- body$species       %||% "Homo sapiens"
+  run_id         <- body$runId
+
+  if (!nzchar(session_id)) stop("sessionId is required")
+
+  cache_path <- .gsea_cache_path(session_id, contrast_label, collection, subcategory, species, run_id)
+  if (!file.exists(cache_path)) stop("GSEA cache not found — please re-run GSEA")
+
+  cache <- readRDS(cache_path)
+
+  # Build a clean, self-contained export object for RStudio / downstream use:
+  #   $gsea_result  — clusterProfiler gseaResult S4 object (enrichplot-ready)
+  #   $ranked_list  — named numeric vector of gene stats, sorted descending
+  #   $gene_sets    — term2gene data frame used for this run
+  #   $meta         — run provenance
+  export_obj <- list(
+    gsea_result = cache$gsea_result,
+    ranked_list = cache$stats_vec,
+    gene_sets   = cache$gene_sets,
+    meta = list(
+      contrast_label = contrast_label,
+      collection     = collection,
+      subcategory    = subcategory %||% NA_character_,
+      species        = species,
+      exported_at    = format(Sys.time(), "%Y-%m-%d %H:%M:%S UTC")
+    )
+  )
+
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp), add = TRUE)
+  saveRDS(export_obj, tmp)
+
+  ct_safe  <- gsub("[^A-Za-z0-9._-]", "_", contrast_label)
+  col_safe <- gsub("[^A-Za-z0-9._-]", "_", collection)
+  filename <- paste0("gsea_", ct_safe, "_", col_safe, ".rds")
+
+  res$setHeader("Content-Type", "application/octet-stream")
+  res$setHeader("Content-Disposition", paste0('attachment; filename="', filename, '"'))
+  readBin(tmp, "raw", file.size(tmp))
+}
+
 # ── GSEA: export full clusterProfiler results across runs for a contrast ───────
 #* @post /api/gsea/export_results
 #* @serializer unboxedJSON
