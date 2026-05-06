@@ -569,6 +569,61 @@ gsea_export_results <- function(session_id, runs) {
   lapply(seq_len(nrow(combined)), function(i) as.list(combined[i, ]))
 }
 
+# ── gsea_export_rds: build named list RDS across selected runs ────────────────
+# Returns a named list suitable for saveRDS() — each element is one run:
+#   $gsea_result  clusterProfiler gseaResult S4 object (enrichplot-ready)
+#   $ranked_list  named numeric vector fed into GSEA(), sorted descending
+#   $gene_sets    term2gene data frame used for the run
+#   $meta         run provenance (contrast, collection, species, rank method)
+gsea_export_rds <- function(session_id, runs) {
+  result_list <- list()
+
+  for (run in runs) {
+    cache_path <- .gsea_cache_path(
+      session_id,
+      run$contrast_label %||% "",
+      run$collection     %||% "H",
+      run$subcategory,
+      run$species        %||% "Homo sapiens",
+      run$run_id
+    )
+    if (!file.exists(cache_path)) {
+      message("[gsea_export_rds] cache not found: ", cache_path)
+      next
+    }
+    cache <- readRDS(cache_path)
+
+    # Build a clean, valid R name for this run as the list key
+    col_lbl  <- run$collection_label %||% run$collection %||% "run"
+    rank_lbl <- run$rank_method      %||% "LFC"
+    key      <- make.names(paste0(col_lbl, "_", rank_lbl))
+    # Deduplicate keys if the same collection was run twice
+    if (key %in% names(result_list)) {
+      i <- 2L
+      while (paste0(key, "_", i) %in% names(result_list)) i <- i + 1L
+      key <- paste0(key, "_", i)
+    }
+
+    result_list[[key]] <- list(
+      gsea_result = cache$gsea_result,
+      ranked_list = cache$stats_vec,
+      gene_sets   = cache$gene_sets,
+      meta = list(
+        contrast_label   = run$contrast_label   %||% "",
+        collection       = run$collection       %||% "",
+        collection_label = run$collection_label %||% "",
+        subcategory      = run$subcategory      %||% NA_character_,
+        species          = run$species          %||% "",
+        rank_method      = run$rank_method      %||% "",
+        exported_at      = format(Sys.time(), "%Y-%m-%d %H:%M:%S UTC")
+      )
+    )
+  }
+
+  if (!length(result_list)) stop("No cached GSEA results found for the selected runs — please re-run GSEA")
+  result_list
+}
+
 # ── gsea_run_all: run the same collection across all contrasts in parallel ─────
 # Uses mirai workers when available (same daemons as DESeq2 parallelisation).
 # Each worker sources gsea.R so all helper functions are available.

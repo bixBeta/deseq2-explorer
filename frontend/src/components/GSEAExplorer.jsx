@@ -1665,33 +1665,55 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
     }
   },[histData, filterValue])
 
-  // Export clusterProfiler RDS for the active run (single run)
-  const [rdsLoading, setRdsLoading] = useState(false)
+  // Export clusterProfiler RDS — modal to pick which runs to include
+  const [rdsModalOpen, setRdsModalOpen] = useState(false)
+  const [rdsSelected,  setRdsSelected]  = useState({})   // runId → bool
+  const [rdsLoading,   setRdsLoading]   = useState(false)
+  const [rdsError,     setRdsError]     = useState(null)
+
+  // Open modal: pre-check all runs for this contrast
+  const openRdsModal = useCallback(() => {
+    const sel = {}
+    contrastRuns.forEach(r => { sel[r.id] = true })
+    setRdsSelected(sel)
+    setRdsError(null)
+    setRdsModalOpen(true)
+  }, [contrastRuns])
+
   const handleExportRds = useCallback(async () => {
-    if (!session?.sessionId || !activeRun) return
-    setRdsLoading(true)
+    if (!session?.sessionId) return
+    const selected = contrastRuns.filter(r => rdsSelected[r.id])
+    if (!selected.length) { setRdsError('Select at least one run.'); return }
+    setRdsLoading(true); setRdsError(null)
     try {
+      const runs = selected.map(r => ({
+        contrast_label:   r.contrastLabel,
+        collection:       r.collectionId,
+        subcategory:      r.collectionSub ?? null,
+        species:          r.species,
+        run_id:           r.id,
+        collection_label: r.collectionLabel,
+        rank_method:      r.rankMethod,
+      }))
       const resp = await fetch('/api/gsea/export_rds', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId:     session.sessionId,
-          runId:         activeRun.id,
-          contrastLabel: activeRun.contrastLabel,
-          collection:    activeRun.collectionId,
-          subcategory:   activeRun.collectionSub ?? null,
-          species:       activeRun.species,
-        })
+        body: JSON.stringify({ sessionId: session.sessionId, runs })
       })
-      if (!resp.ok) { const e = await resp.json(); throw new Error(e.error ?? `HTTP ${resp.status}`) }
+      if (!resp.ok) {
+        const ct = resp.headers.get('content-type') ?? ''
+        const msg = ct.includes('json') ? (await resp.json()).error : await resp.text()
+        throw new Error(msg ?? `HTTP ${resp.status}`)
+      }
       const blob = await resp.blob()
       const url  = URL.createObjectURL(blob)
-      const label = (activeRun.contrastLabel ?? 'contrast').replace(/\s+/g, '_')
-      const col   = (activeRun.collectionLabel ?? activeRun.collectionId ?? 'gsea').replace(/\s+/g, '_')
-      const a = Object.assign(document.createElement('a'), { href: url, download: `gsea_${label}_${col}.rds` })
+      const label = (contrastRuns[0]?.contrastLabel ?? 'contrast').replace(/\s+/g, '_')
+      const cols  = selected.map(r => r.collectionLabel).join('+')
+      const a = Object.assign(document.createElement('a'), { href: url, download: `gsea_${label}_${cols}.rds` })
       a.click(); URL.revokeObjectURL(url)
-    } catch(e) { console.error('[GSEA RDS export]', e) }
+      setRdsModalOpen(false)
+    } catch(e) { setRdsError(e.message) }
     finally { setRdsLoading(false) }
-  }, [session, activeRun])
+  }, [session, contrastRuns, rdsSelected])
 
   // Export full clusterProfiler results for all runs in this contrast
   const handleExportAll = useCallback(async()=>{
@@ -2187,17 +2209,17 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
               <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
                 <RunChips runs={contrastRuns} activeRunId={activeRunId} onSelect={id=>{ setActiveRunId(id); setSelPathway(null); setCurveData(null) }} onRemove={removeRun} />
                 <div style={{ marginLeft:'auto', display:'flex', gap:6, alignItems:'center', flexShrink:0 }}>
-                  {/* Export RDS — active run only */}
-                  {activeRun && (
-                    <button onClick={handleExportRds} disabled={rdsLoading}
-                      title={`Export clusterProfiler RDS for active run (${activeRun.collectionLabel}) — load in RStudio with readRDS()`}
+                  {/* Export RDS — opens modal to pick runs */}
+                  {contrastRuns.length > 0 && (
+                    <button onClick={openRdsModal}
+                      title="Export clusterProfiler RDS — choose which runs to include"
                       style={{ padding:'4px 12px', borderRadius:8,
                         border:`1px solid ${V.border}`, background:V.muted, color:V.text,
-                        fontSize:'0.72rem', fontWeight:600, cursor:rdsLoading?'wait':'pointer',
-                        opacity:rdsLoading?0.6:1, whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:5 }}>
-                      {rdsLoading ? '…' : <><svg width="11" height="11" viewBox="0 0 14 14" fill="none" style={{flexShrink:0}}>
+                        fontSize:'0.72rem', fontWeight:600, cursor:'pointer',
+                        whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:5 }}>
+                      <svg width="11" height="11" viewBox="0 0 14 14" fill="none" style={{flexShrink:0}}>
                         <path d="M7 1v8M4 6l3 3 3-3M2 11h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>Export RDS</>}
+                      </svg>Export RDS
                     </button>
                   )}
                   {/* Export CSV — all runs for this contrast */}
@@ -2263,6 +2285,95 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
         <MountainModal pathway={selPathway.pathway} result={selPathway} curveData={curveData} curveLoading={curveLoading} curveError={curveError}
           onClose={()=>{ setSelPathway(null); setCurveData(null); setCurveError(null) }}
           onRetry={()=>fetchCurve(selPathway, activeRun)} />,
+        document.body
+      )}
+
+      {/* RDS export modal */}
+      {rdsModalOpen && createPortal(
+        <div style={{ position:'fixed', inset:0, zIndex:99999, background:'rgba(0,0,0,0.55)', display:'flex', alignItems:'center', justifyContent:'center' }}
+             onClick={e => { if(e.target === e.currentTarget) setRdsModalOpen(false) }}>
+          <div style={{ background:'var(--bg-panel)', border:`1px solid ${V.border}`, borderRadius:14,
+                        padding:'22px 24px', width:420, maxWidth:'92vw', boxShadow:'0 12px 40px rgba(0,0,0,0.4)', display:'flex', flexDirection:'column', gap:16 }}>
+
+            {/* Header */}
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <div>
+                <div style={{ fontSize:'0.92rem', fontWeight:700, color:'var(--text-1)' }}>Export RDS</div>
+                <div style={{ fontSize:'0.72rem', color:'var(--text-3)', marginTop:2 }}>
+                  Select runs to include — exported as a named R list
+                </div>
+              </div>
+              <button onClick={() => setRdsModalOpen(false)}
+                style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text-3)', fontSize:'1.1rem', lineHeight:1, padding:'2px 4px' }}>×</button>
+            </div>
+
+            {/* Run checklist */}
+            <div style={{ display:'flex', flexDirection:'column', gap:6, maxHeight:280, overflowY:'auto' }}>
+              {contrastRuns.map(r => {
+                const checked = !!rdsSelected[r.id]
+                const isActive = r.id === activeRunId
+                return (
+                  <label key={r.id} style={{
+                    display:'flex', alignItems:'flex-start', gap:10, padding:'9px 11px', borderRadius:8, cursor:'pointer',
+                    border:`1px solid ${checked ? V.border : 'transparent'}`,
+                    background: checked ? V.muted : 'rgba(255,255,255,0.02)',
+                    transition:'all 0.12s',
+                  }}>
+                    <input type="checkbox" checked={checked}
+                      onChange={e => setRdsSelected(prev => ({ ...prev, [r.id]: e.target.checked }))}
+                      style={{ marginTop:2, accentColor: V.accent2, flexShrink:0 }} />
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                        <span style={{ fontSize:'0.78rem', fontWeight:600, color:'var(--text-1)' }}>{r.collectionLabel}</span>
+                        {isActive && <span style={{ fontSize:'0.62rem', padding:'1px 6px', borderRadius:4, background:V.muted, color:V.text, border:`1px solid ${V.border}` }}>active</span>}
+                      </div>
+                      <div style={{ fontSize:'0.68rem', color:'var(--text-3)', marginTop:2, display:'flex', gap:10 }}>
+                        <span>{r.rankMethod}</span>
+                        <span>{r.results?.length ?? '?'} pathways</span>
+                        <span>{r.timestamp}</span>
+                      </div>
+                      <div style={{ fontSize:'0.65rem', color:'var(--text-4)', marginTop:1, fontFamily:'monospace', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        ${(r.collectionLabel ?? r.collectionId ?? 'run').replace(/\s+/g,'_').replace(/[^A-Za-z0-9._]/g,'_')}_{r.rankMethod ?? 'LFC'}
+                      </div>
+                    </div>
+                  </label>
+                )
+              })}
+            </div>
+
+            {/* Select all / none */}
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={() => { const s = {}; contrastRuns.forEach(r => { s[r.id] = true }); setRdsSelected(s) }}
+                style={{ fontSize:'0.7rem', padding:'3px 10px', borderRadius:6, border:`1px solid ${V.border}`, background:'none', color:V.text, cursor:'pointer' }}>All</button>
+              <button onClick={() => setRdsSelected({})}
+                style={{ fontSize:'0.7rem', padding:'3px 10px', borderRadius:6, border:`1px solid ${V.border}`, background:'none', color:V.text, cursor:'pointer' }}>None</button>
+              <span style={{ fontSize:'0.7rem', color:'var(--text-3)', alignSelf:'center', marginLeft:4 }}>
+                {Object.values(rdsSelected).filter(Boolean).length} of {contrastRuns.length} selected
+              </span>
+            </div>
+
+            {/* Usage hint */}
+            <div style={{ fontSize:'0.68rem', color:'var(--text-3)', padding:'7px 10px', borderRadius:7, background:'rgba(255,255,255,0.03)', border:`1px solid ${V.border}`, fontFamily:'monospace', lineHeight:1.7 }}>
+              result &lt;- readRDS("gsea_....rds")<br/>
+              result$Hallmarks_LFC$gsea_result<br/>
+              result$Hallmarks_LFC$ranked_list
+            </div>
+
+            {rdsError && <div style={{ fontSize:'0.72rem', color:'#f87171', padding:'6px 10px', borderRadius:7, background:'rgba(248,113,113,0.08)', border:'1px solid rgba(248,113,113,0.25)' }}>{rdsError}</div>}
+
+            {/* Actions */}
+            <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+              <button onClick={() => setRdsModalOpen(false)}
+                style={{ padding:'7px 16px', borderRadius:8, border:`1px solid ${V.border}`, background:'none', color:'var(--text-2)', fontSize:'0.78rem', cursor:'pointer' }}>Cancel</button>
+              <button onClick={handleExportRds} disabled={rdsLoading || !Object.values(rdsSelected).some(Boolean)}
+                style={{ padding:'7px 18px', borderRadius:8, border:'none', cursor:rdsLoading?'wait':'pointer',
+                  background:`linear-gradient(135deg,${V.accent},${V.accent2})`, color:'#fff',
+                  fontSize:'0.78rem', fontWeight:700, opacity: (!Object.values(rdsSelected).some(Boolean) || rdsLoading) ? 0.5 : 1 }}>
+                {rdsLoading ? 'Exporting…' : 'Download RDS'}
+              </button>
+            </div>
+          </div>
+        </div>,
         document.body
       )}
 
