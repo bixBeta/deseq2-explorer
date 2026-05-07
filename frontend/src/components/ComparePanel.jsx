@@ -1556,7 +1556,7 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
               const chrStr = typeof r.chr         === 'string' ? r.chr         : ''
               const descStr = typeof r.description === 'string' ? r.description : ''
               const rowBg  = i % 2 === 0 ? 'var(--bg-panel)' : 'rgba(var(--accent-rgb),0.025)'
-              const base   = { padding: '4px 8px', textAlign: 'right', fontSize: '0.7rem', whiteSpace: 'nowrap', borderBottom: GRID, borderRight: GRID, position: 'relative', zIndex: 0 }
+              const base   = { padding: '4px 8px', textAlign: 'right', fontSize: '0.7rem', whiteSpace: 'nowrap', borderBottom: GRID, borderRight: GRID, position: 'relative', zIndex: 0, background: rowBg }
               return (
               <tr key={gStr || i} className="de-row" style={{ background: rowBg }}>
                 {/* ── Frozen gene columns — always opaque background so scrolling content can't bleed through ── */}
@@ -1629,7 +1629,7 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
                   </td>
                 )}
                 {/* ── Expression columns: baseMean + per-contrast averages — sticky only when pinned ── */}
-                <td style={{ ...exprFreeze('bm', FREEZE_BG), padding: '4px 8px',
+                <td style={{ ...exprFreeze('bm', pinnedExpr ? FREEZE_BG : rowBg), padding: '4px 8px',
                     color: 'var(--text-2)', textAlign: 'right', fontSize: '0.7rem',
                     whiteSpace: 'nowrap', borderBottom: GRID, borderRight: GRID }}>
                   {fmtN(r.baseMean, 4)}
@@ -1638,7 +1638,7 @@ function TableExplorer({ contrasts, annMap, annDetails }) {
                   const s = r.contrasts[g.contrastLabel]
                   return (
                     <td key={`avg_${gi}`}
-                        style={{ ...exprFreeze(`avg_${gi}`, FREEZE_BG), padding: '4px 8px',
+                        style={{ ...exprFreeze(`avg_${gi}`, pinnedExpr ? FREEZE_BG : rowBg), padding: '4px 8px',
                                  color: 'var(--text-2)', textAlign: 'right', fontSize: '0.7rem',
                                  whiteSpace: 'nowrap', borderBottom: GRID,
                                  ...(gi === uniqueGroups.length - 1 && pinnedExpr
