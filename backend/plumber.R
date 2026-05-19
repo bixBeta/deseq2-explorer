@@ -1101,6 +1101,8 @@ function(req, res) {
   gene_set      <- if (!is.null(body$geneSet) && nchar(body$geneSet) > 0) body$geneSet else "union"
   active_labels <- if (!is.null(body$activeLabels) && length(body$activeLabels) > 0)
                      as.character(body$activeLabels) else NULL
+  min_base_mean <- if (!is.null(body$minBaseMean) && is.finite(as.numeric(body$minBaseMean)))
+                     as.numeric(body$minBaseMean) else 0
   # Pathway leading-edge mode: explicit gene list (symbols) bypasses FDR/LFC filtering
   custom_genes  <- if (!is.null(body$customGenes) && length(body$customGenes) > 0)
                      as.character(body$customGenes) else NULL
@@ -1167,7 +1169,8 @@ function(req, res) {
     # Standard DEG mode — FDR / LFC filtering
     sig_per_contrast <- lapply(contrasts_use, function(ct) {
       df <- ct$results
-      df$gene[!is.na(df$padj) & df$padj < fdr & abs(df$log2FC) >= min_lfc]
+      df$gene[!is.na(df$padj) & df$padj < fdr & abs(df$log2FC) >= min_lfc &
+              (!is.null(df$baseMean) & !is.na(df$baseMean) & df$baseMean >= min_base_mean)]
     })
     names(sig_per_contrast) <- sapply(contrasts_use, function(ct) ct$label)
 

@@ -245,6 +245,7 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
 
   const [fdr, setFdr]                 = useState(0.05)
   const [minLfc, setMinLfc]           = useState(0)
+  const [minBaseMean, setMinBaseMean] = useState(0)
   const [topN, setTopN]               = useState(50)
   const [geneSet, setGeneSet]         = useState('union')
   const mode = 'vst'
@@ -297,7 +298,7 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
     try {
       const data = await apiFetch('/api/heatmap', {
         sessionId: session.sessionId,
-        fdr, minLfc, topN, mode,
+        fdr, minLfc, minBaseMean, topN, mode,
         clusterRows, clusterCols,
         distMethod,
         colorBy: colorBy || '',
@@ -398,6 +399,12 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
             <input type="number" value={minLfc} min={0} max={10} step={0.1}
                    onChange={e => setMinLfc(Number(e.target.value))}
                    style={{ width: 52, fontSize: '0.78rem', padding: '2px 6px' }} />
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', color: 'var(--text-2)' }}>
+            baseMean ≥
+            <input type="number" value={minBaseMean} min={0} max={100000} step={1}
+                   onChange={e => setMinBaseMean(Number(e.target.value))}
+                   style={{ width: 68, fontSize: '0.78rem', padding: '2px 6px' }} />
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', color: 'var(--text-2)' }}>
             Top N
