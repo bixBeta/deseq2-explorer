@@ -275,6 +275,7 @@ export default function CustomHeatmapPanel({
   const [plotLabel,    setPlotLabel]    = useState('')
   const [violinGene,   setViolinGene]   = useState(null)
   const [violinSymbol, setViolinSymbol] = useState(null)
+  const [fullscreen,   setFullscreen]   = useState(false)
 
   // ── Initialise contrast selectors from contrastList ─────────────────────────
   useEffect(() => {
@@ -295,6 +296,19 @@ export default function CustomHeatmapPanel({
   }, [metaCols])
 
   useEffect(() => { setAnnGroups([]); setAnnColors({}) }, [colorBy])
+
+  // ── Escape key exits fullscreen ───────────────────────────────────────────────
+  useEffect(() => {
+    if (!fullscreen) return
+    const handler = e => { if (e.key === 'Escape') setFullscreen(false) }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [fullscreen])
+
+  // ── Resize Plotly when fullscreen toggles ─────────────────────────────────────
+  useEffect(() => {
+    if (plotRef.current?._fullLayout) Plotly.Plots.resize(plotRef.current)
+  }, [fullscreen])
 
   // ── Resize observer ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -451,7 +465,11 @@ export default function CustomHeatmapPanel({
   }
 
   return (
-    <div style={{ display: 'flex', gap: 0, minHeight: 600 }}>
+    <div style={fullscreen ? {
+      position: 'fixed', inset: 0, zIndex: 99999,
+      background: 'var(--bg-panel)', padding: '16px 20px',
+      display: 'flex', gap: 0, overflow: 'hidden',
+    } : { display: 'flex', gap: 0, minHeight: 600 }}>
 
       {/* ── LEFT SIDEBAR: Gene Set Builder ──────────────────────────────────── */}
       <div style={{
@@ -621,7 +639,8 @@ export default function CustomHeatmapPanel({
       </div>
 
       {/* ── RIGHT PANEL: Controls + Plot ─────────────────────────────────────── */}
-      <div style={{ flex: 1, paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+      <div style={{ flex: 1, paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 12,
+                    minWidth: 0, overflowY: fullscreen ? 'auto' : 'visible' }}>
 
         {/* Controls grid */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, alignItems: 'start' }}>
@@ -711,7 +730,14 @@ export default function CustomHeatmapPanel({
           </div>
 
           {/* Action buttons — full width, right-aligned */}
-          <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center' }}>
+            <button onClick={() => setFullscreen(v => !v)}
+                    title={fullscreen ? 'Exit fullscreen (Esc)' : 'Expand to fullscreen'}
+                    style={{ padding: '7px 14px', fontSize: '0.8rem', borderRadius: 8,
+                             background: 'rgba(255,255,255,0.06)', color: 'var(--text-2)',
+                             border: '1px solid var(--border)', cursor: 'pointer' }}>
+              {fullscreen ? '⊠ Collapse' : '⊡ Expand'}
+            </button>
             {hasPlot && (
               <button onClick={() => promptDownload('custom-heatmap.png', name =>
                 Plotly.downloadImage(plotRef.current, {
@@ -761,8 +787,11 @@ export default function CustomHeatmapPanel({
         )}
 
         {/* Plot */}
-        <div ref={outerRef} style={{ width: '100%', display: hasPlot ? 'block' : 'none' }}>
-          <div ref={plotRef} style={{ width: '100%', height: 800 }} />
+        <div ref={outerRef} style={{
+          width: '100%', display: hasPlot ? (fullscreen ? 'flex' : 'block') : 'none',
+          flex: fullscreen ? '1 1 0' : undefined, minHeight: fullscreen ? 400 : undefined,
+        }}>
+          <div ref={plotRef} style={{ width: '100%', height: fullscreen ? '100%' : 800 }} />
         </div>
       </div>
 
