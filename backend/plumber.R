@@ -1113,6 +1113,8 @@ function(req, res) {
   ann_map_body  <- body$annMap   # named list gene_id -> symbol, used for reverse lookup
   pathway_label <- if (!is.null(body$pathwayLabel) && nchar(body$pathwayLabel) > 0)
                      body$pathwayLabel else NULL
+  sample_subset <- if (!is.null(body$sampleSubset) && length(body$sampleSubset) > 0)
+                     as.character(body$sampleSubset) else NULL
 
   if (is.null(session_id) || session_id == "") stop("sessionId is required")
 
@@ -1242,6 +1244,11 @@ function(req, res) {
     if (length(all_sig) == 0) stop(paste0("No genes from gene set '", gene_set, "' found in expression matrix"))
 
     sub_mat <- expr_mat[all_sig, , drop = FALSE]
+    # ── Sample subset (contrast-limited mode) ──────────────────────────────────
+    if (!is.null(sample_subset)) {
+      keep_cols <- intersect(sample_subset, colnames(sub_mat))
+      if (length(keep_cols) > 0) sub_mat <- sub_mat[, keep_cols, drop = FALSE]
+    }
     if (nrow(sub_mat) > top_n) {
       if (!is.null(custom_genes) && !cluster_rows) {
         # Pathway mode with clustering off — preserve leading-edge order, take first N

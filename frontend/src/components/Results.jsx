@@ -7,20 +7,22 @@ import ResultsTable    from './ResultsTable'
 import AnnotationPanel from './AnnotationPanel'
 import ComparePanel    from './ComparePanel'
 import GSEAExplorer    from './GSEAExplorer'
-import GSEACompare     from './GSEACompare'
+import GSEACompare        from './GSEACompare'
+import CustomHeatmapPanel from './CustomHeatmapPanel'
 
 const STORAGE_KEY = 'deseq2_tab_icons'
 
 const DEFAULT_TABS = [
-  { key: 'counts',   label: 'Counts',      icon: '▦'  },
-  { key: 'annotate', label: 'Annotate',    icon: '◈'  },
-  { key: 'ma',       label: 'MA Plot',     icon: '╱╲' },
-  { key: 'volcano',  label: 'Volcano',     icon: '△'  },
-  { key: 'pca',      label: 'PCA',         icon: '●●' },
-  { key: 'table',    label: 'DE Results',  icon: '▤'  },
-  { key: 'compare',  label: 'Compare',     icon: '⊕'  },
-  { key: 'gsea',         label: 'GSEA',         icon: '⟳', navy: true },
-  { key: 'gsea_compare', label: 'GSEA Compare',  icon: '⊗', navy: true },
+  { key: 'counts',         label: 'Counts',          icon: '▦'  },
+  { key: 'annotate',       label: 'Annotate',         icon: '◈'  },
+  { key: 'ma',             label: 'MA Plot',          icon: '╱╲' },
+  { key: 'volcano',        label: 'Volcano',          icon: '△'  },
+  { key: 'pca',            label: 'PCA',              icon: '●●' },
+  { key: 'table',          label: 'DE Results',       icon: '▤'  },
+  { key: 'compare',        label: 'Compare',          icon: '⊕'  },
+  { key: 'gsea',           label: 'GSEA',             icon: '⟳', navy: true },
+  { key: 'gsea_compare',   label: 'GSEA Compare',     icon: '⊗', navy: true },
+  { key: 'custom_heatmap', label: 'Custom Heatmap',   icon: '⊞'  },
 ]
 
 function loadIcons() {
@@ -285,6 +287,17 @@ export default function Results({ results, design, onBack, onEditSamples, sessio
             pca={pca}
             annMap={annMap}
             sampleLabels={sampleLabels}
+          />
+        </div>
+        <div style={{ display: vizTab === 'custom_heatmap' ? 'block' : 'none' }}>
+          <CustomHeatmapPanel
+            session={session}
+            contrastList={contrastList}
+            active={active}
+            annMap={annMap}
+            sampleLabels={sampleLabels}
+            pca={pca}
+            design={design}
           />
         </div>
       </div>
