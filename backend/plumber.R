@@ -1081,7 +1081,7 @@ function(req, res) {
   list(image = jsonlite::base64_enc(img_bytes))
 }
 
-# ── Heatmap: log2FC or VST counts heatmap via heatmaply ──────────────────────
+# ── Heatmap: log2FC | norm-counts | VST heatmap via heatmaply ─────────────────
 #* @post /api/heatmap
 #* @serializer unboxedJSON
 function(req, res) {
@@ -1090,7 +1090,11 @@ function(req, res) {
   fdr           <- if (!is.null(body$fdr))          as.numeric(body$fdr)        else 0.05
   min_lfc       <- if (!is.null(body$minLfc))        as.numeric(body$minLfc)     else 0
   top_n         <- if (!is.null(body$topN))          as.integer(body$topN)       else 50L
-  mode          <- if (!is.null(body$mode))          body$mode                   else "vst"
+  # mode: "lfc"  → log2FC across contrasts (no expression matrix needed)
+  #        "norm" → DESeq2 size-factor-normalised counts → log2(x+1) → Z-score  (default)
+  #        "vst"  → variance-stabilising transformation → Z-score
+  mode          <- if (!is.null(body$mode) && body$mode %in% c("lfc","norm","vst"))
+                     body$mode else "norm"
   cluster_rows  <- if (!is.null(body$clusterRows))   isTRUE(body$clusterRows)    else TRUE
   cluster_cols  <- if (!is.null(body$clusterCols))   isTRUE(body$clusterCols)    else TRUE
   dist_method   <- if (!is.null(body$distMethod))    body$distMethod             else "pearson"
@@ -1164,7 +1168,8 @@ function(req, res) {
 
     if (length(all_sig) == 0)
       stop("None of the leading-edge genes were found in the expression matrix. Load gene annotations first.")
-    mode <- "vst"   # pathway heatmap always uses normalised counts
+    # Pathway heatmap always uses expression counts (not log2FC); honour user's norm/vst choice
+    if (mode == "lfc") mode <- if (!is.null(saved$norm_matrix)) "norm" else "vst"
   } else {
     # Standard DEG mode — FDR / LFC filtering
     sig_per_contrast <- lapply(contrasts_use, function(ct) {
@@ -1220,10 +1225,18 @@ function(req, res) {
     )
 
   } else {
-    # ── Mode: varianceStabilizingTransformation() counts (Z-scored per gene) ───
-    expr_mat <- if (!is.null(saved$norm_matrix)) saved$norm_matrix else saved$vst_matrix
-    if (is.null(expr_mat)) stop("Normalized count matrix not found — please re-run the analysis")
-    if (!is.null(saved$norm_matrix)) expr_mat <- log2(expr_mat + 1)
+    # ── Mode: norm or vst — expression counts Z-scored per gene ─────────────────
+    if (mode == "vst") {
+      expr_mat   <- saved$vst_matrix
+      expr_label <- "VST"
+      if (is.null(expr_mat)) stop("VST matrix not found — please re-run the analysis")
+    } else {
+      # mode == "norm" (default): DESeq2 size-factor normalised counts → log2(x+1)
+      expr_mat   <- if (!is.null(saved$norm_matrix)) saved$norm_matrix else saved$vst_matrix
+      expr_label <- if (!is.null(saved$norm_matrix)) "log₂(norm. counts + 1)" else "VST"
+      if (is.null(expr_mat)) stop("Expression matrix not found — please re-run the analysis")
+      if (!is.null(saved$norm_matrix)) expr_mat <- log2(expr_mat + 1)
+    }
 
     all_sig <- all_sig[all_sig %in% rownames(expr_mat)]
     if (length(all_sig) == 0) stop(paste0("No genes from gene set '", gene_set, "' found in expression matrix"))
@@ -1286,9 +1299,9 @@ function(req, res) {
       xlab                  = "Sample",
       ylab                  = "Gene",
       main                  = if (!is.null(pathway_label))
-                               paste0(pathway_label, "  (", nrow(mat_scaled), " leading-edge genes, Z-scored)")
+                               paste0(pathway_label, "  (", nrow(mat_scaled), " leading-edge genes, ", expr_label, " Z-score)")
                              else
-                               paste0("Normalized counts Z-score (FDR < ", fdr, ", top ", nrow(mat_scaled), " genes)"),
+                               paste0(expr_label, " Z-score  (FDR < ", fdr, ", top ", nrow(mat_scaled), " genes)"),
       showticklabels        = c(TRUE, TRUE),
       plot_method           = "plotly",
       key.title             = "Z-score"

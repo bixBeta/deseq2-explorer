@@ -248,7 +248,7 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
   const [minBaseMean, setMinBaseMean] = useState(0)
   const [topN, setTopN]               = useState(50)
   const [geneSet, setGeneSet]         = useState('union')
-  const mode = 'vst'
+  const [exprMode, setExprMode]       = useState('norm')   // 'norm' | 'vst'
   const [clusterRows, setClusterRows] = useState(true)
   const [clusterCols, setClusterCols] = useState(true)
   const [distMethod, setDistMethod]   = useState('pearson')
@@ -298,7 +298,7 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
     try {
       const data = await apiFetch('/api/heatmap', {
         sessionId: session.sessionId,
-        fdr, minLfc, minBaseMean, topN, mode,
+        fdr, minLfc, minBaseMean, topN, mode: exprMode,
         clusterRows, clusterCols,
         distMethod,
         colorBy: colorBy || '',
@@ -462,6 +462,24 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
               {DIST_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
             </select>
           )}
+          {/* Expression values toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2,
+                        background: 'rgba(255,255,255,0.04)', borderRadius: 6,
+                        border: '1px solid var(--border)', padding: '2px 3px' }}>
+            {[['norm', 'Norm. counts'], ['vst', 'VST']].map(([val, lbl]) => (
+              <button key={val} onClick={() => setExprMode(val)}
+                      style={{
+                        fontSize: '0.72rem', padding: '2px 8px', borderRadius: 4,
+                        border: 'none', cursor: 'pointer',
+                        background: exprMode === val ? 'var(--accent)' : 'transparent',
+                        color:      exprMode === val ? '#fff'          : 'var(--text-3)',
+                        fontWeight: exprMode === val ? 600 : 400,
+                        transition: 'background 0.15s, color 0.15s',
+                      }}>
+                {lbl}
+              </button>
+            ))}
+          </div>
         </ControlGroup>
 
         {/* Palette — spans both columns */}
