@@ -263,7 +263,7 @@ export default function CustomHeatmapPanel({
   const [clusterCols,   setClusterCols]   = useState(true)
   const [distMethod,    setDistMethod]    = useState('pearson')
   const [colorBy,       setColorBy]       = useState('group')
-  const [palette,       setPalette]       = useState(['#1565C0', '#ffffff', '#B71C1C'])
+  const [palette,       setPalette]       = useState(['#2166AC', '#FFFFBF', '#D73027'])  // RdYlBu
   const [annColors,     setAnnColors]     = useState({})
   const [annGroups,     setAnnGroups]     = useState([])
   const [topN,          setTopN]          = useState(100)
@@ -276,6 +276,7 @@ export default function CustomHeatmapPanel({
   const [violinGene,   setViolinGene]   = useState(null)
   const [violinSymbol, setViolinSymbol] = useState(null)
   const [fullscreen,   setFullscreen]   = useState(false)
+  const [controlsOpen, setControlsOpen] = useState(false)
 
   // ── Initialise contrast selectors from contrastList ─────────────────────────
   useEffect(() => {
@@ -642,8 +643,33 @@ export default function CustomHeatmapPanel({
       <div style={{ flex: 1, paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 12,
                     minWidth: 0, overflowY: fullscreen ? 'auto' : 'visible' }}>
 
+        {/* Controls collapsible header */}
+        <button onClick={() => setControlsOpen(v => !v)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                  background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)',
+                  borderRadius: controlsOpen ? '8px 8px 0 0' : 8, padding: '7px 14px',
+                  cursor: 'pointer', color: 'var(--text-2)', fontSize: '0.78rem',
+                  fontWeight: 500, transition: 'border-radius 0.15s',
+                }}>
+          <span style={{
+            display: 'inline-block', transition: 'transform 0.2s',
+            transform: controlsOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+            fontSize: '0.7rem', color: 'var(--text-3)',
+          }}>▶</span>
+          Plot Controls
+          <span style={{ marginLeft: 'auto', fontSize: '0.68rem', color: 'var(--text-3)' }}>
+            {controlsOpen ? 'collapse' : 'expand'}
+          </span>
+        </button>
+
         {/* Controls grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, alignItems: 'start' }}>
+        <div style={{
+          display: controlsOpen ? 'grid' : 'none',
+          gridTemplateColumns: '1fr 1fr', gap: 8, alignItems: 'start',
+          border: '1px solid var(--border)', borderTop: 'none',
+          borderRadius: '0 0 8px 8px', padding: '12px 8px 8px',
+        }}>
 
           {/* Sample scope */}
           <ControlGroup label="Sample Scope">
@@ -729,39 +755,40 @@ export default function CustomHeatmapPanel({
             </ControlGroup>
           </div>
 
-          {/* Action buttons — full width, right-aligned */}
-          <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center' }}>
-            <button onClick={() => setFullscreen(v => !v)}
-                    title={fullscreen ? 'Exit fullscreen (Esc)' : 'Expand to fullscreen'}
-                    style={{ padding: '7px 14px', fontSize: '0.8rem', borderRadius: 8,
+        </div>
+
+        {/* Action buttons — always visible, outside the collapsible section */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center' }}>
+          <button onClick={() => setFullscreen(v => !v)}
+                  title={fullscreen ? 'Exit fullscreen (Esc)' : 'Expand to fullscreen'}
+                  style={{ padding: '7px 14px', fontSize: '0.8rem', borderRadius: 8,
+                           background: 'rgba(255,255,255,0.06)', color: 'var(--text-2)',
+                           border: '1px solid var(--border)', cursor: 'pointer' }}>
+            {fullscreen ? '⊠ Collapse' : '⊡ Expand'}
+          </button>
+          {hasPlot && (
+            <button onClick={() => promptDownload('custom-heatmap.png', name =>
+              Plotly.downloadImage(plotRef.current, {
+                format: 'png', filename: name.replace(/\.png$/i, ''),
+                width: 1600, height: 1200, scale: 2,
+              })
+            )}
+                    style={{ padding: '7px 16px', fontSize: '0.8rem', borderRadius: 8,
                              background: 'rgba(255,255,255,0.06)', color: 'var(--text-2)',
                              border: '1px solid var(--border)', cursor: 'pointer' }}>
-              {fullscreen ? '⊠ Collapse' : '⊡ Expand'}
+              ↓ Export PNG
             </button>
-            {hasPlot && (
-              <button onClick={() => promptDownload('custom-heatmap.png', name =>
-                Plotly.downloadImage(plotRef.current, {
-                  format: 'png', filename: name.replace(/\.png$/i, ''),
-                  width: 1600, height: 1200, scale: 2,
-                })
-              )}
-                      style={{ padding: '7px 16px', fontSize: '0.8rem', borderRadius: 8,
-                               background: 'rgba(255,255,255,0.06)', color: 'var(--text-2)',
-                               border: '1px solid var(--border)', cursor: 'pointer' }}>
-                ↓ Export PNG
-              </button>
-            )}
-            <button onClick={generate} disabled={loading || geneList.length === 0}
-                    style={{
-                      padding: '7px 20px', fontSize: '0.82rem', borderRadius: 8, fontWeight: 600,
-                      background: loading || !geneList.length ? 'rgba(255,255,255,0.06)' : 'var(--accent)',
-                      color: loading || !geneList.length ? 'var(--text-3)' : '#fff',
-                      border: 'none', cursor: loading || !geneList.length ? 'not-allowed' : 'pointer',
-                      transition: 'background 0.15s, color 0.15s',
-                    }}>
-              {loading ? '⏳ Generating…' : '▶ Generate Heatmap'}
-            </button>
-          </div>
+          )}
+          <button onClick={generate} disabled={loading || geneList.length === 0}
+                  style={{
+                    padding: '7px 20px', fontSize: '0.82rem', borderRadius: 8, fontWeight: 600,
+                    background: loading || !geneList.length ? 'rgba(255,255,255,0.06)' : 'var(--accent)',
+                    color: loading || !geneList.length ? 'var(--text-3)' : '#fff',
+                    border: 'none', cursor: loading || !geneList.length ? 'not-allowed' : 'pointer',
+                    transition: 'background 0.15s, color 0.15s',
+                  }}>
+            {loading ? '⏳ Generating…' : '▶ Generate Heatmap'}
+          </button>
         </div>
 
         {/* Error */}
