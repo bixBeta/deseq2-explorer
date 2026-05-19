@@ -466,7 +466,7 @@ function HeatmapTab({ session, annMap, pca, contrasts, sampleLabels = {} }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2,
                         background: 'rgba(255,255,255,0.04)', borderRadius: 6,
                         border: '1px solid var(--border)', padding: '2px 3px' }}>
-            {[['norm', 'Norm. counts'], ['vst', 'VST']].map(([val, lbl]) => (
+            {[['norm', 'DESeq2 Normalized Counts'], ['vst', 'VST (Variance-Stabilized Counts)']].map(([val, lbl]) => (
               <button key={val} onClick={() => setExprMode(val)}
                       style={{
                         fontSize: '0.72rem', padding: '2px 8px', borderRadius: 4,
