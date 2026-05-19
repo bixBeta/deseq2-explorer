@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import MAPlot          from './MAPlot'
+import VolcanoPlot     from './VolcanoPlot'
 import PCAPlot         from './PCAPlot'
 import CountsPlot      from './CountsPlot'
 import ResultsTable    from './ResultsTable'
@@ -14,6 +15,7 @@ const DEFAULT_TABS = [
   { key: 'counts',   label: 'Counts',      icon: '▦'  },
   { key: 'annotate', label: 'Annotate',    icon: '◈'  },
   { key: 'ma',       label: 'MA Plot',     icon: '╱╲' },
+  { key: 'volcano',  label: 'Volcano',     icon: '△'  },
   { key: 'pca',      label: 'PCA',         icon: '●●' },
   { key: 'table',    label: 'DE Results',  icon: '▤'  },
   { key: 'compare',  label: 'Compare',     icon: '⊕'  },
@@ -232,6 +234,13 @@ export default function Results({ results, design, onBack, onEditSamples, sessio
         </div>
         <div style={{ display: vizTab === 'ma' ? 'block' : 'none' }}>
           <MAPlot
+            design={maDesign}
+            session={session}
+            annMap={annMap}
+          />
+        </div>
+        <div style={{ display: vizTab === 'volcano' ? 'block' : 'none' }}>
+          <VolcanoPlot
             design={maDesign}
             session={session}
             annMap={annMap}
