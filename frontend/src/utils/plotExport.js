@@ -4,7 +4,7 @@ import Plotly from 'plotly.js-dist-min'
 export const KNOWN_PLOTS = [
   { id: 'counts-plot',   label: 'Counts Distribution',         group: 'Distributions',          src: 'registry' },
   { id: 'ma-plots',      label: 'MA Plots (all contrasts)',    group: 'Differential Expression', src: 'api'      },
-  { id: 'volcano-plot',  label: 'Volcano Plot',                group: 'Differential Expression', src: 'registry' },
+  { id: 'volcano-plot',  label: 'Volcano Plots (all contrasts)', group: 'Differential Expression', src: 'volcano'  },
   { id: 'pca-scatter',   label: 'PCA Scatter (interactive)',   group: 'PCA',                     src: 'pca'      },
   { id: 'pca-scree',     label: 'PCA Scree',                  group: 'PCA',                     src: 'scree'    },
   { id: 'heatmap',       label: 'Compare Heatmap',            group: 'Compare',                 src: 'registry' },
@@ -17,7 +17,7 @@ export function getAvailablePlots(registryGetAll, results) {
   const avail = new Set()
   if (registered.has('counts-plot'))    avail.add('counts-plot')
   if (results?.contrasts?.length)       avail.add('ma-plots')
-  if (registered.has('volcano-plot'))   avail.add('volcano-plot')
+  if (results?.contrasts?.length)        avail.add('volcano-plot')
   if (results?.pca?.scores?.length)     avail.add('pca-scatter')
   if (results?.pca?.variance?.length)   avail.add('pca-scree')
   if (registered.has('heatmap'))        avail.add('heatmap')
@@ -89,6 +89,86 @@ export async function fetchAndRenderMA(sessionId, contrastLabel) {
     margin: { t: 50, r: 140, b: 60, l: 70 },
   }
   return renderToPng(traces, layout, 900, 540)
+}
+
+// ── Volcano plot fetch + render ───────────────────────────────────────────────
+// Uses fixed export defaults: FDR 0.05, FC 1.5×, top-15 labels by padj
+export async function fetchAndRenderVolcano(sessionId, contrastLabel, annMap) {
+  const r = await fetch('/api/maplot', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, label: contrastLabel, annMap: annMap || null }),
+  })
+  const data = await r.json()
+  if (data.error || !data.points) return null
+
+  const FDR = 0.05
+  const LOG2FC_THRESH = Math.log2(1.5)   // ≈ 0.585
+  const negLog10 = p => (p != null && p > 0 ? -Math.log10(p) : 0)
+
+  const groups = { up: [], down: [], ns: [] }
+  for (const p of data.points) {
+    let g = 'ns'
+    if (p.padj != null && p.padj < FDR && p.log2FC != null) {
+      if      (p.log2FC >=  LOG2FC_THRESH) g = 'up'
+      else if (p.log2FC <= -LOG2FC_THRESH) g = 'down'
+    }
+    groups[g].push(p)
+  }
+
+  const mk = (arr, color, name, op) => ({
+    x: arr.map(p => p.log2FC ?? 0),
+    y: arr.map(p => negLog10(p.padj)),
+    text: arr.map(p => p.gene || p.geneId || ''),
+    mode: 'markers', type: 'scatter', name,
+    marker: { color, size: 6, opacity: op },
+    hovertemplate: '<b>%{text}</b><br>log₂FC: %{x:.2f}<br>−log₁₀(padj): %{y:.2f}<extra></extra>',
+  })
+
+  const nsLabel = data.ns_total != null && data.ns_total > groups.ns.length
+    ? `NS (${groups.ns.length.toLocaleString()} of ${data.ns_total.toLocaleString()} shown)`
+    : `NS (${groups.ns.length.toLocaleString()})`
+
+  const traces = [
+    mk(groups.ns,   '#94a3b8', nsLabel,                            0.20),
+    mk(groups.up,   '#B31B21', `Up (${groups.up.length})`,         0.80),
+    mk(groups.down, '#1465AC', `Down (${groups.down.length})`,     0.80),
+  ]
+
+  // Top-15 labels by padj
+  const sig = [...groups.up, ...groups.down]
+    .filter(p => p.padj != null)
+    .sort((a, b) => a.padj - b.padj)
+    .slice(0, 15)
+  const annotations = sig.map(p => ({
+    x: p.log2FC ?? 0, y: negLog10(p.padj),
+    text: p.gene || p.geneId || '',
+    showarrow: true, arrowhead: 0, arrowwidth: 1, arrowcolor: '#94a3b8',
+    ax: 0, ay: -18,
+    font: { size: 9, color: '#1e293b' },
+    bgcolor: 'rgba(255,255,255,0.75)', borderpad: 2,
+  }))
+
+  const fdrLine = negLog10(FDR)
+  const layout = {
+    ...LIGHT,
+    title: { text: data.label || contrastLabel, font: { size: 13, color: '#1e293b' } },
+    xaxis: { title: 'log₂ Fold Change',  gridcolor: LIGHT.grid, zeroline: true, zerolinecolor: LIGHT.zero, color: '#475569' },
+    yaxis: { title: '−log₁₀(padj)',      gridcolor: LIGHT.grid, zeroline: false, color: '#475569' },
+    showlegend: true,
+    legend: { orientation: 'h', x: 0.5, xanchor: 'center', y: -0.18 },
+    annotations,
+    margin: { t: 50, r: 30, b: 80, l: 70 },
+    shapes: [
+      { type: 'line', y0: 0, y1: 1, yref: 'paper', x0:  LOG2FC_THRESH, x1:  LOG2FC_THRESH,
+        line: { color: '#94a3b8', dash: 'dot', width: 1 } },
+      { type: 'line', y0: 0, y1: 1, yref: 'paper', x0: -LOG2FC_THRESH, x1: -LOG2FC_THRESH,
+        line: { color: '#94a3b8', dash: 'dot', width: 1 } },
+      { type: 'line', x0: 0, x1: 1, xref: 'paper', y0: fdrLine, y1: fdrLine,
+        line: { color: '#94a3b8', dash: 'dot', width: 1 } },
+    ],
+  }
+  return renderToPng(traces, layout, 900, 580)
 }
 
 // ── Scree plot ────────────────────────────────────────────────────────────────
@@ -243,7 +323,7 @@ function switchPlotTab(btn,id){
 
 // ── Capture all selected plots, return sections array ────────────────────────
 export async function captureSelectedPlots(
-  selected, available, results, design, session, registryGetAll, onProgress
+  selected, available, results, design, session, registryGetAll, onProgress, annMap
 ) {
   const withTimeout = (p, ms = 15000) =>
     Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))])
@@ -280,6 +360,22 @@ export async function captureSelectedPlots(
           sections.push({ type: 'static', anchorId: 'ma', label: `MA Plot — ${items[0].label}`, dataUri: items[0].dataUri })
         } else if (items.length > 1) {
           sections.push({ type: 'tabs', id: 'ma', anchorId: 'ma', label: 'MA Plots', items })
+        }
+      }
+      if (t.src === 'volcano') {
+        const contrasts = results?.contrasts ?? []
+        const items = []
+        for (const c of contrasts) {
+          onProgress?.(done, targets.length, `Volcano — ${c.label}`)
+          try {
+            const dataUri = await withTimeout(fetchAndRenderVolcano(session?.sessionId, c.label, annMap))
+            if (dataUri) items.push({ label: c.label, dataUri })
+          } catch (e) { console.warn(`Volcano failed: ${c.label}`, e) }
+        }
+        if (items.length === 1) {
+          sections.push({ type: 'static', anchorId: 'volcano', label: `Volcano Plot — ${items[0].label}`, dataUri: items[0].dataUri })
+        } else if (items.length > 1) {
+          sections.push({ type: 'tabs', id: 'volcano', anchorId: 'volcano', label: 'Volcano Plots', items })
         }
       }
       if (t.src === 'pca') {

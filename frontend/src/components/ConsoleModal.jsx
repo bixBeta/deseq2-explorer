@@ -514,7 +514,7 @@ function ParamTable({ rows }) {
 }
 
 // ── Main ConsoleModal ─────────────────────────────────────────────────────────
-export default function ConsoleModal({ onClose, session, design, results, parseInfo, gseaRuns }) {
+export default function ConsoleModal({ onClose, session, design, results, parseInfo, gseaRuns, annMap }) {
   const { promptDownload, dialog } = useDownloadDialog()
   const registry = usePlotRegistry()
   const [tab, setTab] = useState('methods')
@@ -577,7 +577,8 @@ export default function ConsoleModal({ onClose, session, design, results, parseI
       plotSections = await captureSelectedPlots(
         plotSelected, plotAvailable, results, design, session,
         () => registry.getAll(),
-        (done, total, current) => setExportProg({ done, total, current })
+        (done, total, current) => setExportProg({ done, total, current }),
+        annMap
       )
     }
 

@@ -541,6 +541,7 @@ export default function App() {
           results={results}
           parseInfo={parseInfo}
           gseaRuns={gseaRuns}
+          annMap={annMap}
         />
       )}
 
