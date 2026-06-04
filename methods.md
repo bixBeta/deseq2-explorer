@@ -6,14 +6,17 @@
 - [Pre-filtering](#pre-filtering)
 - [Differential Expression Analysis](#differential-expression-analysis)
 - [MA Plot](#ma-plot)
+- [Volcano Plot](#volcano-plot)
 - [Principal Component Analysis](#principal-component-analysis)
 - [Count Distributions](#count-distributions)
 - [Gene Violin Plot](#gene-violin-plot)
 - [Multi-group Gene Plot](#multi-group-gene-plot)
 - [UpSet Plot](#upset-plot)
 - [Heatmap](#heatmap)
+- [Custom Heatmap](#custom-heatmap)
 - [Gene Annotation](#gene-annotation)
 - [Gene Set Enrichment Analysis (GSEA)](#gene-set-enrichment-analysis-gsea)
+- [GSEA Leading-Edge Heatmap](#gsea-leading-edge-heatmap)
 - [GSEA Compare — Pathway Overlap Analysis](#gsea-compare--pathway-overlap-analysis)
 
 ---
@@ -28,26 +31,6 @@ Data are supplied as an R `.rds` file containing a named list with two required 
 Counts are rounded to the nearest integer before analysis. Metadata columns are coerced to character to prevent factor-level integer encoding.
 
 Alternatively, a plain `prcomp` object or a named list with `$scores`/`$variance`/`$loadings` elements can be supplied for PCA-only sessions.
-
-### Data Prep Tool — count matrix construction
-
-The bundled Data Prep Tool (WebR, runs entirely in the browser) can assemble the RDS from raw count files before upload. The following input formats are supported:
-
-**Standard per-sample count files** (featureCounts, HTSeq-count, generic `.counts`)
-Two-column tab/comma-separated files with gene IDs in column 1 and counts in column 2. When multiple files are dropped, a union gene matrix is built: gene IDs are unioned across all files in first-appearance order; missing values are filled with 0. Summary rows beginning with `__` or `N_` are skipped.
-
-**STAR `ReadsPerGene.out.tab`**
-STAR outputs four columns per file: gene ID, unstranded counts, forward-strand counts, and reverse-strand counts. Files are auto-detected by the presence of four tab-delimited columns and at least one `N_unmapped` summary row in the first 10 lines.
-
-After detection, a strandedness picker modal is shown. Column totals (summed across all files, reported in millions) are computed to help users identify the correct strandedness:
-
-| Selection | Column used | Typical protocol |
-|-----------|-------------|-----------------|
-| Unstranded | Column 2 | Non-strand-specific libraries |
-| Forward (1st read strand) | Column 3 | dUTP-based kits (e.g. TruSeq Stranded) |
-| Reverse (2nd read strand) | Column 4 | Illumina TruSeq RF |
-
-The column with the highest total count sum is auto-suggested as the most likely correct strandedness. The user can override this selection before confirming matrix construction.
 
 ---
 
@@ -130,6 +113,22 @@ points  <- points[sort(c(which(is_sig), ns_idx))]
 
 ---
 
+## Volcano Plot
+
+The Volcano Plot displays −log₁₀(adjusted p-value) on the y-axis against log₂ fold change on the x-axis for all tested genes in the selected contrast. This allows simultaneous visualisation of effect size and statistical significance.
+
+Points are coloured by regulation status using user-configurable thresholds:
+
+| Status | Criteria | Default colour |
+|---|---|---|
+| Up-regulated | padj < FDR **and** log₂FC ≥ +threshold | Red (`#B31B21`) |
+| Down-regulated | padj < FDR **and** log₂FC ≤ −threshold | Blue (`#1465AC`) |
+| Non-significant | padj ≥ FDR **or** |log₂FC| < threshold | Grey |
+
+Vertical dashed reference lines are drawn at ±log₂FC threshold; a horizontal dashed line marks the −log₁₀(FDR) significance cutoff. The top N most significant DEGs (default: 10) are labelled with their gene symbol (if annotation has been applied) using a non-overlapping label layout. All points support hover tooltips showing gene ID, symbol, log₂FC, and padj. The plot is rendered client-side using [Plotly.js](https://plotly.com/javascript/).
+
+---
+
 ## Principal Component Analysis
 
 PCA is computed on `varianceStabilizingTransformation(dds, blind = TRUE)` counts, matching the DESeq2 `plotPCA()` convention for exploratory ordination. The top N most variable genes (by row variance) are selected using `rowVars()` from the `matrixStats` package, and `prcomp()` is applied to the transposed matrix (`scale. = FALSE`). By default, all genes are used (`ntop = NULL`); the user can restrict to the top N via the frontend control (UI default: 500).
@@ -169,7 +168,7 @@ Distributions are visualised as violin plots with embedded box plots using Plotl
 
 ## Gene Violin Plot
 
-Single-gene expression is visualised as a violin + jitter + box plot using [`ggpubr`](https://cran.r-project.org/package=ggpubr) (`ggviolin()`). Expression values are log₂-transformed raw integer counts (`log2(counts + 1)`). A Wilcoxon rank-sum test (`wilcox.test`) is applied between the two contrast groups using `stat_compare_means()`, with significance annotations (ns / * / ** / *** / ****) and exact p-value label. DESeq2 statistics (baseMean, log₂FC, lfcSE, p-value, padj) for the gene in the selected contrast are displayed alongside the plot.
+Single-gene expression is visualised as a violin + jitter + box plot using [`ggpubr`](https://cran.r-project.org/package=ggpubr) (`ggviolin()`). Expression values are log₂-transformed raw integer counts (`log2(counts + 1)`). A Wilcoxon rank-sum test (`wilcox.test`) is applied between the two contrast groups using `stat_compare_means()`, with significance annotations (`*** p<0.001 · ** p<0.01 · * p<0.05 · ns p≥0.05`) and exact p-value label. DESeq2 statistics (baseMean, log₂FC, lfcSE, p-value, padj) for the gene in the selected contrast are displayed alongside the plot.
 
 ```r
 p <- ggviolin(df, x = "group", y = "expr", fill = "group",
@@ -258,11 +257,37 @@ The heatmap colour palette is user-configurable. A three-point colour gradient (
 
 ### Column annotation
 
-An optional annotation bar above the sample columns is drawn using sample metadata. The user selects a metadata column (e.g. treatment group). Group colours are assigned from a default qualitative palette and can be individually overridden via per-group colour pickers in the sidebar. Custom colours are passed to `heatmaply` as a named palette function and applied to the annotation track.
+An optional annotation bar above the sample columns is drawn using sample metadata. The user selects a metadata column (e.g. treatment group); group colours are assigned from a fixed qualitative palette.
 
-### On-demand generation
+---
 
-Heatmaps are generated only when the user explicitly clicks **Generate Heatmap**. Parameter changes (clustering method, colour scale, annotation column, custom colours) do not trigger automatic re-renders, preventing unintended recomputation on large gene sets.
+## Custom Heatmap
+
+The Custom Heatmap panel provides a flexible gene-level heatmap builder that is independent of the contrast-based DEG filtering used in the Compare Heatmap. Genes can be accumulated from multiple sources in any combination:
+
+### Gene accumulation methods
+
+**Cutoff filter** — Select a contrast and apply FDR, |log₂FC|, and baseMean thresholds. All passing DEGs are added to the gene set. A live count shows how many genes match the current thresholds before adding.
+
+**Search** — Free-text search across gene IDs and symbols (debounced, results capped at 50). Click any result to add it.
+
+**Paste / bulk add** — Paste or type a list of identifiers using any delimiter (newline, comma, tab, space). Symbols are resolved to gene IDs via the loaded annotation map before submission; unresolved tokens are passed through as-is for backend resolution.
+
+Added genes appear as removable chips. Duplicate genes are automatically deduplicated. The full accumulated gene set is sent to `/api/heatmap` with `customGenes` overriding the normal DEG-filter pipeline.
+
+### Sample scope
+
+A **sample scope** toggle allows restricting the heatmap columns to the samples of a single contrast (treatment + reference groups only). When *Contrast-limited* is selected, only samples belonging to the chosen contrast are retained before Z-scoring, ensuring the expression scale reflects that specific comparison rather than the full experiment.
+
+```r
+# backend: applied before Z-score computation
+if (!is.null(sample_subset)) {
+  keep_cols <- intersect(sample_subset, colnames(sub_mat))
+  if (length(keep_cols) > 0) sub_mat <- sub_mat[, keep_cols, drop = FALSE]
+}
+```
+
+All other display options (Z-score vs. VST mode, hierarchical clustering, distance method, colour palette, column annotation) are shared with the Compare Heatmap (see [Heatmap](#heatmap) above).
 
 ---
 
@@ -536,6 +561,22 @@ enrichplot::gseaplot2(gsea_tmp, geneSetID = pathway_sel,
 
 ---
 
+## GSEA Leading-Edge Heatmap
+
+The **Heatmap** tab within the GSEA panel displays the expression of leading-edge genes from one or more selected GSEA pathways as an interactive clustered heatmap.
+
+### Gene selection
+
+Leading-edge genes are extracted from the cached GSEA result (`core_enrichment` field) for all currently selected pathways. Genes are pooled and deduplicated across pathways, then sent to `/api/heatmap` using the `customGenes` parameter — the same endpoint used by the [Custom Heatmap](#custom-heatmap). This bypasses the DEG-filter pipeline and renders expression directly for the specified gene set.
+
+### Display
+
+Expression values are Z-score standardised per gene (row) across all samples, using either normalised counts (`log₂(size-factor-normalised counts + 1)`) or VST values, depending on the mode toggle. Hierarchical clustering and colour palette options are the same as the [Heatmap](#heatmap) section above. Column annotation is available if metadata columns are present in the PCA scores object.
+
+The heatmap title reflects the pathway label(s) included in the gene set. When multiple pathways are selected, the title lists all pathway names to make the source explicit.
+
+---
+
 ## GSEA Compare — Pathway Overlap Analysis
 
 The **GSEA Compare** tab allows cross-run, cross-contrast comparison of GSEA results by analysing the overlap between the leading-edge gene sets of selected pathways.
@@ -564,11 +605,3 @@ All three metrics are displayed in the pairwise overlap matrix. The matrix can b
 ### Pathway selection
 
 Pathways are drawn from all GSEA runs in the current session. Runs are filterable by adjusted p-value cutoff and by a top-N per run limit. A free-text search box further narrows the pathway list by name. Selected pathways are summarised in a detail table (paginated, 20 rows per page) showing pathway name, run label, contrast, NES, padj, and leading-edge gene count, with row hover highlighting for readability.
-
-### Pathway Heatmap
-
-For one or more selected pathways, a heatmap of leading-edge gene expression across samples can be generated on demand. Expression values are Z-score standardized VST counts (identical to the DE heatmap). Only genes present in the leading-edge set of at least one selected pathway are included; all leading-edge genes are shown (no Top N truncation).
-
-Gene IDs are resolved to display symbols using the session's annotation map when available. The `annMap` is pre-filtered to the leading-edge gene set before the backend call to avoid sending irrelevant mappings.
-
-Column annotation, clustering method, and colour palette follow the same logic as the DE heatmap (see [Heatmap](#heatmap) above). Per-group annotation colours can be customised via colour pickers in the sidebar. The heatmap is generated only on explicit user action (**Generate Heatmap** button).
