@@ -388,10 +388,24 @@ function PathwayHeatmapModal({ pathway, genes, session, pca, annMap, sampleLabel
           </div>
         </div>
 
-        {/* Resize handle */}
+        {/* Resize handles: bottom edge, right edge, corner */}
+        <div onMouseDown={e => {
+          e.preventDefault(); e.stopPropagation()
+          const startY = e.clientY, startH = cardRef.current?.offsetHeight ?? size.height
+          const onMove = ev => setSize(s => ({ ...s, height: Math.max(420, Math.min(startH + ev.clientY - startY, Math.floor(window.innerHeight * 0.97))) }))
+          const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); window.addEventListener('click', ev => ev.stopPropagation(), { capture: true, once: true }) }
+          window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
+        }} style={{ position: 'absolute', bottom: 0, left: 0, right: 18, height: 8, cursor: 'ns-resize', zIndex: 3 }} />
+        <div onMouseDown={e => {
+          e.preventDefault(); e.stopPropagation()
+          const startX = e.clientX, startW = cardRef.current?.offsetWidth ?? size.width
+          const onMove = ev => setSize(s => ({ ...s, width: Math.max(640, Math.min(startW + ev.clientX - startX, Math.floor(window.innerWidth * 0.97))) }))
+          const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); window.addEventListener('click', ev => ev.stopPropagation(), { capture: true, once: true }) }
+          window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
+        }} style={{ position: 'absolute', top: 0, right: 0, bottom: 18, width: 8, cursor: 'ew-resize', zIndex: 3 }} />
         <div onMouseDown={onResizeStart}
              style={{ position: 'absolute', bottom: 0, right: 0, width: 18, height: 18,
-                      cursor: 'se-resize', zIndex: 2,
+                      cursor: 'se-resize', zIndex: 4,
                       background: 'linear-gradient(135deg, transparent 50%, var(--border) 50%)',
                       borderBottomRightRadius: 16 }} />
       </div>

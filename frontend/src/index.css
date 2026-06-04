@@ -183,6 +183,9 @@ body.light .plus-grid {
   border-radius: 14px;
 }
 body.light .glass { box-shadow: 0 2px 20px rgba(0,0,0,0.07); }
+/* When GSEA panel is fullscreen, neutralise backdrop-filter on .glass so that
+   position:fixed on the panel escapes the glass card's stacking context. */
+body[data-gsea-fs] .glass { backdrop-filter: none !important; }
 
 .glass2 {
   background: var(--bg-card2);
@@ -337,6 +340,10 @@ input[type="range"]::-moz-range-thumb {
 
 /* ── Modebar ─────────────────────────────────────────────────────────────── */
 .modebar-container, .modebar, .modebar-group { background: transparent !important; }
+/* Make toolbar icons visible in light mode by following the app's text color */
+.modebar-btn path { fill: var(--text-2) !important; transition: fill 0.15s; }
+.modebar-btn:hover path { fill: var(--text-1) !important; }
+.modebar-btn.active path { fill: var(--accent) !important; }
 
 /* ── Resizable MA-plot wrapper ───────────────────────────────────────────── */
 .resizable-plot {

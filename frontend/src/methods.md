@@ -6,14 +6,17 @@
 - [Pre-filtering](#pre-filtering)
 - [Differential Expression Analysis](#differential-expression-analysis)
 - [MA Plot](#ma-plot)
+- [Volcano Plot](#volcano-plot)
 - [Principal Component Analysis](#principal-component-analysis)
 - [Count Distributions](#count-distributions)
 - [Gene Violin Plot](#gene-violin-plot)
 - [Multi-group Gene Plot](#multi-group-gene-plot)
 - [UpSet Plot](#upset-plot)
 - [Heatmap](#heatmap)
+- [Custom Heatmap](#custom-heatmap)
 - [Gene Annotation](#gene-annotation)
 - [Gene Set Enrichment Analysis (GSEA)](#gene-set-enrichment-analysis-gsea)
+- [GSEA Leading-Edge Heatmap](#gsea-leading-edge-heatmap)
 - [GSEA Compare — Pathway Overlap Analysis](#gsea-compare--pathway-overlap-analysis)
 
 ---
@@ -107,6 +110,22 @@ ns_idx  <- which(!is_sig)
 if (length(ns_idx) > NS_MAX) { set.seed(42L); ns_idx <- sample(ns_idx, NS_MAX) }
 points  <- points[sort(c(which(is_sig), ns_idx))]
 ```
+
+---
+
+## Volcano Plot
+
+The Volcano Plot displays −log₁₀(adjusted p-value) on the y-axis against log₂ fold change on the x-axis for all tested genes in the selected contrast. This allows simultaneous visualisation of effect size and statistical significance.
+
+Points are coloured by regulation status using user-configurable thresholds:
+
+| Status | Criteria | Default colour |
+|---|---|---|
+| Up-regulated | padj < FDR **and** log₂FC ≥ +threshold | Red (`#B31B21`) |
+| Down-regulated | padj < FDR **and** log₂FC ≤ −threshold | Blue (`#1465AC`) |
+| Non-significant | padj ≥ FDR **or** |log₂FC| < threshold | Grey |
+
+Vertical dashed reference lines are drawn at ±log₂FC threshold; a horizontal dashed line marks the −log₁₀(FDR) significance cutoff. The top N most significant DEGs (default: 10) are labelled with their gene symbol (if annotation has been applied) using a non-overlapping label layout. All points support hover tooltips showing gene ID, symbol, log₂FC, and padj. The plot is rendered client-side using [Plotly.js](https://plotly.com/javascript/).
 
 ---
 
@@ -239,6 +258,36 @@ The heatmap colour palette is user-configurable. A three-point colour gradient (
 ### Column annotation
 
 An optional annotation bar above the sample columns is drawn using sample metadata. The user selects a metadata column (e.g. treatment group); group colours are assigned from a fixed qualitative palette.
+
+---
+
+## Custom Heatmap
+
+The Custom Heatmap panel provides a flexible gene-level heatmap builder that is independent of the contrast-based DEG filtering used in the Compare Heatmap. Genes can be accumulated from multiple sources in any combination:
+
+### Gene accumulation methods
+
+**Cutoff filter** — Select a contrast and apply FDR, |log₂FC|, and baseMean thresholds. All passing DEGs are added to the gene set. A live count shows how many genes match the current thresholds before adding.
+
+**Search** — Free-text search across gene IDs and symbols (debounced, results capped at 50). Click any result to add it.
+
+**Paste / bulk add** — Paste or type a list of identifiers using any delimiter (newline, comma, tab, space). Symbols are resolved to gene IDs via the loaded annotation map before submission; unresolved tokens are passed through as-is for backend resolution.
+
+Added genes appear as removable chips. Duplicate genes are automatically deduplicated. The full accumulated gene set is sent to `/api/heatmap` with `customGenes` overriding the normal DEG-filter pipeline.
+
+### Sample scope
+
+A **sample scope** toggle allows restricting the heatmap columns to the samples of a single contrast (treatment + reference groups only). When *Contrast-limited* is selected, only samples belonging to the chosen contrast are retained before Z-scoring, ensuring the expression scale reflects that specific comparison rather than the full experiment.
+
+```r
+# backend: applied before Z-score computation
+if (!is.null(sample_subset)) {
+  keep_cols <- intersect(sample_subset, colnames(sub_mat))
+  if (length(keep_cols) > 0) sub_mat <- sub_mat[, keep_cols, drop = FALSE]
+}
+```
+
+All other display options (Z-score vs. VST mode, hierarchical clustering, distance method, colour palette, column annotation) are shared with the Compare Heatmap (see [Heatmap](#heatmap) above).
 
 ---
 
@@ -509,6 +558,22 @@ enrichplot::gseaplot2(gsea_tmp, geneSetID = pathway_sel,
 ```
 
 > **Note:** `gseaplot2()` returns a `cowplot` composite object. The `+` operator cannot be used to add ggplot2 layers to it; all styling must be done via its own parameters before the call.
+
+---
+
+## GSEA Leading-Edge Heatmap
+
+The **Heatmap** tab within the GSEA panel displays the expression of leading-edge genes from one or more selected GSEA pathways as an interactive clustered heatmap.
+
+### Gene selection
+
+Leading-edge genes are extracted from the cached GSEA result (`core_enrichment` field) for all currently selected pathways. Genes are pooled and deduplicated across pathways, then sent to `/api/heatmap` using the `customGenes` parameter — the same endpoint used by the [Custom Heatmap](#custom-heatmap). This bypasses the DEG-filter pipeline and renders expression directly for the specified gene set.
+
+### Display
+
+Expression values are Z-score standardised per gene (row) across all samples, using either normalised counts (`log₂(size-factor-normalised counts + 1)`) or VST values, depending on the mode toggle. Hierarchical clustering and colour palette options are the same as the [Heatmap](#heatmap) section above. Column annotation is available if metadata columns are present in the PCA scores object.
+
+The heatmap title reflects the pathway label(s) included in the gene set. When multiple pathways are selected, the title lists all pathway names to make the source explicit.
 
 ---
 

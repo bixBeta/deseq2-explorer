@@ -4,12 +4,15 @@ import { usePlotRegistry } from '../context/PlotRegistryContext'
 import { useDownloadDialog } from './DownloadDialog'
 import deseq2LogoRaw from '../assets/deseq2-applogo.svg?raw'
 
-// ── Known plots (no heatmap) ──────────────────────────────────────────────────
+// ── Known plots ───────────────────────────────────────────────────────────────
 const KNOWN_PLOTS = [
-  { id: 'counts-plot', label: 'Counts Distribution',          group: 'Distributions',          src: 'registry' },
-  { id: 'ma-plots',    label: 'MA Plots (all contrasts)',     group: 'Differential Expression', src: 'api'      },
-  { id: 'pca-scatter', label: 'PCA Scatter (interactive)',    group: 'PCA',                     src: 'pca'      },
-  { id: 'pca-scree',   label: 'PCA Scree',                   group: 'PCA',                     src: 'scree'    },
+  { id: 'counts-plot',   label: 'Counts Distribution',          group: 'Distributions',          src: 'registry' },
+  { id: 'ma-plots',      label: 'MA Plots (all contrasts)',     group: 'Differential Expression', src: 'api'      },
+  { id: 'volcano-plot',  label: 'Volcano Plot',                 group: 'Differential Expression', src: 'registry' },
+  { id: 'pca-scatter',   label: 'PCA Scatter (interactive)',    group: 'PCA',                     src: 'pca'      },
+  { id: 'pca-scree',     label: 'PCA Scree',                   group: 'PCA',                     src: 'scree'    },
+  { id: 'heatmap',       label: 'Compare Heatmap',             group: 'Compare',                 src: 'registry' },
+  { id: 'custom-heatmap',label: 'Custom Heatmap',              group: 'Custom Heatmap',          src: 'registry' },
 ]
 
 // ── Off-screen Plotly render → PNG data URI ───────────────────────────────────
@@ -308,10 +311,13 @@ export default function PlotExportModal({ open, onClose, session, results, desig
     if (!open) return
     const registered = new Set(registry.getAll().map(p => p.id))
     const avail = new Set()
-    if (registered.has('counts-plot')) avail.add('counts-plot')
-    if (results?.contrasts?.length)    avail.add('ma-plots')
-    if (results?.pca?.scores?.length)  avail.add('pca-scatter')
-    if (results?.pca?.variance?.length) avail.add('pca-scree')
+    if (registered.has('counts-plot'))    avail.add('counts-plot')
+    if (results?.contrasts?.length)       avail.add('ma-plots')
+    if (registered.has('volcano-plot'))   avail.add('volcano-plot')
+    if (results?.pca?.scores?.length)     avail.add('pca-scatter')
+    if (results?.pca?.variance?.length)   avail.add('pca-scree')
+    if (registered.has('heatmap'))        avail.add('heatmap')
+    if (registered.has('custom-heatmap')) avail.add('custom-heatmap')
     setAvailable(avail)
   }, [open, registry, results])
 
@@ -489,6 +495,7 @@ export default function PlotExportModal({ open, onClose, session, results, desig
                     : p.id === 'ma-plots' && contrastCount > 1 ? `${contrastCount} contrasts`
                     : p.id === 'ma-plots' && contrastCount === 1 ? '1 contrast'
                     : p.id === 'pca-scatter' ? 'interactive'
+                    : (p.id === 'volcano-plot' || p.id === 'heatmap' || p.id === 'custom-heatmap') ? 'current view'
                     : null
                   return (
                     <label key={p.id} style={{

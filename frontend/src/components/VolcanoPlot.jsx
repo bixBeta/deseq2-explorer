@@ -143,16 +143,18 @@ export default function VolcanoPlot({ design, session, annMap }) {
       borderpad: 2,
     }))
 
+    const isLight     = document.body.classList.contains('light')
     const textColor   = cssVar('--text-1')   || '#1e293b'
     const text2Color  = cssVar('--text-2')   || '#475569'
     const borderColor = cssVar('--border')   || '#e2e8f0'
     const zeroColor   = cssVar('--text-3')   || '#94a3b8'
-    const bgColor     = cssVar('--bg-panel') || '#ffffff'
+    // Axis titles: full white in dark mode for better contrast, textColor in light
+    const axisLabelColor = isLight ? textColor : '#ffffff'
 
     const layout = {
       title: { text: plotLabel, font: { size: 14, color: textColor } },
       xaxis: {
-        title: 'log₂ Fold Change',
+        title: { text: 'log₂ Fold Change', font: { size: 13, color: axisLabelColor } },
         gridcolor: borderColor,
         zeroline: true,
         zerolinecolor: zeroColor,
@@ -160,21 +162,21 @@ export default function VolcanoPlot({ design, session, annMap }) {
         color: text2Color,
       },
       yaxis: {
-        title: '−log₁₀(padj)',
+        title: { text: '−log₁₀(padj)', font: { size: 13, color: axisLabelColor } },
         gridcolor: borderColor,
         zeroline: false,
         color: text2Color,
       },
-      plot_bgcolor:  bgColor,
-      paper_bgcolor: bgColor,
+      plot_bgcolor:  'rgba(0,0,0,0)',
+      paper_bgcolor: 'rgba(0,0,0,0)',
       legend: {
-        orientation: 'h', y: -0.13, x: 0.5, xanchor: 'center',
+        orientation: 'h', y: -0.15, x: 0.5, xanchor: 'center',
         font: { size: 11, color: text2Color },
       },
       annotations,
       height: 800,
-      width: plotRef.current ? plotRef.current.clientWidth : undefined,
-      margin: { t: 50, r: 24, b: 70, l: 64 },
+      autosize: true,
+      margin: { t: 50, r: 24, b: 80, l: 72 },
       hovermode: 'closest',
       shapes: [
         // Vertical FC threshold lines
@@ -217,6 +219,19 @@ export default function VolcanoPlot({ design, session, annMap }) {
       setViolinSymbol(gene !== geneId ? gene : null)
     })
   }, [rawPoints, nsTotal, fdr, fc, topN, size, labelBy, plotLabel])
+
+  // Resize whenever the *parent* container changes size (tab becoming visible, panel resize).
+  // Observing the parent — not the plot element itself — avoids a resize → DOM change → resize loop.
+  useEffect(() => {
+    const el = plotRef.current
+    const parent = el?.parentElement
+    if (!parent) return
+    const ro = new ResizeObserver(() => {
+      if (el._fullLayout) Plotly.Plots.resize(el)
+    })
+    ro.observe(parent)
+    return () => ro.disconnect()
+  }, [])
 
   if (!session?.sessionId) {
     return (

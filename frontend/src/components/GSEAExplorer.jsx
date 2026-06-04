@@ -758,11 +758,25 @@ function DistributionModal({ histData, cutoffLog, cutoffOrig, filterValue, setFi
           )}
         </div>
 
-        {/* ── Resize handle ── */}
+        {/* ── Resize handles: bottom edge, right edge, corner ── */}
+        <div onMouseDown={e => {
+          e.preventDefault(); e.stopPropagation(); wasDragging.current = true
+          const startY = e.clientY, startH = modalRef.current?.getBoundingClientRect().height ?? size.h
+          const onMove = ev => setSize(s => ({ ...s, h: Math.max(480, startH + ev.clientY - startY) }))
+          const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); setTimeout(() => { wasDragging.current = false }, 0) }
+          window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
+        }} style={{ position:'absolute', bottom:0, left:0, right:18, height:8, cursor:'ns-resize', zIndex:10 }} />
+        <div onMouseDown={e => {
+          e.preventDefault(); e.stopPropagation(); wasDragging.current = true
+          const startX = e.clientX, startW = modalRef.current?.getBoundingClientRect().width ?? size.w
+          const onMove = ev => setSize(s => ({ ...s, w: Math.max(720, startW + ev.clientX - startX) }))
+          const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); setTimeout(() => { wasDragging.current = false }, 0) }
+          window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
+        }} style={{ position:'absolute', top:0, right:0, bottom:18, width:8, cursor:'ew-resize', zIndex:10 }} />
         <div onMouseDown={onResizeMouseDown} style={{
           position:'absolute', bottom:0, right:0, width:18, height:18, cursor:'nwse-resize',
           display:'flex', alignItems:'flex-end', justifyContent:'flex-end',
-          padding:'3px', color:'var(--text-3)', fontSize:'0.7rem', lineHeight:1, userSelect:'none',
+          padding:'3px', color:'var(--text-3)', fontSize:'0.7rem', lineHeight:1, userSelect:'none', zIndex:11,
         }}>◢</div>
       </div>
     </div>,
@@ -1169,7 +1183,7 @@ function PathwayPicker({ options, selected, onChange, accent }) {
   )
 }
 
-function PlotsPanel({ run, session, contrastLabel }) {
+function PlotsPanel({ run, session, contrastLabel, imgSrcCache }) {
   const { promptDownload, dialog } = useDownloadDialog()
   const [plotType,   setPlotType]   = useState('dotplot')
   const [nShow,      setNShow]      = useState(20)
@@ -1180,9 +1194,18 @@ function PlotsPanel({ run, session, contrastLabel }) {
   const [colorNeg,   setColorNeg]   = useState('#457b9d')
   const [selPathways,  setSelPathways]  = useState([])
   const [loading,    setLoading]    = useState(false)
-  const [imgSrc,     setImgSrc]     = useState(null)
+  // Initialise from cache so image survives fsPanel portal remounts
+  const [imgSrc,     setImgSrcState] = useState(() => imgSrcCache?.current ?? null)
+  const setImgSrc = useCallback((src) => {
+    setImgSrcState(src)
+    if (imgSrcCache) imgSrcCache.current = src
+  }, [imgSrcCache])
   const [error,      setError]      = useState(null)
-  const [fullscreen, setFullscreen] = useState(false)
+  const [imgContainerHeight, setImgContainerHeight] = useState(500)
+  const [imgContainerWidth,  setImgContainerWidth]  = useState(null)
+  const imgContainerRef = useRef(null)
+  const imgWrapperRef   = useRef(null)
+  const generateRef     = useRef(null)   // always points to latest doGenerate
 
   const pathwaysForPlot = plotType === 'heatplot' || plotType === 'cnetplot' || plotType === 'gsea_plot'
   const availablePathways = useMemo(() => (run?.results ?? []).map(r => r.pathway).filter(Boolean), [run])
@@ -1191,14 +1214,8 @@ function PlotsPanel({ run, session, contrastLabel }) {
   // Clear selection when run changes
   useEffect(() => { setSelPathways([]) }, [run])
 
-  // Escape key closes fullscreen
-  useEffect(() => {
-    const handler = e => { if (e.key === 'Escape') setFullscreen(false) }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [])
 
-  const handleGenerate = async () => {
+  const doGenerate = async (w, h) => {
     if (!run || !session?.sessionId) return
     setLoading(true); setError(null); setImgSrc(null)
     try {
@@ -1217,8 +1234,8 @@ function PlotsPanel({ run, session, contrastLabel }) {
             font_size: fontSize,
             color_pos: colorPos,
             color_neg: colorNeg,
-            width,
-            height,
+            width:     w,
+            height:    h,
             pathways:  pathwayList.length ? pathwayList : null,
           },
         }),
@@ -1229,6 +1246,10 @@ function PlotsPanel({ run, session, contrastLabel }) {
     } catch(e) { setError(e.message) }
     finally { setLoading(false) }
   }
+  // Keep ref always pointing to latest closure so resize handlers can call it
+  generateRef.current = doGenerate
+
+  const handleGenerate = () => doGenerate(width, height)
 
   const downloadPng = () => {
     if (!imgSrc) return
@@ -1237,6 +1258,44 @@ function PlotsPanel({ run, session, contrastLabel }) {
       a.click()
     })
   }
+
+  const handleImgResizeHeight = useCallback(e => {
+    e.preventDefault()
+    const el = imgContainerRef.current
+    if (!el) return
+    const startY = e.clientY, startH = el.getBoundingClientRect().height
+    document.body.classList.add('plot-resizing')
+    const onMove = ev => { el.style.height = `${Math.max(200, startH + (ev.clientY - startY))}px` }
+    const onUp = ev => {
+      window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp)
+      document.body.classList.remove('plot-resizing')
+      const newPxH = Math.max(200, startH + (ev.clientY - startY))
+      const newH   = Math.max(3, Math.min(20, Math.round(newPxH / 72)))
+      setImgContainerHeight(newPxH)
+      setHeight(newH)
+      generateRef.current?.(width, newH)
+    }
+    window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
+  }, [width])
+
+  const handleImgResizeWidth = useCallback(e => {
+    e.preventDefault()
+    const el = imgWrapperRef.current
+    if (!el) return
+    const startX = e.clientX, startW = el.getBoundingClientRect().width
+    document.body.classList.add('plot-resizing-h')
+    const onMove = ev => { el.style.width = `${Math.max(300, startW + (ev.clientX - startX))}px` }
+    const onUp = ev => {
+      window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp)
+      document.body.classList.remove('plot-resizing-h')
+      const newPxW = Math.max(300, startW + (ev.clientX - startX))
+      const newW   = Math.max(4, Math.min(30, Math.round(newPxW / 72)))
+      setImgContainerWidth(newPxW)
+      setWidth(newW)
+      generateRef.current?.(newW, height)
+    }
+    window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
+  }, [height])
 
   const CB = `1px solid var(--border)`
 
@@ -1325,56 +1384,72 @@ function PlotsPanel({ run, session, contrastLabel }) {
         {dialog}
       </div>
 
-      {/* Image area */}
-      <div style={{ flex:1, minWidth:0, borderRadius:10, border:CB, background: imgSrc && !loading ? '#ffffff' : 'var(--bg-card)', minHeight:420,
-        display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', position:'relative' }}>
-        {loading && (
-          <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:12 }}>
-            <div style={{ width:36, height:36, borderRadius:'50%', border:`3px solid ${V.muted}`, borderTopColor:V.accent, animation:'gsea-spin 0.8s linear infinite' }} />
-            <span style={{ fontSize:'0.8rem', color:'var(--text-3)' }}>Rendering with R…</span>
+      {/* Image area — with two-axis resize handles */}
+      <div ref={imgWrapperRef} style={{
+        flex: imgContainerWidth ? '0 0 auto' : 1,
+        minWidth: imgContainerWidth ? imgContainerWidth : 300,
+        width: imgContainerWidth ?? undefined,
+        flexShrink: 0,
+        display: 'flex', flexDirection: 'row', alignItems: 'stretch', alignSelf: 'flex-start',
+      }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          {/* Main image container */}
+          <div ref={imgContainerRef} style={{
+            borderRadius: 10, border: CB,
+            background: imgSrc && !loading ? '#ffffff' : 'var(--bg-card)',
+            height: imgContainerHeight, minHeight: 200,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            overflow: 'hidden', position: 'relative',
+          }}>
+            {loading && (
+              <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:12 }}>
+                <div style={{ width:36, height:36, borderRadius:'50%', border:`3px solid ${V.muted}`, borderTopColor:V.accent, animation:'gsea-spin 0.8s linear infinite' }} />
+                <span style={{ fontSize:'0.8rem', color:'var(--text-3)' }}>Rendering with R…</span>
+              </div>
+            )}
+            {error && (
+              <div style={{ padding:24, maxWidth:420, textAlign:'center' }}>
+                <div style={{ fontSize:'1.4rem', marginBottom:8 }}>⚠</div>
+                <div style={{ fontSize:'0.78rem', color:'#f87171', lineHeight:1.6 }}>{error}</div>
+              </div>
+            )}
+            {imgSrc && !loading && (
+              <img src={imgSrc} alt={plotType} style={{ maxWidth:'100%', maxHeight:'100%', objectFit:'contain' }} />
+            )}
+            {!imgSrc && !loading && !error && (
+              <div style={{ textAlign:'center', color:'var(--text-3)', padding:40 }}>
+                <div style={{ fontSize:'2.5rem', opacity:0.15, marginBottom:10 }}>◈</div>
+                <div style={{ fontSize:'0.82rem' }}>Select a plot type and click Generate</div>
+              </div>
+            )}
           </div>
-        )}
-        {error && (
-          <div style={{ padding:24, maxWidth:420, textAlign:'center' }}>
-            <div style={{ fontSize:'1.4rem', marginBottom:8 }}>⚠</div>
-            <div style={{ fontSize:'0.78rem', color:'#f87171', lineHeight:1.6 }}>{error}</div>
+
+          {/* Bottom drag handle (height) */}
+          <div onMouseDown={handleImgResizeHeight} title="Drag to resize height"
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(11,68,111,0.12)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(11,68,111,0.04)' }}
+            style={{ width: '100%', height: 10, cursor: 'ns-resize', flexShrink: 0,
+              background: 'rgba(11,68,111,0.04)', transition: 'background 0.15s',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
+            {[0,1,2].map(i => (
+              <div key={i} style={{ width: 3, height: 3, borderRadius: '50%', background: 'rgba(11,68,111,0.35)', flexShrink: 0 }} />
+            ))}
           </div>
-        )}
-        {imgSrc && !loading && (
-          <>
-            <img src={imgSrc} alt={plotType} style={{ maxWidth:'100%', maxHeight:'80vh', objectFit:'contain' }} />
-            <button onClick={() => setFullscreen(true)}
-              title="View fullscreen"
-              style={{ position:'absolute', top:10, right:10, padding:'4px 8px', borderRadius:6,
-                border:`1px solid ${V.border}`, background:V.muted, color:'var(--text-1)',
-                fontSize:'0.72rem', cursor:'pointer', backdropFilter:'blur(4px)' }}>
-              ⛶ Expand
-            </button>
-          </>
-        )}
-        {!imgSrc && !loading && !error && (
-          <div style={{ textAlign:'center', color:'var(--text-3)', padding:40 }}>
-            <div style={{ fontSize:'2.5rem', opacity:0.15, marginBottom:10 }}>◈</div>
-            <div style={{ fontSize:'0.82rem' }}>Select a plot type and click Generate</div>
-          </div>
-        )}
+        </div>
+
+        {/* Right drag handle (width) */}
+        <div onMouseDown={handleImgResizeWidth} title="Drag to resize width"
+          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(11,68,111,0.12)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(11,68,111,0.04)' }}
+          style={{ width: 10, cursor: 'ew-resize', flexShrink: 0,
+            background: 'rgba(11,68,111,0.04)', transition: 'background 0.15s',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
+          {[0,1,2].map(i => (
+            <div key={i} style={{ width: 3, height: 3, borderRadius: '50%', background: 'rgba(11,68,111,0.35)', flexShrink: 0 }} />
+          ))}
+        </div>
       </div>
 
-      {/* Fullscreen portal */}
-      {fullscreen && imgSrc && createPortal(
-        <div style={{ position:'fixed', inset:0, zIndex:101000, background:'var(--bg-panel)',
-          display:'flex', alignItems:'center', justifyContent:'center',
-          flexDirection:'column', gap:12, padding:20 }}>
-          <button onClick={() => setFullscreen(false)}
-            style={{ position:'absolute', top:16, right:16, fontSize:'0.75rem', padding:'4px 12px',
-                     borderRadius:6, cursor:'pointer', background:'transparent',
-                     border:'1px solid var(--border)', color:'var(--text-3)', zIndex:1 }}>
-            Collapse
-          </button>
-          <img src={imgSrc} alt={plotType} style={{ maxWidth:'95vw', maxHeight:'90vh', objectFit:'contain' }} />
-        </div>,
-        document.body
-      )}
     </div>
   )
 }
@@ -1529,20 +1604,643 @@ function MountainModal({ pathway, result, curveData, curveLoading, curveError, o
           ) : null}
         </div>
 
-        {/* Resize handle */}
+        {/* Resize handles: bottom edge, right edge, corner */}
+        <div onMouseDown={e => {
+          e.preventDefault(); e.stopPropagation()
+          const startY = e.clientY, startH = cardRef.current?.offsetHeight ?? size.height
+          const onMove = ev => setSize(s => ({ ...s, height: Math.max(320, startH + ev.clientY - startY) }))
+          const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); window.addEventListener('click', ev => ev.stopPropagation(), { capture: true, once: true }) }
+          window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
+        }} style={{ position:'absolute', bottom:0, left:0, right:18, height:8, cursor:'ns-resize', zIndex:10 }} />
+        <div onMouseDown={e => {
+          e.preventDefault(); e.stopPropagation()
+          const startX = e.clientX, startW = cardRef.current?.offsetWidth ?? size.width
+          const onMove = ev => setSize(s => ({ ...s, width: Math.min(Math.max(480, startW + ev.clientX - startX), Math.floor(window.innerWidth * 0.97)) }))
+          const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); window.addEventListener('click', ev => ev.stopPropagation(), { capture: true, once: true }) }
+          window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
+        }} style={{ position:'absolute', top:0, right:0, bottom:18, width:8, cursor:'ew-resize', zIndex:10 }} />
         <div onMouseDown={onResizeStart}
           style={{ position:'absolute', bottom:4, right:4, width:16, height:16,
-                   cursor:'nwse-resize', opacity:0.35,
+                   cursor:'nwse-resize', opacity:0.35, zIndex:11,
                    backgroundImage:'radial-gradient(circle, var(--text-3) 1.2px, transparent 1.2px)',
                    backgroundSize:'4px 4px' }} />
       </div>
-      <style>{`@keyframes gsea-spin { to { transform:rotate(360deg); } }`}</style>
+      <style>{`
+  @keyframes gsea-spin { to { transform:rotate(360deg); } }
+  .plot-resizing, .plot-resizing * { cursor: ns-resize !important; user-select: none !important; }
+  .plot-resizing-h, .plot-resizing-h * { cursor: ew-resize !important; user-select: none !important; }
+`}</style>
+    </div>
+  )
+}
+
+// ── Leading-edge heatmap helpers ──────────────────────────────────────────────
+const LE_PALETTE_PRESETS = [
+  { label: 'Blue–White–Red',   colors: ['#1565C0','#ffffff','#B71C1C'] },
+  { label: 'Purple–White–Org', colors: ['#6A1B9A','#ffffff','#E65100'] },
+  { label: 'Green–White–Red',  colors: ['#1B5E20','#ffffff','#B71C1C'] },
+  { label: 'Navy–White–Gold',  colors: ['#0D1B4B','#ffffff','#F9A825'] },
+  { label: 'Teal–Black–Pink',  colors: ['#00695C','#000000','#AD1457'] },
+]
+
+function LEPaletteRow({ palette, setPalette }) {
+  const [drafts, setDrafts] = useState(palette)
+  const timer = useRef(null)
+  useEffect(() => { setDrafts(palette) }, [palette])
+  const commit = (next) => { clearTimeout(timer.current); timer.current = setTimeout(() => setPalette(next), 500) }
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+      <div style={{ display:'flex', gap:4 }}>
+        {LE_PALETTE_PRESETS.map(p => {
+          const active = JSON.stringify(p.colors) === JSON.stringify(palette)
+          return (
+            <button key={p.label} title={p.label}
+                    onClick={() => { clearTimeout(timer.current); setPalette(p.colors) }}
+                    style={{ display:'flex', padding:0, border:`2px solid ${active?V.accent:'transparent'}`,
+                             borderRadius:5, cursor:'pointer', overflow:'hidden', height:18 }}>
+              {p.colors.map((c,i) => <span key={i} style={{ width:14, height:18, background:c, display:'block' }} />)}
+            </button>
+          )
+        })}
+      </div>
+      <div style={{ display:'flex', gap:6 }}>
+        {drafts.map((col,i) => (
+          <label key={i} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:2, cursor:'pointer' }}>
+            <span style={{ fontSize:'0.6rem', color:'var(--text-3)', textTransform:'uppercase' }}>{['Low','Mid','High'][i]}</span>
+            <div style={{ position:'relative', width:24, height:24 }}>
+              <span style={{ display:'block', width:24, height:24, borderRadius:4, background:col, border:'2px solid var(--border)' }} />
+              <input type="color" value={col}
+                     onInput={e => { const n=[...drafts]; n[i]=e.target.value; setDrafts(n); commit(n) }}
+                     style={{ position:'absolute', inset:0, opacity:0, width:'100%', height:'100%', cursor:'pointer' }} />
+            </div>
+          </label>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+async function leApiFetch(path, body) {
+  const res = await fetch(path, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) })
+  const json = await res.json()
+  if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`)
+  return json
+}
+
+function applySymbolsLE(fig, annMap) {
+  if (!annMap || !fig?.layout) return fig
+  const rep = arr => Array.isArray(arr) ? arr.map(v => annMap[v] || v) : arr
+  Object.keys(fig.layout).filter(k => /^[xy]axis/.test(k)).forEach(ax => {
+    if (fig.layout[ax]?.ticktext) fig.layout[ax].ticktext = rep(fig.layout[ax].ticktext)
+  })
+  fig.data?.forEach(t => { if (t.y) t.y = rep(t.y) })
+  return fig
+}
+
+function applySampleLabelsLE(fig, sampleLabels) {
+  if (!sampleLabels || !Object.keys(sampleLabels).length || !fig) return fig
+  const ren = v => typeof v === 'string' ? (sampleLabels[v] ?? v) : v
+  if (fig.layout) Object.keys(fig.layout).filter(k => /^xaxis/.test(k)).forEach(ax => {
+    if (fig.layout[ax]?.ticktext) fig.layout[ax].ticktext = fig.layout[ax].ticktext.map(ren)
+  })
+  fig.data?.forEach(t => { if (t.x) t.x = t.x.map(ren) })
+  return fig
+}
+
+// ── LeadingEdgeHeatmapPanel ───────────────────────────────────────────────────
+function LeadingEdgeHeatmapPanel({ run, session, annMap, sampleLabels = {}, pca, contrastList = [] }) {
+  const plotRef        = useRef(null)
+  const outerRef       = useRef(null)   // height-resize target
+  const plotWrapperRef = useRef(null)   // width-resize target
+
+  // ── Sidebar state ────────────────────────────────────────────────────────────
+  const [selPathways,  setSelPathways]  = useState([])
+  const [searchQuery,  setSearchQuery]  = useState('')
+  const [showDropdown, setShowDropdown] = useState(false)
+
+  // ── Controls state ───────────────────────────────────────────────────────────
+  const [controlsOpen, setControlsOpen] = useState(false)
+  const [exprMode,     setExprMode]     = useState('norm')
+  const [sampleScope,  setSampleScope]  = useState('all')
+  const [scopeContrast,setScopeContrast]= useState('')
+  const [clusterRows,  setClusterRows]  = useState(true)
+  const [clusterCols,  setClusterCols]  = useState(true)
+  const [distMethod,   setDistMethod]   = useState('pearson')
+  const [colorBy,      setColorBy]      = useState('')
+  const [palette,      setPalette]      = useState(['#1565C0','#ffffff','#B71C1C'])
+  const [annColors,    setAnnColors]    = useState({})
+  const [annGroups,    setAnnGroups]    = useState([])
+
+  // ── Plot state ───────────────────────────────────────────────────────────────
+  const [loading,      setLoading]      = useState(false)
+  const [error,        setError]        = useState(null)
+  const [hasPlot,      setHasPlot]      = useState(false)
+  const [plotHeight,   setPlotHeight]   = useState(800)
+  const [plotWidth,    setPlotWidth]    = useState(null)
+
+  // Reset on run change
+  useEffect(() => { setSelPathways([]); setHasPlot(false); setError(null) }, [run])
+
+  // Init scopeContrast from contrastList
+  useEffect(() => {
+    if (contrastList?.length && !scopeContrast) setScopeContrast(contrastList[0]?.label ?? '')
+  }, [contrastList])
+
+  // ── Derived ──────────────────────────────────────────────────────────────────
+  const availablePathways = useMemo(() => run?.results ?? [], [run])
+
+  const filteredPathways = useMemo(() => {
+    const q = searchQuery.toLowerCase()
+    return availablePathways.filter(r => !q || (r.pathway||'').toLowerCase().includes(q)).slice(0, 60)
+  }, [availablePathways, searchQuery])
+
+  const geneList = useMemo(() => {
+    const seen = new Set(); const genes = []
+    selPathways.forEach(({ genes: g }) => g.forEach(x => { if (!seen.has(x)) { seen.add(x); genes.push(x) } }))
+    return genes
+  }, [selPathways])
+
+  const metaCols = useMemo(() => {
+    if (!pca?.scores?.length) return []
+    return Object.keys(pca.scores[0]).filter(k => k !== 'sample' && !/^PC\d+$/.test(k))
+  }, [pca])
+
+  useEffect(() => {
+    if (!metaCols.length) return
+    setColorBy(v => (v && metaCols.includes(v)) ? v : metaCols[0])
+  }, [metaCols])
+
+  useEffect(() => { setAnnGroups([]); setAnnColors({}) }, [colorBy])
+
+  // Sample subset for contrast-limited mode.
+  // We auto-detect the design column by finding whichever metadata column in
+  // pca.scores actually contains both the treatment and reference values — this
+  // avoids depending on colorBy (the annotation colour column) matching the DESeq2
+  // design column, which is often different.
+  const sampleSubset = useMemo(() => {
+    if (sampleScope !== 'contrast' || !scopeContrast) return null
+    const c = contrastList?.find(c => c.label === scopeContrast)
+    if (!c?.treatment || !c?.reference) return null
+    const scores = pca?.scores || []
+    if (!scores.length) return null
+    // Find the first metadata column whose values include both treatment and reference
+    const metaKeys = Object.keys(scores[0]).filter(k => k !== 'sample' && !/^PC\d+$/.test(k))
+    const designCol = metaKeys.find(col =>
+      scores.some(s => s[col] === c.treatment) &&
+      scores.some(s => s[col] === c.reference)
+    )
+    if (!designCol) return null
+    return scores
+      .filter(s => s[designCol] === c.treatment || s[designCol] === c.reference)
+      .map(s => s.sample)
+  }, [sampleScope, scopeContrast, contrastList, pca])
+
+  // ── Resize observer ───────────────────────────────────────────────────────────
+  // Read plotRef.current inside the callback so we always get the live reference,
+  // not a stale null captured at mount time (before any plot has been generated).
+  useEffect(() => {
+    const el = outerRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => {
+      const plot = plotRef.current
+      if (plot?._fullLayout) Plotly.Plots.resize(plot)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  // ── Drag resize handlers ──────────────────────────────────────────────────────
+  const handleHeightResize = useCallback(e => {
+    e.preventDefault()
+    const el = outerRef.current; if (!el) return
+    const startY = e.clientY, startH = el.getBoundingClientRect().height
+    document.body.classList.add('plot-resizing')
+    const onMove = ev => { el.style.height = `${Math.max(300, startH + (ev.clientY - startY))}px` }
+    const onUp = ev => {
+      window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp)
+      document.body.classList.remove('plot-resizing')
+      setPlotHeight(Math.max(300, startH + (ev.clientY - startY)))
+      setTimeout(() => { if (plotRef.current?._fullLayout) Plotly.Plots.resize(plotRef.current) }, 50)
+    }
+    window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
+  }, [])
+
+  const handleWidthResize = useCallback(e => {
+    e.preventDefault()
+    const el = plotWrapperRef.current; if (!el) return
+    const startX = e.clientX, startW = el.getBoundingClientRect().width
+    document.body.classList.add('plot-resizing-h')
+    const onMove = ev => { el.style.width = `${Math.max(300, startW + (ev.clientX - startX))}px` }
+    const onUp = ev => {
+      window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp)
+      document.body.classList.remove('plot-resizing-h')
+      setPlotWidth(Math.max(300, startW + (ev.clientX - startX)))
+      setTimeout(() => { if (plotRef.current?._fullLayout) Plotly.Plots.resize(plotRef.current) }, 50)
+    }
+    window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
+  }, [])
+
+  // ── Sidebar actions ───────────────────────────────────────────────────────────
+  function addPathway(r) {
+    const genes = (r.leadingEdge || '').split(',').map(g => g.trim()).filter(Boolean)
+    if (!genes.length) return
+    setSelPathways(prev => prev.find(p => p.pathway === r.pathway)
+      ? prev : [...prev, { pathway: r.pathway, genes, count: r.leadingEdgeN ?? genes.length }])
+    setSearchQuery(''); setShowDropdown(false)
+  }
+  function removePathway(name) { setSelPathways(prev => prev.filter(p => p.pathway !== name)) }
+
+  // ── Generate ─────────────────────────────────────────────────────────────────
+  async function generate() {
+    if (!geneList.length) { setError('Add at least one pathway first.'); return }
+    if (!session?.sessionId) return
+    setLoading(true); setError(null); setHasPlot(false)
+    try {
+      const activeLabels = (contrastList || []).map(c => c.label ?? `${c.treatment}|${c.reference}`)
+      const body = {
+        sessionId:    session.sessionId,
+        customGenes:  geneList,
+        annMap:       annMap || null,
+        pathwayLabel: selPathways.map(p => (p.pathway||'').replace(/_/g,' ')).join(' + '),
+        mode: exprMode, clusterRows, clusterCols, distMethod,
+        colorBy: colorBy || '', topN: geneList.length, palette,
+        annColors: Object.keys(annColors).length ? annColors : null,
+        activeLabels,
+      }
+      if (sampleSubset?.length) body.sampleSubset = sampleSubset
+
+      const data = await leApiFetch('/api/heatmap', body)
+      const fig = JSON.parse(data.plotlyJson)
+      const textColor = getComputedStyle(document.body).getPropertyValue('--text-2').trim() || '#475569'
+      const hlabel = { bgcolor:'#1e293b', bordercolor:'#334155', font:{ color:'#e2e8f0', size:12 } }
+      fig.data = fig.data.map(t => ({ ...t, hoverlabel: hlabel }))
+
+      // Strip any explicit width/height the backend baked in — we want Plotly to
+      // fill the flex cell exactly so the SVG never bleeds over the drag handle.
+      // eslint-disable-next-line no-unused-vars
+      const { width: _bw, height: _bh, ...baseLayout } = fig.layout ?? {}
+      fig.layout = { ...baseLayout, autosize: true,
+                     paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+                     font:{ ...(baseLayout?.font||{}), color:textColor }, hoverlabel:hlabel }
+      applySymbolsLE(fig, annMap)
+      applySampleLabelsLE(fig, sampleLabels)
+
+      // Show the wrapper first so plotRef has real dimensions when Plotly measures it
+      setHasPlot(true)
+      // Let the browser paint the wrapper before reacting
+      await new Promise(r => requestAnimationFrame(r))
+      await Plotly.react(plotRef.current, fig.data, fig.layout, {
+        responsive:true, displaylogo:false, modeBarButtonsToRemove:['lasso2d','select2d'],
+      })
+      setTimeout(() => { if (plotRef.current?._fullLayout) Plotly.Plots.resize(plotRef.current) }, 50)
+
+      if (data.annGroups?.length) {
+        const defs = ['#800020','#228B22','#C9A227','#555555','#4E6E8E','#A0522D']
+        setAnnGroups(data.annGroups)
+        setAnnColors(prev => {
+          const next = { ...prev }
+          data.annGroups.forEach((g,i) => { if (!next[g]) next[g] = defs[i % defs.length] })
+          return next
+        })
+      }
+
+    } catch(e) { setError(e.message) }
+    finally { setLoading(false) }
+  }
+
+  // ── Mini sub-components ───────────────────────────────────────────────────────
+  const LESwitch = ({ val, set, label }) => (
+    <label style={{ display:'flex', alignItems:'center', gap:7, cursor:'pointer', userSelect:'none' }}>
+      <div onClick={() => set(v => !v)} style={{
+        width:34, height:18, borderRadius:9, position:'relative', cursor:'pointer', flexShrink:0,
+        background: val ? V.accent : 'rgba(255,255,255,0.12)',
+        border:`1px solid ${val ? V.accent : 'var(--border)'}`, transition:'background 0.2s',
+      }}>
+        <div style={{ position:'absolute', top:1, left: val?15:1, width:14, height:14,
+                      borderRadius:'50%', background: val?'#fff':'rgba(255,255,255,0.5)',
+                      transition:'left 0.2s', boxShadow:'0 1px 3px rgba(0,0,0,0.3)' }} />
+      </div>
+      <span style={{ fontSize:'0.78rem', color: val?'var(--text-1)':'var(--text-3)', fontWeight: val?500:400 }}>{label}</span>
+    </label>
+  )
+
+  const LEControlGroup = ({ label, children }) => (
+    <div style={{ display:'flex', flexDirection:'column', gap:8, padding:'10px 14px',
+                  background:'rgba(255,255,255,0.02)', border:'1px solid var(--border)', borderRadius:8 }}>
+      <span style={{ fontSize:'0.62rem', fontWeight:700, letterSpacing:'0.07em',
+                     textTransform:'uppercase', color:'var(--text-3)', marginBottom:2 }}>{label}</span>
+      {children}
+    </div>
+  )
+
+  const LEPillToggle = ({ options, value, onChange }) => (
+    <div style={{ display:'inline-flex', background:'rgba(255,255,255,0.04)',
+                  borderRadius:6, border:'1px solid var(--border)', padding:'2px 3px' }}>
+      {options.map(([val, lbl]) => (
+        <button key={val} onClick={() => onChange(val)}
+                style={{ fontSize:'0.72rem', padding:'2px 10px', borderRadius:4, border:'none',
+                         cursor:'pointer', whiteSpace:'nowrap', transition:'background 0.15s, color 0.15s',
+                         background: value===val ? V.accent : 'transparent',
+                         color:      value===val ? '#fff'    : 'var(--text-3)',
+                         fontWeight: value===val ? 600 : 400 }}>{lbl}</button>
+      ))}
+    </div>
+  )
+
+  const pName = s => (s||'').replace(/_/g,' ').replace(/^[A-Z0-9]+ /,'')
+
+  if (!run) return (
+    <div style={{ padding:40, textAlign:'center', color:'var(--text-3)', fontSize:'0.85rem' }}>
+      Run a GSEA analysis first to use the leading-edge heatmap.
+    </div>
+  )
+
+  return (
+    <div style={{ display:'flex', gap:0, minHeight:600 }}>
+
+      {/* ── LEFT SIDEBAR ── */}
+      <div style={{ width:260, flexShrink:0, borderRight:`1px solid ${V.border}`,
+                    paddingRight:14, paddingTop:4, display:'flex', flexDirection:'column', gap:14,
+                    overflowY:'auto' }}>
+
+        <span style={{ fontSize:'0.62rem', fontWeight:700, letterSpacing:'0.07em',
+                       textTransform:'uppercase', color:V.text }}>Leading-Edge Gene Sets</span>
+
+        {/* Pathway search */}
+        <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+          <span style={{ fontSize:'0.62rem', fontWeight:700, letterSpacing:'0.07em',
+                         textTransform:'uppercase', color:'var(--text-3)' }}>Add pathway</span>
+          <div style={{ position:'relative' }}>
+            <input value={searchQuery}
+                   onChange={e => { setSearchQuery(e.target.value); setShowDropdown(true) }}
+                   onFocus={() => setShowDropdown(true)}
+                   onBlur={() => setTimeout(() => setShowDropdown(false), 160)}
+                   placeholder="Search pathways…"
+                   style={{ width:'100%', fontSize:'0.76rem', padding:'5px 8px' }} />
+            {showDropdown && filteredPathways.length > 0 && (
+              <div style={{ position:'absolute', top:'100%', left:0, right:0, zIndex:300,
+                            background:'var(--bg-panel)', border:`1px solid ${V.border}`,
+                            borderRadius:7, maxHeight:230, overflowY:'auto',
+                            boxShadow:'0 8px 28px rgba(0,0,0,0.35)' }}>
+                {filteredPathways.map(r => {
+                  const already = !!selPathways.find(p => p.pathway === r.pathway)
+                  return (
+                    <div key={r.pathway}
+                         onMouseDown={e => { e.preventDefault(); if (!already) addPathway(r) }}
+                         style={{ padding:'6px 10px', fontSize:'0.74rem',
+                                  cursor: already?'default':'pointer',
+                                  color: already?'var(--text-3)':'var(--text-1)',
+                                  borderBottom:`1px solid ${V.border}` }}
+                         onMouseEnter={e => { if (!already) e.currentTarget.style.background = V.muted }}
+                         onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+                      <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        {already ? '✓ ' : ''}{pName(r.pathway)}
+                      </div>
+                      <div style={{ fontSize:'0.66rem', color:V.text, marginTop:2 }}>
+                        {r.leadingEdgeN} genes · padj {fmtPval(r.padj)}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div style={{ borderTop:`1px solid ${V.border}` }} />
+
+        {/* Selected pathway chips */}
+        <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <span style={{ fontSize:'0.62rem', fontWeight:700, letterSpacing:'0.07em',
+                           textTransform:'uppercase', color:'var(--text-3)' }}>
+              Selected ({selPathways.length})
+            </span>
+            {selPathways.length > 0 && (
+              <button onClick={() => { setSelPathways([]); setHasPlot(false) }}
+                      style={{ background:'none', border:'none', cursor:'pointer',
+                               fontSize:'0.68rem', color:'var(--text-3)', textDecoration:'underline' }}>
+                Clear all
+              </button>
+            )}
+          </div>
+          {selPathways.length === 0 ? (
+            <em style={{ fontSize:'0.73rem', color:'var(--text-3)' }}>No pathways added yet</em>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', gap:5, maxHeight:260, overflowY:'auto' }}>
+              {selPathways.map(p => (
+                <div key={p.pathway} style={{ display:'flex', alignItems:'flex-start', gap:5,
+                                              background:V.muted, border:`1px solid ${V.border}`,
+                                              borderRadius:6, padding:'5px 7px', fontSize:'0.72rem' }}>
+                  <span style={{ flex:1, color:'var(--text-1)', lineHeight:1.3, wordBreak:'break-word' }}>
+                    {pName(p.pathway)}
+                    <span style={{ marginLeft:5, color:V.text, fontWeight:600 }}>({p.count})</span>
+                  </span>
+                  <button onClick={() => removePathway(p.pathway)}
+                          style={{ background:'none', border:'none', cursor:'pointer',
+                                   color:'var(--text-3)', fontSize:'1rem', lineHeight:1,
+                                   padding:'0 1px', flexShrink:0 }}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer gene count */}
+        <div style={{ marginTop:'auto', paddingTop:10, borderTop:`1px solid ${V.border}`,
+                      display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <span style={{ fontSize:'0.72rem', color:'var(--text-3)' }}>Total unique genes</span>
+          <span style={{ fontSize:'0.75rem', fontWeight:600, color:V.text,
+                         background:V.muted, border:`1px solid ${V.border}`,
+                         borderRadius:999, padding:'2px 10px' }}>
+            {geneList.length.toLocaleString()}
+          </span>
+        </div>
+      </div>
+
+      {/* ── RIGHT PANEL ── */}
+      <div style={{ flex:1, paddingLeft:18, display:'flex', flexDirection:'column', gap:12,
+                    minWidth:0, overflowX: plotWidth ? 'auto' : 'visible' }}>
+
+        {/* Collapsible controls toggle */}
+        <button onClick={() => setControlsOpen(v => !v)}
+                style={{ display:'flex', alignItems:'center', gap:8, width:'100%',
+                          background:'rgba(255,255,255,0.03)', border:`1px solid ${V.border}`,
+                          borderRadius: controlsOpen ? '8px 8px 0 0' : 8, padding:'7px 14px',
+                          cursor:'pointer', color:'var(--text-2)', fontSize:'0.78rem', fontWeight:500,
+                          transition:'border-radius 0.15s' }}>
+          <span style={{ display:'inline-block', transition:'transform 0.2s', fontSize:'0.7rem',
+                         color:'var(--text-3)', transform: controlsOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+          Plot Controls
+          <span style={{ marginLeft:'auto', fontSize:'0.82rem', color:'var(--text-3)',
+                         display:'inline-block', transition:'transform 0.2s',
+                         transform: controlsOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
+        </button>
+
+        {/* Controls grid */}
+        <div style={{ display: controlsOpen ? 'grid' : 'none',
+                      gridTemplateColumns:'1fr 1fr', gap:8, alignItems:'start',
+                      border:`1px solid ${V.border}`, borderTop:'none',
+                      borderRadius:'0 0 8px 8px', padding:'12px 8px 8px' }}>
+
+          {/* Sample scope */}
+          <LEControlGroup label="Sample Scope">
+            <LEPillToggle
+              options={[['all','All Samples'],['contrast','Contrast-limited']]}
+              value={sampleScope} onChange={setSampleScope} />
+            {sampleScope === 'contrast' && (
+              <select value={scopeContrast} onChange={e => setScopeContrast(e.target.value)}
+                      style={{ fontSize:'0.78rem', padding:'3px 8px', marginTop:2 }}>
+                {(contrastList || []).map(c => (
+                  <option key={c.label} value={c.label}>{c.label ?? c.treatment}</option>
+                ))}
+              </select>
+            )}
+            {sampleScope === 'contrast' && !colorBy && (
+              <span style={{ fontSize:'0.68rem', color:'#f87171' }}>
+                ⚠ Select a metadata column first
+              </span>
+            )}
+          </LEControlGroup>
+
+          {/* Expression */}
+          <LEControlGroup label="Expression">
+            <LEPillToggle
+              options={[['norm','Norm. counts'],['vst','VST']]}
+              value={exprMode} onChange={setExprMode} />
+          </LEControlGroup>
+
+          {/* Clustering */}
+          <LEControlGroup label="Clustering">
+            <LESwitch val={clusterRows} set={setClusterRows} label="Rows" />
+            <LESwitch val={clusterCols} set={setClusterCols} label="Columns" />
+            {(clusterRows || clusterCols) && (
+              <select value={distMethod} onChange={e => setDistMethod(e.target.value)}
+                      style={{ fontSize:'0.78rem', padding:'3px 8px', minWidth:110 }}>
+                {['euclidean','pearson','spearman','kendall','manhattan','maximum'].map(m =>
+                  <option key={m} value={m}>{m}</option>)}
+              </select>
+            )}
+          </LEControlGroup>
+
+          {/* Annotation */}
+          {metaCols.length > 0 && (
+            <LEControlGroup label="Annotation">
+              <select value={colorBy} onChange={e => setColorBy(e.target.value)}
+                      style={{ fontSize:'0.78rem', padding:'3px 8px', minWidth:120 }}>
+                {metaCols.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              {annGroups.length > 0 && (
+                <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center', marginTop:2 }}>
+                  {annGroups.map(grp => (
+                    <label key={grp} style={{ display:'flex', alignItems:'center', gap:4, cursor:'pointer' }}>
+                      <input type="color" value={annColors[grp]||'#999999'}
+                             onChange={e => setAnnColors(prev => ({ ...prev, [grp]: e.target.value }))}
+                             style={{ width:18, height:18, padding:0,
+                                      border:'1px solid var(--border)', borderRadius:3, cursor:'pointer' }} />
+                      <span style={{ fontSize:'0.7rem', color:'var(--text-2)',
+                                     maxWidth:80, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        {grp}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </LEControlGroup>
+          )}
+
+          {/* Palette — full width */}
+          <div style={{ gridColumn:'1 / -1' }}>
+            <LEControlGroup label="Palette">
+              <LEPaletteRow palette={palette} setPalette={setPalette} />
+            </LEControlGroup>
+          </div>
+        </div>
+
+        {/* Action buttons */}
+        <div style={{ display:'flex', justifyContent:'flex-end', gap:8, alignItems:'center' }}>
+          <button onClick={generate} disabled={loading || !geneList.length}
+                  style={{ padding:'7px 20px', fontSize:'0.82rem', borderRadius:8, fontWeight:600,
+                           background: loading || !geneList.length ? 'rgba(255,255,255,0.06)' : V.accent,
+                           color: loading || !geneList.length ? 'var(--text-3)' : '#fff',
+                           border:'none', cursor: loading || !geneList.length ? 'not-allowed' : 'pointer',
+                           transition:'background 0.15s, color 0.15s' }}>
+            {loading ? '⏳ Generating…' : '▶ Generate Heatmap'}
+          </button>
+        </div>
+
+        {/* Error */}
+        {error && (
+          <div style={{ padding:'10px 14px', borderRadius:8, fontSize:'0.82rem',
+                        background:'rgba(248,113,113,0.08)', color:'#f87171',
+                        border:'1px solid rgba(248,113,113,0.25)' }}>⚠ {error}</div>
+        )}
+
+        {/* Placeholder */}
+        {!hasPlot && !loading && !error && (
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
+                        minHeight:220, color:'var(--text-3)', fontSize:'0.82rem',
+                        fontStyle:'italic', textAlign:'center', padding:20 }}>
+            {geneList.length
+              ? `${geneList.length} genes ready — click Generate Heatmap`
+              : 'Select pathways from the left panel, then click Generate Heatmap'}
+          </div>
+        )}
+
+        {/* Spinner */}
+        {loading && (
+          <div style={{ display:'flex', flexDirection:'column', alignItems:'center',
+                        justifyContent:'center', minHeight:300, gap:14 }}>
+            <span style={{ width:40, height:40, borderRadius:'50%',
+                           border:`3px solid ${V.muted}`, borderTopColor:V.accent,
+                           display:'inline-block', animation:'gsea-spin 0.7s linear infinite' }} />
+            <span style={{ fontSize:'0.82rem', color:'var(--text-3)', fontStyle:'italic' }}>Building heatmap…</span>
+          </div>
+        )}
+
+        {/* Plot + resize handles */}
+        <div ref={plotWrapperRef} style={{ display: hasPlot ? 'flex' : 'none',
+                                           flexDirection:'column', width: plotWidth ?? '100%',
+                                           alignSelf:'flex-start', flexShrink:0 }}>
+          {/* Plot row + right handle */}
+          <div style={{ display:'flex', alignItems:'stretch' }}>
+            <div ref={outerRef} style={{ flex:1, height:plotHeight, minHeight:300 }}>
+              <div ref={plotRef} style={{ width:'100%', height:'100%', minHeight:300 }} />
+            </div>
+            {/* Right drag handle */}
+            <div onMouseDown={handleWidthResize} title="Drag to resize width"
+                 style={{ width:10, cursor:'ew-resize', flexShrink:0,
+                          display:'flex', alignItems:'center', justifyContent:'center',
+                          background:'rgba(255,255,255,0.03)',
+                          border:`1px solid ${V.border}`, borderLeft:'none',
+                          borderRadius:'0 6px 0 0', userSelect:'none', transition:'background 0.15s' }}
+                 onMouseEnter={e => e.currentTarget.style.background = V.muted}
+                 onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}>
+              <span style={{ fontSize:'0.5rem', color:'var(--text-3)',
+                             writingMode:'vertical-lr', letterSpacing:3, lineHeight:1, pointerEvents:'none' }}>▾▾</span>
+            </div>
+          </div>
+          {/* Bottom drag handle */}
+          <div onMouseDown={handleHeightResize} title="Drag to resize height"
+               style={{ width:'100%', height:10, cursor:'ns-resize', flexShrink:0,
+                        display:'flex', alignItems:'center', justifyContent:'center',
+                        background:'rgba(255,255,255,0.03)',
+                        border:`1px solid ${V.border}`, borderTop:'none',
+                        borderRadius:'0 0 6px 6px', userSelect:'none', transition:'background 0.15s' }}
+               onMouseEnter={e => e.currentTarget.style.background = V.muted}
+               onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}>
+            <span style={{ fontSize:'0.5rem', color:'var(--text-3)',
+                           letterSpacing:3, lineHeight:1, pointerEvents:'none' }}>▾▾</span>
+          </div>
+        </div>
+      </div>
+
     </div>
   )
 }
 
 // ── Main GSEAExplorer ─────────────────────────────────────────────────────────
-export default function GSEAExplorer({ session, contrastLabel, allContrasts = [], annMap, annDetails, onRunsChange, initialRuns }) {
+export default function GSEAExplorer({ session, contrastLabel, allContrasts = [], annMap, annDetails, onRunsChange, initialRuns, pca, sampleLabels = {}, contrastList = [] }) {
   const { promptDownload, dialog: exportDialog } = useDownloadDialog()
   const [exportLoading,  setExportLoading]  = useState(false)
   const [exportProgress, setExportProgress] = useState(0)   // 0-100
@@ -1614,12 +2312,27 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
   const [fullscreen,   setFullscreen]   = useState(false)
   const [fsPanel,      setFsPanel]      = useState(false)
 
+  // Persist PlotsPanel image across fsPanel changes
+  const plotImgCache = useRef(null)
+
   useEffect(() => {
     if (!fullscreen) return
     const handler = e => { if (e.key === 'Escape') setFullscreen(false) }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [fullscreen])
+
+  // Clear cached plot image when the active run changes
+  useEffect(() => { plotImgCache.current = null }, [activeRunId])
+
+  // Toggle body attribute so that .glass backdrop-filter is neutralised while the
+  // panel is fullscreen — this lets position:fixed escape the glass card's stacking
+  // context without needing a portal (which would unmount and wipe child state).
+  useEffect(() => {
+    if (fsPanel) document.body.setAttribute('data-gsea-fs', '')
+    else         document.body.removeAttribute('data-gsea-fs')
+    return () =>   document.body.removeAttribute('data-gsea-fs')
+  }, [fsPanel])
 
   useEffect(() => {
     if (!fsPanel) return
@@ -1924,7 +2637,7 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
         </button>
       </div>
 
-      <div style={{ display:'flex', gap:16, alignItems:'flex-start', flex: fsPanel ? '1 1 0' : undefined, minHeight: fsPanel ? 0 : undefined }}>
+      <div style={{ display:'flex', gap:16, alignItems: fsPanel ? 'stretch' : 'flex-start', flex: fsPanel ? '1 1 0' : undefined, minHeight: fsPanel ? 0 : undefined }}>
 
         {/* ── SIDEBAR ─────────────────────────────────────────────────── */}
         <div style={{ width:292, flexShrink:0, display:'flex', flexDirection:'column', gap:14, background:V.card, borderRadius:12, padding:16, border:`1px solid ${V.border}`, position:'sticky', top: fsPanel ? 0 : 80, maxHeight: fsPanel ? '100%' : 'calc(100vh - 120px)', overflowY:'auto' }}>
@@ -2195,7 +2908,10 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
 
         {/* ── RIGHT CONTENT ──────────────────────────────────────────────── */}
         <div style={{ flex:1, minWidth:0, minHeight:0, display:'flex', flexDirection:'column', gap:12,
-                      overflowY: fsPanel ? 'auto' : undefined }}>
+                      overflowY: fsPanel ? 'auto' : undefined,
+                      // On the heatmap tab (non-fullscreen) use 'visible' so the horizontal
+                      // resize drag handle is never clipped by the scroll container.
+                      overflowX: contentTab === 'heatmap' && !fsPanel ? 'visible' : 'auto' }}>
           {!contrastRuns.length && !running && (
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:400, gap:16, color:'var(--text-3)' }}>
               <div style={{ fontSize:'3rem', opacity:0.2 }}>⟳</div>
@@ -2260,18 +2976,28 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
               )}
               <div style={{ display:'flex', gap:2, borderBottom:`1px solid ${V.border}` }}>
                 {[
-                  ['results', `◉ Pathways${activeRun?.results?.length?` (${activeRun.results.length})`:''}`],
-                  ['ranked',  `≡ Ranked List${activeRun?.rankedList?.length?` (${activeRun.rankedList.length.toLocaleString()})`:''}`],
-                  ['plots',   '◈ Plots'],
+                  ['results',  `◉ Pathways${activeRun?.results?.length?` (${activeRun.results.length})`:''}`],
+                  ['ranked',   `≡ Ranked List${activeRun?.rankedList?.length?` (${activeRun.rankedList.length.toLocaleString()})`:''}`],
+                  ['plots',    '◈ Plots'],
+                  ['heatmap',  '▦ Heatmap'],
                 ].map(([k,l])=>(
                   <button key={k} onClick={()=>setContentTab(k)}
                     style={{ padding:'6px 14px', border:'none', borderRadius:'6px 6px 0 0', cursor:'pointer', fontSize:'0.8rem', fontWeight:contentTab===k?700:400, background:contentTab===k?V.muted:'transparent', color:contentTab===k?'var(--text-1)':'var(--text-3)', borderBottom:`2px solid ${contentTab===k?V.accent:'transparent'}`, transition:'all 0.12s' }}>{l}</button>
                 ))}
               </div>
               <div style={{ paddingTop:4 }}>
-                {contentTab==='results' && <ResultsTable run={activeRun} onPathwayClick={handlePathwayClick} selectedPathway={selPathway?.pathway} fullscreen={fullscreen} setFullscreen={setFullscreen} />}
-                {contentTab==='ranked'  && <RankedListPanel run={activeRun} />}
-                {contentTab==='plots'   && <PlotsPanel run={activeRun} session={session} contrastLabel={contrastLabel} />}
+                <div style={{ display: contentTab==='results' ? 'block' : 'none' }}>
+                  <ResultsTable run={activeRun} onPathwayClick={handlePathwayClick} selectedPathway={selPathway?.pathway} fullscreen={fullscreen} setFullscreen={setFullscreen} />
+                </div>
+                <div style={{ display: contentTab==='ranked' ? 'block' : 'none' }}>
+                  <RankedListPanel run={activeRun} />
+                </div>
+                <div style={{ display: contentTab==='plots' ? 'block' : 'none' }}>
+                  <PlotsPanel run={activeRun} session={session} contrastLabel={contrastLabel} imgSrcCache={plotImgCache} />
+                </div>
+                <div style={{ display: contentTab==='heatmap' ? 'block' : 'none' }}>
+                  <LeadingEdgeHeatmapPanel run={activeRun} session={session} annMap={annMap} sampleLabels={sampleLabels} pca={pca} contrastList={contrastList} />
+                </div>
               </div>
             </>
           )}
@@ -2405,5 +3131,7 @@ export default function GSEAExplorer({ session, contrastLabel, allContrasts = []
       <style>{`@keyframes gsea-spin { to { transform:rotate(360deg); } } @keyframes gsea-fadein { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }`}</style>
     </div>
   )
-  return fsPanel ? createPortal(_panel, document.body) : _panel
+  // Always render inline — position:fixed + data-gsea-fs body attribute handles
+  // the fullscreen look without a portal (portal would unmount child state).
+  return _panel
 }

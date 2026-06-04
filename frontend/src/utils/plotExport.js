@@ -2,20 +2,26 @@ import Plotly from 'plotly.js-dist-min'
 
 // ── Known plots ───────────────────────────────────────────────────────────────
 export const KNOWN_PLOTS = [
-  { id: 'counts-plot', label: 'Counts Distribution',         group: 'Distributions',          src: 'registry' },
-  { id: 'ma-plots',    label: 'MA Plots (all contrasts)',    group: 'Differential Expression', src: 'api'      },
-  { id: 'pca-scatter', label: 'PCA Scatter (interactive)',   group: 'PCA',                     src: 'pca'      },
-  { id: 'pca-scree',   label: 'PCA Scree',                  group: 'PCA',                     src: 'scree'    },
+  { id: 'counts-plot',   label: 'Counts Distribution',         group: 'Distributions',          src: 'registry' },
+  { id: 'ma-plots',      label: 'MA Plots (all contrasts)',    group: 'Differential Expression', src: 'api'      },
+  { id: 'volcano-plot',  label: 'Volcano Plot',                group: 'Differential Expression', src: 'registry' },
+  { id: 'pca-scatter',   label: 'PCA Scatter (interactive)',   group: 'PCA',                     src: 'pca'      },
+  { id: 'pca-scree',     label: 'PCA Scree',                  group: 'PCA',                     src: 'scree'    },
+  { id: 'heatmap',       label: 'Compare Heatmap',            group: 'Compare',                 src: 'registry' },
+  { id: 'custom-heatmap',label: 'Custom Heatmap',             group: 'Custom Heatmap',          src: 'registry' },
 ]
 
 // ── Derive available set from live data + registry ────────────────────────────
 export function getAvailablePlots(registryGetAll, results) {
   const registered = new Set(registryGetAll().map(p => p.id))
   const avail = new Set()
-  if (registered.has('counts-plot'))     avail.add('counts-plot')
-  if (results?.contrasts?.length)        avail.add('ma-plots')
-  if (results?.pca?.scores?.length)      avail.add('pca-scatter')
-  if (results?.pca?.variance?.length)    avail.add('pca-scree')
+  if (registered.has('counts-plot'))    avail.add('counts-plot')
+  if (results?.contrasts?.length)       avail.add('ma-plots')
+  if (registered.has('volcano-plot'))   avail.add('volcano-plot')
+  if (results?.pca?.scores?.length)     avail.add('pca-scatter')
+  if (results?.pca?.variance?.length)   avail.add('pca-scree')
+  if (registered.has('heatmap'))        avail.add('heatmap')
+  if (registered.has('custom-heatmap')) avail.add('custom-heatmap')
   return avail
 }
 
@@ -256,7 +262,7 @@ export async function captureSelectedPlots(
           const result = capFn()
           if (result) {
             const dataUri = await withTimeout(result)
-            if (dataUri) sections.push({ type: 'static', anchorId: 'counts', label: t.label, dataUri })
+            if (dataUri) sections.push({ type: 'static', anchorId: t.id, label: t.label, dataUri })
           }
         }
       }

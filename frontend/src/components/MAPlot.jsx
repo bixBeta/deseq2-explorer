@@ -67,6 +67,16 @@ export default function MAPlot({ design, session, annMap }) {
   useEffect(() => {
     if (!rawPoints || !plotRef.current) return
 
+    // Theme overrides live on body.light, not :root — must read from body
+    const cssVar = v => getComputedStyle(document.body).getPropertyValue(v).trim()
+    const isLight     = document.body.classList.contains('light')
+    const textColor   = cssVar('--text-1')   || '#1e293b'
+    const text2Color  = cssVar('--text-2')   || '#475569'
+    const borderColor = cssVar('--border')   || '#e2e8f0'
+    const zeroColor   = cssVar('--text-3')   || '#94a3b8'
+    // Axis titles: full white in dark mode for better contrast, textColor in light
+    const axisLabelColor = isLight ? textColor : '#ffffff'
+
     const log2fc_thresh = Math.log2(fc)
 
     const classified = rawPoints.map(p => {
@@ -137,31 +147,31 @@ export default function MAPlot({ design, session, annMap }) {
     }))
 
     const layout = {
-      title: { text: plotLabel, font: { size: 14, color: getComputedStyle(document.body).getPropertyValue('--text-1').trim() || getComputedStyle(document.documentElement).getPropertyValue('--text-1').trim() || '#1e293b' } },
+      title: { text: plotLabel, font: { size: 14, color: textColor } },
       xaxis: {
-        title: 'log₁₀(baseMean + 1)',
-        gridcolor: getComputedStyle(document.body).getPropertyValue('--border').trim() || getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || '#e2e8f0',
+        title: { text: 'log₁₀(baseMean + 1)', font: { size: 13, color: axisLabelColor } },
+        gridcolor: borderColor,
         zeroline: false,
-        color: getComputedStyle(document.body).getPropertyValue('--text-2').trim() || getComputedStyle(document.documentElement).getPropertyValue('--text-2').trim() || '#475569',
+        color: text2Color,
       },
       yaxis: {
-        title: 'log₂ Fold Change',
-        gridcolor: getComputedStyle(document.body).getPropertyValue('--border').trim() || getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || '#e2e8f0',
+        title: { text: 'log₂ Fold Change', font: { size: 13, color: axisLabelColor } },
+        gridcolor: borderColor,
         zeroline: true,
-        zerolinecolor: getComputedStyle(document.body).getPropertyValue('--text-3').trim() || getComputedStyle(document.documentElement).getPropertyValue('--text-3').trim() || '#94a3b8',
+        zerolinecolor: zeroColor,
         zerolinewidth: 1.5,
-        color: getComputedStyle(document.body).getPropertyValue('--text-2').trim() || getComputedStyle(document.documentElement).getPropertyValue('--text-2').trim() || '#475569',
+        color: text2Color,
       },
-      plot_bgcolor:  getComputedStyle(document.body).getPropertyValue('--bg-panel').trim() || getComputedStyle(document.documentElement).getPropertyValue('--bg-panel').trim(),
-      paper_bgcolor: getComputedStyle(document.body).getPropertyValue('--bg-panel').trim() || getComputedStyle(document.documentElement).getPropertyValue('--bg-panel').trim(),
+      plot_bgcolor:  'rgba(0,0,0,0)',
+      paper_bgcolor: 'rgba(0,0,0,0)',
       legend: {
-        orientation: 'h', y: -0.13, x: 0.5, xanchor: 'center',
-        font: { size: 11, color: getComputedStyle(document.body).getPropertyValue('--text-2').trim() || getComputedStyle(document.documentElement).getPropertyValue('--text-2').trim() || '#475569' },
+        orientation: 'h', y: -0.15, x: 0.5, xanchor: 'center',
+        font: { size: 11, color: text2Color },
       },
       annotations,
       height: 800,
-      width: plotRef.current ? plotRef.current.clientWidth : undefined,
-      margin: { t: 50, r: 24, b: 70, l: 64 },
+      autosize: true,
+      margin: { t: 50, r: 24, b: 80, l: 72 },
       hovermode: 'closest',
       shapes: [
         {
@@ -197,6 +207,19 @@ export default function MAPlot({ design, session, annMap }) {
       setViolinSymbol(gene !== geneId ? gene : null)
     })
   }, [rawPoints, nsTotal, fdr, fc, topN, size, labelBy, plotLabel])
+
+  // Resize whenever the *parent* container changes size (tab becoming visible, panel resize).
+  // Observing the parent — not the plot element itself — avoids a resize → DOM change → resize loop.
+  useEffect(() => {
+    const el = plotRef.current
+    const parent = el?.parentElement
+    if (!parent) return
+    const ro = new ResizeObserver(() => {
+      if (el._fullLayout) Plotly.Plots.resize(el)
+    })
+    ro.observe(parent)
+    return () => ro.disconnect()
+  }, [])
 
   if (!session?.sessionId) {
     return (

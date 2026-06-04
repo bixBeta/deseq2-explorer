@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import Plotly from 'plotly.js-dist-min'
-import GeneViolinModal from './GeneViolinModal'
 import { useRegisterPlot } from '../context/PlotRegistryContext'
 import { useDownloadDialog } from './DownloadDialog'
 
@@ -235,7 +235,11 @@ export default function CustomHeatmapPanel({
   const outerRef = useRef(null)
   const plotRef  = useRef(null)
 
-  const captureRef = useRef(null)
+  const captureRef     = useRef(null)
+  const figDataRef     = useRef(null)   // cache last fig for re-render on expand toggle
+  const floatRef       = useRef(null)   // the floating panel DOM node
+  const plotWrapperRef = useRef(null)   // outer sizing wrapper (for width resize)
+
   captureRef.current = () => {
     if (!plotRef.current?._fullLayout) return null
     return Plotly.toImage(plotRef.current, { format: 'png', width: 900, height: 800 })
@@ -273,10 +277,10 @@ export default function CustomHeatmapPanel({
   const [error,        setError]        = useState(null)
   const [hasPlot,      setHasPlot]      = useState(false)
   const [plotLabel,    setPlotLabel]    = useState('')
-  const [violinGene,   setViolinGene]   = useState(null)
-  const [violinSymbol, setViolinSymbol] = useState(null)
-  const [fullscreen,   setFullscreen]   = useState(false)
+const [fullscreen,   setFullscreen]   = useState(false)
   const [controlsOpen, setControlsOpen] = useState(false)
+  const [plotHeight,   setPlotHeight]   = useState(800)
+  const [plotWidth,    setPlotWidth]    = useState(null)   // null = 100% of panel
 
   // ── Initialise contrast selectors from contrastList ─────────────────────────
   useEffect(() => {
@@ -306,22 +310,33 @@ export default function CustomHeatmapPanel({
     return () => window.removeEventListener('keydown', handler)
   }, [fullscreen])
 
-  // ── Resize Plotly when fullscreen toggles ─────────────────────────────────────
+  // ── Re-render + resize when fullscreen toggles (prevents state loss on expand) ─
   useEffect(() => {
-    if (plotRef.current?._fullLayout) Plotly.Plots.resize(plotRef.current)
+    // Re-render from cached fig so plot doesn't disappear after DOM move via portal
+    if (!figDataRef.current || !plotRef.current) return
+    const cssVal = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim()
+    Plotly.react(plotRef.current, figDataRef.current.data, figDataRef.current.layout, {
+      responsive: true, displaylogo: false,
+      modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+      modebar: { bgcolor: cssVal('--bg-card2') || 'rgba(0,0,0,0.06)',
+                 color: cssVal('--text-2') || '#555', activecolor: cssVal('--text-1') || '#111' },
+    }).then(() => setTimeout(() => {
+      if (plotRef.current?._fullLayout) Plotly.Plots.resize(plotRef.current)
+    }, 100))
   }, [fullscreen])
 
-  // ── Resize observer ──────────────────────────────────────────────────────────
+  // ── Resize observer (outer plot container + floating panel) ───────────────────
   useEffect(() => {
-    if (!outerRef.current || !plotRef.current) return
+    const targets = [outerRef.current, floatRef.current].filter(Boolean)
+    if (!targets.length || !plotRef.current) return
     const ro = new ResizeObserver(() => {
       if (plotRef.current?._fullLayout) Plotly.Plots.resize(plotRef.current)
     })
-    ro.observe(outerRef.current)
+    targets.forEach(t => ro.observe(t))
     return () => ro.disconnect()
-  }, [])
+  }, [fullscreen])   // re-subscribe when floatRef attaches on fullscreen enter
 
-  // ── Reverse map: symbol → geneId ─────────────────────────────────────────────
+  // ── Reverse map: symbol → geneId (used by addFromPaste) ─────────────────────
   const revMap = useMemo(() => {
     if (!annMap) return {}
     const m = {}
@@ -361,6 +376,60 @@ export default function CustomHeatmapPanel({
       .filter(s => s[design.column] === c.treatment || s[design.column] === c.reference)
       .map(s => s.sample)
   }, [sampleScope, scopeContrast, contrastList, pca, design])
+
+  // ── Plot resize handles ───────────────────────────────────────────────────────
+
+  const handlePlotResizeStart = useCallback(e => {
+    e.preventDefault()
+    const startY  = e.clientY
+    const outerEl = outerRef.current
+    if (!outerEl) return
+    const startH = outerEl.getBoundingClientRect().height
+
+    document.body.classList.add('plot-resizing')
+
+    const onMove = ev => {
+      const newH = Math.max(300, startH + (ev.clientY - startY))
+      outerEl.style.height = `${newH}px`      // direct DOM — no re-render per frame
+    }
+    const onUp = ev => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      document.body.classList.remove('plot-resizing')
+      setPlotHeight(Math.max(300, startH + (ev.clientY - startY)))
+      setTimeout(() => {
+        if (plotRef.current?._fullLayout) Plotly.Plots.resize(plotRef.current)
+      }, 50)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [])
+
+  const handlePlotWidthResizeStart = useCallback(e => {
+    e.preventDefault()
+    const startX   = e.clientX
+    const wrapEl   = plotWrapperRef.current
+    if (!wrapEl) return
+    const startW = wrapEl.getBoundingClientRect().width
+
+    document.body.classList.add('plot-resizing-h')
+
+    const onMove = ev => {
+      const newW = Math.max(300, startW + (ev.clientX - startX))
+      wrapEl.style.width = `${newW}px`        // direct DOM — no re-render per frame
+    }
+    const onUp = ev => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      document.body.classList.remove('plot-resizing-h')
+      setPlotWidth(Math.max(300, startW + (ev.clientX - startX)))
+      setTimeout(() => {
+        if (plotRef.current?._fullLayout) Plotly.Plots.resize(plotRef.current)
+      }, 50)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [])
 
   // ── Gene accumulation ─────────────────────────────────────────────────────────
 
@@ -420,28 +489,36 @@ export default function CustomHeatmapPanel({
       const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-2').trim() || '#475569'
       const hlabel = { bgcolor: '#1e293b', bordercolor: '#334155', font: { color: '#e2e8f0', size: 12 } }
       fig.data = fig.data.map(trace => ({ ...trace, hoverlabel: hlabel }))
-      fig.layout = { ...fig.layout, paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
-                     font: { ...(fig.layout?.font || {}), color: textColor }, hoverlabel: hlabel }
+      // Strip explicit width/height from backend layout so Plotly fills the flex cell
+      // and never bleeds over the right drag handle.
+      // eslint-disable-next-line no-unused-vars
+      const { width: _bw, height: _bh, ...baseLayout } = fig.layout ?? {}
+      fig.layout = { ...baseLayout, autosize: true,
+                     paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
+                     font: { ...(baseLayout?.font || {}), color: textColor }, hoverlabel: hlabel }
       applySymbolsToFig(fig, annMap)
       applySampleLabelsToFig(fig, sampleLabels)
 
-      await Plotly.react(plotRef.current, fig.data, fig.layout, {
+      const cssVal = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim()
+      const plotConfig = {
         responsive: true, displaylogo: false,
         modeBarButtonsToRemove: ['lasso2d', 'select2d'],
-      })
+        modebar: {
+          bgcolor:     cssVal('--bg-card2') || 'rgba(0,0,0,0.06)',
+          color:       cssVal('--text-2')   || '#555555',
+          activecolor: cssVal('--text-1')   || '#111111',
+        },
+      }
+      figDataRef.current = { data: fig.data, layout: fig.layout }
+      // Show the wrapper first so plotRef has real dimensions when Plotly measures it
       setHasPlot(true)
       setPlotLabel(label)
-
-      // Click-to-violin: pt.y is post-symbol-replacement → reverse-lookup to geneId
-      plotRef.current.removeAllListeners?.('plotly_click')
-      plotRef.current.on('plotly_click', e => {
-        const pt = e.points?.[0]
-        if (!pt) return
-        const geneId = revMap[pt.y] || pt.y
-        const sym    = annMap?.[geneId]
-        setViolinGene(geneId)
-        setViolinSymbol(typeof sym === 'string' && sym && sym !== 'N/A' && sym !== 'None' ? sym : null)
-      })
+      // Let the browser paint the wrapper before reacting
+      await new Promise(r => requestAnimationFrame(r))
+      await Plotly.react(plotRef.current, fig.data, fig.layout, plotConfig)
+      setTimeout(() => {
+        if (plotRef.current?._fullLayout) Plotly.Plots.resize(plotRef.current)
+      }, 50)
 
       // Update annotation colour pickers
       if (data.annGroups?.length) {
@@ -465,12 +542,43 @@ export default function CustomHeatmapPanel({
     borderRadius: 6, color: 'var(--text-1)', width: 64,
   }
 
-  return (
-    <div style={fullscreen ? {
+  const _inner = (
+    /* Outer element: full-screen overlay in fullscreen, bare flex-row otherwise */
+    <div ref={floatRef} style={fullscreen ? {
       position: 'fixed', inset: 0, zIndex: 99999,
-      background: 'var(--bg-panel)', padding: '16px 20px',
-      display: 'flex', gap: 0, overflow: 'hidden',
+      background: 'var(--bg-panel)',
+      display: 'flex', flexDirection: 'column',
+      overflow: 'hidden',
     } : { display: 'flex', gap: 0, minHeight: 600 }}>
+
+      {/* ── Slim header bar (fullscreen only) ────────────────────────────────── */}
+      {fullscreen && (
+        <div style={{
+          padding: '7px 16px', flexShrink: 0,
+          background: 'rgba(255,255,255,0.03)',
+          borderBottom: '1px solid var(--border)',
+          display: 'flex', alignItems: 'center', gap: 12,
+        }}>
+          <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-1)' }}>
+            Custom Heatmap
+          </span>
+          <span style={{ fontSize: '0.65rem', color: 'var(--text-3)' }}>
+            Press <kbd style={{ padding: '0 4px', background: 'rgba(255,255,255,0.08)',
+              border: '1px solid var(--border)', borderRadius: 3, fontFamily: 'monospace' }}>Esc</kbd> or
+          </span>
+          <button onClick={() => setFullscreen(false)}
+                  style={{ fontSize: '0.72rem', padding: '3px 12px', borderRadius: 5, cursor: 'pointer',
+                           background: 'none', border: '1px solid var(--border)', color: 'var(--text-3)' }}>
+            ⊠ Exit fullscreen
+          </button>
+        </div>
+      )}
+
+      {/* ── Content row: sidebar + right panel ───────────────────────────────── */}
+      {/* In fullscreen → flex row that fills remaining height; otherwise → display:contents */}
+      <div style={fullscreen
+        ? { flex: 1, display: 'flex', overflow: 'hidden', padding: '12px 20px 12px 16px' }
+        : { display: 'contents' }}>
 
       {/* ── LEFT SIDEBAR: Gene Set Builder ──────────────────────────────────── */}
       <div style={{
@@ -641,7 +749,8 @@ export default function CustomHeatmapPanel({
 
       {/* ── RIGHT PANEL: Controls + Plot ─────────────────────────────────────── */}
       <div style={{ flex: 1, paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 12,
-                    minWidth: 0, overflowY: fullscreen ? 'auto' : 'visible' }}>
+                    minWidth: 0, overflowY: fullscreen ? 'auto' : 'visible',
+                    overflowX: plotWidth ? 'auto' : 'visible' }}>
 
         {/* Controls collapsible header */}
         <button onClick={() => setControlsOpen(v => !v)}
@@ -658,9 +767,11 @@ export default function CustomHeatmapPanel({
             fontSize: '0.7rem', color: 'var(--text-3)',
           }}>▶</span>
           Plot Controls
-          <span style={{ marginLeft: 'auto', fontSize: '0.68rem', color: 'var(--text-3)' }}>
-            {controlsOpen ? 'collapse' : 'expand'}
-          </span>
+          <span style={{
+            marginLeft: 'auto', fontSize: '0.82rem', color: 'var(--text-3)',
+            display: 'inline-block', transition: 'transform 0.2s',
+            transform: controlsOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+          }}>▾</span>
         </button>
 
         {/* Controls grid */}
@@ -813,35 +924,73 @@ export default function CustomHeatmapPanel({
           </div>
         )}
 
-        {/* Plot */}
-        <div ref={outerRef} style={{
-          width: '100%', display: hasPlot ? (fullscreen ? 'flex' : 'block') : 'none',
-          flex: fullscreen ? '1 1 0' : undefined, minHeight: fullscreen ? 400 : undefined,
+        {/* Plot + two-axis resize handles — always mounted so plotRef is never null */}
+        <div ref={plotWrapperRef} style={{
+          display: hasPlot ? 'flex' : 'none', flexDirection: 'column',
+          width: plotWidth ?? '100%',
+          alignSelf: 'flex-start', flexShrink: 0,
         }}>
-          <div ref={plotRef} style={{ width: '100%', height: fullscreen ? '100%' : 800 }} />
-        </div>
+            {/* Plot row: plot + right handle */}
+            <div style={{ display: 'flex', alignItems: 'stretch' }}>
+              <div ref={outerRef} style={{ flex: 1, height: plotHeight, minHeight: 300 }}>
+                <div ref={plotRef} style={{ width: '100%', height: '100%', minHeight: 300 }} />
+              </div>
+
+              {/* Right drag handle */}
+              <div
+                onMouseDown={handlePlotWidthResizeStart}
+                title="Drag to resize width"
+                style={{
+                  width: 10, cursor: 'ew-resize', flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid var(--border)', borderLeft: 'none',
+                  borderRadius: '0 6px 0 0',
+                  userSelect: 'none', transition: 'background 0.15s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--accent-rgb),0.12)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+              >
+                <span style={{
+                  fontSize: '0.5rem', color: 'var(--text-3)',
+                  writingMode: 'vertical-lr', letterSpacing: 3, lineHeight: 1, pointerEvents: 'none',
+                }}>▾▾</span>
+              </div>
+            </div>
+
+            {/* Bottom drag handle */}
+            <div
+              onMouseDown={handlePlotResizeStart}
+              title="Drag to resize height"
+              style={{
+                width: '100%', height: 10, cursor: 'ns-resize', flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid var(--border)', borderTop: 'none',
+                borderRadius: '0 0 6px 6px',
+                userSelect: 'none', transition: 'background 0.15s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--accent-rgb),0.12)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+            >
+              <span style={{ fontSize: '0.5rem', color: 'var(--text-3)', letterSpacing: 3,
+                             lineHeight: 1, pointerEvents: 'none' }}>▾▾</span>
+            </div>
+          </div>
       </div>
 
-      {/* Violin modal */}
-      {violinGene && (
-        <GeneViolinModal
-          gene={violinGene}
-          symbol={violinSymbol}
-          session={session}
-          contrast={{
-            label:     plotLabel,
-            treatment: active?.treatment,
-            reference: active?.reference,
-          }}
-          column={design?.column}
-          onClose={() => { setViolinGene(null); setViolinSymbol(null) }}
-        />
-      )}
+      </div>{/* end content-row wrapper (display:contents in normal mode) */}
+
 
       {dlDialog}
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }
-        .dropdown-item:hover { background: rgba(var(--accent-rgb),0.08) !important; }`}
-      </style>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .dropdown-item:hover { background: rgba(var(--accent-rgb),0.08) !important; }
+        .plot-resizing,   .plot-resizing   * { cursor: ns-resize !important; user-select: none !important; }
+        .plot-resizing-h, .plot-resizing-h * { cursor: ew-resize !important; user-select: none !important; }
+      `}</style>
     </div>
   )
+
+  return fullscreen ? createPortal(_inner, document.body) : _inner
 }
