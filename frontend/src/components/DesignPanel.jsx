@@ -216,6 +216,56 @@ export default function DesignPanel({
 
       <div className="glass p-6 flex flex-col gap-5">
 
+        {/* ── Run params summary + preview/download (append mode only) ── */}
+        {isAppending && (
+          <div style={{
+            display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8,
+            padding: '8px 12px', borderRadius: 10,
+            background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)',
+          }}>
+            <span className="label-sm" style={{ color: 'var(--text-3)', marginRight: 2 }}>Run params</span>
+            {params.noFilter ? (
+              <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: 20,
+                             background: 'rgba(148,163,184,0.12)', color: 'var(--text-3)',
+                             border: '1px solid var(--border)' }}>
+                no pre-filter
+              </span>
+            ) : (
+              <>
+                <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: 20,
+                               background: 'rgba(99,102,241,0.1)', color: 'var(--accent-text)',
+                               border: '1px solid rgba(99,102,241,0.25)' }}>
+                  minCount = {params.minCount}
+                </span>
+                <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: 20,
+                               background: 'rgba(99,102,241,0.1)', color: 'var(--accent-text)',
+                               border: '1px solid rgba(99,102,241,0.25)' }}>
+                  minSamples = {params.minSamples}
+                </span>
+              </>
+            )}
+            <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: 20,
+                           background: 'rgba(99,102,241,0.1)', color: 'var(--accent-text)',
+                           border: '1px solid rgba(99,102,241,0.25)' }}>
+              α = {params.alpha}
+            </span>
+            {canPreview && (
+              <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
+                <button onClick={() => setShowDist(true)} style={{
+                  fontSize: '0.7rem', padding: '3px 10px', borderRadius: 20,
+                  border: '1px solid var(--border)', background: 'var(--bg-card2)',
+                  color: 'var(--text-2)', cursor: 'pointer', whiteSpace: 'nowrap',
+                }}>📊 Preview</button>
+                <button onClick={downloadFilteredCounts} style={{
+                  fontSize: '0.7rem', padding: '3px 10px', borderRadius: 20,
+                  border: '1px solid var(--border)', background: 'var(--bg-card2)',
+                  color: 'var(--text-2)', cursor: 'pointer', whiteSpace: 'nowrap',
+                }}>⬇ Counts</button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── Already-computed contrasts list (append mode only) ── */}
         {isAppending && (
           <div>
