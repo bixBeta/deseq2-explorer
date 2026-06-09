@@ -541,6 +541,7 @@ function(req, res) {
 
 # ── Export filtered raw counts as CSV ─────────────────────────────────────────
 #* @post /api/export-counts
+#* @serializer text
 function(req, res) {
   body       <- fromJSON(rawToChar(req$bodyRaw))
   session_id <- body$sessionId
@@ -553,12 +554,15 @@ function(req, res) {
 
   obj    <- readRDS(rds_path)
   counts <- round(as.matrix(obj$counts))
+  mode(counts) <- "integer"   # ensure integer output, no decimal points
 
-  keep    <- rowSums(counts >= min_count) >= min_samp
+  keep     <- rowSums(counts >= min_count) >= min_samp
   filtered <- counts[keep, , drop = FALSE]
 
   df  <- data.frame(gene = rownames(filtered), filtered, check.names = FALSE)
-  csv <- paste(capture.output(write.csv(df, row.names = FALSE)), collapse = "\n")
+  tmp <- tempfile(fileext = ".csv"); on.exit(unlink(tmp), add = TRUE)
+  write.csv(df, file = tmp, row.names = FALSE, quote = FALSE)
+  csv <- paste(readLines(tmp), collapse = "\n")
 
   res$setHeader("Content-Type", "text/csv")
   res$setHeader("Content-Disposition",
