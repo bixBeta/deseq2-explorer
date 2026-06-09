@@ -492,6 +492,80 @@ function(req, res) {
   list(ok = TRUE)
 }
 
+# ── Pre-filter distribution preview ──────────────────────────────────────────
+#* @post /api/prefilter-dist
+#* @serializer unboxedJSON
+function(req, res) {
+  body       <- fromJSON(rawToChar(req$bodyRaw))
+  session_id <- body$sessionId
+  if (is.null(session_id) || session_id == "") stop("sessionId is required")
+
+  rds_path <- file.path(UPLOAD_DIR, paste0(session_id, ".rds"))
+  if (!file.exists(rds_path)) stop("Upload not found — please upload a file first")
+
+  obj    <- readRDS(rds_path)
+  counts <- round(as.matrix(obj$counts))
+  n_genes <- nrow(counts)
+  n_samp  <- ncol(counts)
+
+  # Per-sample KDE of log2(count + 1)
+  kdes <- lapply(seq_len(n_samp), function(j) {
+    sname <- colnames(counts)[j]
+    vals  <- log2(counts[, j] + 1)
+    dens  <- density(vals, bw = "nrd0", adjust = 1.5, n = 256, from = 0)
+    y_sm  <- as.numeric(stats::filter(dens$y, rep(1/9, 9), circular = FALSE))
+    na_idx       <- is.na(y_sm)
+    y_sm[na_idx] <- dens$y[na_idx]
+    y_sm         <- pmax(y_sm, 0)
+    list(sample = sname,
+         x = round(as.numeric(dens$x), 4),
+         y = round(as.numeric(y_sm),   8))
+  })
+
+  # Threshold lookup table: thresholdTable[mc_idx][ms_idx] = n_genes retained
+  # Rows = minCount 1..50, Cols = minSamples 1..min(n_samp, 20)
+  mc_range <- 1:50
+  ms_range <- seq_len(min(n_samp, 20L))
+  threshold_table <- lapply(mc_range, function(mc) {
+    pass <- rowSums(counts >= mc)   # per-gene: how many samples pass
+    vapply(ms_range, function(ms) sum(pass >= ms), integer(1L))
+  })
+
+  list(kdes           = kdes,
+       thresholdTable = threshold_table,
+       minCountRange  = mc_range,
+       minSamplesRange= ms_range,
+       nGenes         = n_genes,
+       nSamples       = n_samp)
+}
+
+# ── Export filtered raw counts as CSV ─────────────────────────────────────────
+#* @post /api/export-counts
+function(req, res) {
+  body       <- fromJSON(rawToChar(req$bodyRaw))
+  session_id <- body$sessionId
+  min_count  <- as.integer(body$minCount  %||% 1L)
+  min_samp   <- as.integer(body$minSamples %||% 2L)
+  if (is.null(session_id) || session_id == "") stop("sessionId is required")
+
+  rds_path <- file.path(UPLOAD_DIR, paste0(session_id, ".rds"))
+  if (!file.exists(rds_path)) stop("Upload not found")
+
+  obj    <- readRDS(rds_path)
+  counts <- round(as.matrix(obj$counts))
+
+  keep    <- rowSums(counts >= min_count) >= min_samp
+  filtered <- counts[keep, , drop = FALSE]
+
+  df  <- data.frame(gene = rownames(filtered), filtered, check.names = FALSE)
+  csv <- paste(capture.output(write.csv(df, row.names = FALSE)), collapse = "\n")
+
+  res$setHeader("Content-Type", "text/csv")
+  res$setHeader("Content-Disposition",
+    sprintf('attachment; filename="filtered_counts_minCount%d_minSamp%d.csv"', min_count, min_samp))
+  csv
+}
+
 # ── Parse RDS ─────────────────────────────────────────────────────────────────
 #* @post /api/parse
 #* @serializer unboxedJSON

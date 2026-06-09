@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import Plotly from 'plotly.js-dist-min'
 
 const DEFAULT_PARAMS = {
   alpha: 0.05,
@@ -12,6 +13,12 @@ const DEFAULT_PARAMS = {
   ntop: 500,
   ntopAll: false,
 }
+
+const SAMPLE_COLORS = [
+  '#6366f1','#ec4899','#14b8a6','#f59e0b','#3b82f6',
+  '#10b981','#f97316','#8b5cf6','#06b6d4','#84cc16',
+  '#f43f5e','#a78bfa','#34d399','#fb923c','#38bdf8',
+]
 
 function ParamSlider({ label, value, min, max, step, unit = '', onChange }) {
   return (
@@ -29,9 +36,7 @@ function ParamSlider({ label, value, min, max, step, unit = '', onChange }) {
 }
 
 function initContrasts(design, appending) {
-  // In append mode always start with a fresh blank row
   if (appending) return [{ id: 0, treatment: '', reference: '' }]
-  // New format: contrasts is array of {treatment, reference} objects
   if (design?.contrasts?.length) {
     return design.contrasts.map((c, i) => ({
       id: i,
@@ -39,7 +44,6 @@ function initContrasts(design, appending) {
       reference: typeof c === 'string' ? (design.reference || '') : (c.reference || ''),
     }))
   }
-  // Old single-contrast format
   if (design?.contrast) return [{ id: 0, treatment: design.contrast, reference: design.reference || '' }]
   return [{ id: 0, treatment: '', reference: '' }]
 }
@@ -48,7 +52,6 @@ export default function DesignPanel({
   session, parseInfo, metaState, initialDesign, existingResults,
   onResults, onBack,
 }) {
-  // isAppending = user came back from Results to add more contrasts
   const isAppending = !!(existingResults?.contrasts?.length)
 
   const [column,     setColumn]     = useState(initialDesign?.column || '')
@@ -59,6 +62,7 @@ export default function DesignPanel({
   const [loading,    setLoading]    = useState(false)
   const [error,      setError]      = useState(null)
   const [status,     setStatus]     = useState(null)
+  const [showDist,   setShowDist]   = useState(false)
 
   const _cols = parseInfo?.columns
   const columns = Array.isArray(_cols) ? _cols
@@ -76,14 +80,12 @@ export default function DesignPanel({
     ? [...(metaState.selected || [])].length
     : parseInfo?.sampleCount
 
-  // Auto-select 'group' column (or first available) when columns load
   useEffect(() => {
     if (column || !columns.length || isAppending) return
     const preferred = columns.find(c => c.toLowerCase() === 'group') ?? columns[0]
     setColumn(preferred)
   }, [columns])
 
-  // Reset new-contrast rows when column changes (not in append mode)
   useEffect(() => {
     if (!initialDesign && !isAppending) {
       setContrasts([{ id: 0, treatment: '', reference: '' }])
@@ -100,13 +102,10 @@ export default function DesignPanel({
     setContrasts(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c))
   }
 
-  // Already-computed labels set for fast lookup
   const existingLabels = useMemo(() => new Set(
     (existingResults?.contrasts || []).map(c => `${c.treatment}|${c.reference}`)
   ), [existingResults])
 
-  // A contrast row is valid when treatment ≠ reference, both non-empty,
-  // not already computed, and not a duplicate within the current list
   const validContrasts = contrasts.reduce((acc, c) => {
     const key = `${c.treatment}|${c.reference}`
     if (
@@ -121,7 +120,6 @@ export default function DesignPanel({
   }, { seen: new Set(), list: [] }).list
   const canRun = column && validContrasts.length > 0
 
-  // For each row: treatment options exclude the row's own reference (and vice versa)
   function treatmentOpts(c) { return levelOptions.filter(l => l !== c.reference) }
   function referenceOpts(c) { return levelOptions.filter(l => l !== c.treatment) }
 
@@ -144,7 +142,6 @@ export default function DesignPanel({
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'DESeq2 failed')
 
-      // If appending, merge new contrasts; deduplicate by label (new wins)
       let mergedContrasts
       if (isAppending) {
         const newLabels = new Set(data.contrasts.map(c => `${c.treatment}|${c.reference}`))
@@ -155,7 +152,6 @@ export default function DesignPanel({
         ? { contrasts: mergedContrasts, pca: data.pca, countDist: data.countDist }
         : data
 
-      // Full design deduplicated by label (new wins)
       const seen = new Set()
       const allContrastDefs = [
         ...(existingResults?.contrasts || []).map(c => ({ treatment: c.treatment, reference: c.reference })),
@@ -173,7 +169,33 @@ export default function DesignPanel({
     }
   }
 
+  async function downloadFilteredCounts() {
+    try {
+      const r = await fetch('/api/export-counts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId:  session.sessionId,
+          minCount:   params.minCount,
+          minSamples: params.minSamples,
+        }),
+      })
+      if (!r.ok) throw new Error('Export failed')
+      const text = await r.text()
+      const blob = new Blob([text], { type: 'text/csv' })
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href = url
+      a.download = `filtered_counts_minCount${params.minCount}_minSamp${params.minSamples}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
   const existingOffset = isAppending ? existingResults.contrasts.length : 0
+  const canPreview = !!session?.sessionId && !params.noFilter
 
   return (
     <div className="w-full" style={{ maxWidth: 580 }}>
@@ -266,13 +288,10 @@ export default function DesignPanel({
                 alignItems: 'center', gap: 6,
                 opacity: isDupe ? 0.5 : 1,
               }}>
-                {/* Row number / dupe indicator */}
                 <span className="text-xs font-mono" style={{ color: isDupe ? '#f59e0b' : 'var(--text-4)', textAlign: 'right' }}
                       title={isDupe ? 'Already computed — will be skipped' : ''}>
                   {isDupe ? '!' : existingOffset + idx + 1 + '.'}
                 </span>
-
-                {/* Numerator (treatment) */}
                 <select value={c.treatment} disabled={!column}
                         onChange={e => updateContrast(c.id, 'treatment', e.target.value)}>
                   <option value="">— numerator —</option>
@@ -280,11 +299,7 @@ export default function DesignPanel({
                   {c.treatment && !treatmentOpts(c).includes(c.treatment) &&
                     <option value={c.treatment}>{c.treatment}</option>}
                 </select>
-
-                {/* vs */}
                 <span className="text-xs text-center" style={{ color: 'var(--text-4)' }}>vs</span>
-
-                {/* Denominator (reference) */}
                 <select value={c.reference} disabled={!column}
                         onChange={e => updateContrast(c.id, 'reference', e.target.value)}>
                   <option value="">— denominator —</option>
@@ -292,8 +307,6 @@ export default function DesignPanel({
                   {c.reference && !referenceOpts(c).includes(c.reference) &&
                     <option value={c.reference}>{c.reference}</option>}
                 </select>
-
-                {/* Remove button */}
                 <button onClick={() => removeContrast(c.id)} disabled={contrasts.length === 1}
                         style={{
                           background: 'transparent', border: 'none',
@@ -328,7 +341,7 @@ export default function DesignPanel({
           </div>
         )}
 
-        {/* DESeq2 Parameters accordion — hidden when appending (use existing params) */}
+        {/* DESeq2 Parameters accordion */}
         {!isAppending && (
           <div>
             <button className="accordion-btn" onClick={() => setShowParams(p => !p)}>
@@ -345,22 +358,52 @@ export default function DesignPanel({
                   <ParamSlider label="LFC Threshold" value={params.lfcThreshold} min={0} max={2} step={0.1}
                                onChange={v => setParams(p => ({ ...p, lfcThreshold: v }))} />
                   <div style={{ opacity: params.noFilter ? 0.38 : 1, pointerEvents: params.noFilter ? 'none' : 'auto' }}>
-                    <ParamSlider label="Min count per gene" value={params.minCount} min={1} max={20} step={1}
+                    <ParamSlider label="Min count per gene" value={params.minCount} min={1} max={50} step={1}
                                  onChange={v => setParams(p => ({ ...p, minCount: v }))} />
                   </div>
                   <div style={{ opacity: params.noFilter ? 0.38 : 1, pointerEvents: params.noFilter ? 'none' : 'auto' }}>
-                    <ParamSlider label="Min samples with count" value={params.minSamples} min={1} max={10} step={1}
+                    <ParamSlider label="Min samples with count" value={params.minSamples} min={1} max={20} step={1}
                                  onChange={v => setParams(p => ({ ...p, minSamples: v }))} />
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2" style={{ marginTop: '-4px' }}>
-                  <input type="checkbox" id="no-filter-chk" checked={!!params.noFilter}
-                         onChange={e => setParams(p => ({ ...p, noFilter: e.target.checked }))}
-                         style={{ accentColor: 'var(--accent)', width: 14, height: 14, cursor: 'pointer' }} />
-                  <label htmlFor="no-filter-chk" className="label-sm" style={{ cursor: 'pointer', userSelect: 'none' }}>
-                    No pre-filtering <span style={{ color: 'var(--text-4)', fontWeight: 400 }}>(Use all genes — Matches TREx Runs)</span>
-                  </label>
+                {/* No-filter checkbox + preview / download buttons */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                              marginTop: '-4px', gap: 8 }}>
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" id="no-filter-chk" checked={!!params.noFilter}
+                           onChange={e => setParams(p => ({ ...p, noFilter: e.target.checked }))}
+                           style={{ accentColor: 'var(--accent)', width: 14, height: 14, cursor: 'pointer' }} />
+                    <label htmlFor="no-filter-chk" className="label-sm" style={{ cursor: 'pointer', userSelect: 'none' }}>
+                      No pre-filtering <span style={{ color: 'var(--text-4)', fontWeight: 400 }}>(Matches TREx Runs)</span>
+                    </label>
+                  </div>
+                  {canPreview && (
+                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                      <button
+                        onClick={() => setShowDist(true)}
+                        title="Preview count distribution"
+                        style={{
+                          fontSize: '0.72rem', padding: '3px 10px', borderRadius: 20,
+                          border: '1px solid var(--border)', background: 'var(--bg-card2)',
+                          color: 'var(--text-2)', cursor: 'pointer', display: 'flex',
+                          alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
+                        }}>
+                        📊 Preview
+                      </button>
+                      <button
+                        onClick={downloadFilteredCounts}
+                        title="Download filtered counts matrix as CSV"
+                        style={{
+                          fontSize: '0.72rem', padding: '3px 10px', borderRadius: 20,
+                          border: '1px solid var(--border)', background: 'var(--bg-card2)',
+                          color: 'var(--text-2)', cursor: 'pointer', display: 'flex',
+                          alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
+                        }}>
+                        ⬇ Counts
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* ── PCA ── */}
@@ -486,6 +529,343 @@ export default function DesignPanel({
           </button>
         </div>
       </div>
+
+      {/* Pre-filter distribution modal */}
+      {showDist && (
+        <PreFilterModal
+          session={session}
+          minCount={params.minCount}
+          minSamples={params.minSamples}
+          onClose={() => setShowDist(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Pre-filter distribution modal ─────────────────────────────────────────────
+function PreFilterModal({ session, minCount, minSamples, onClose }) {
+  const [distData,  setDistData]  = useState(null)
+  const [fetching,  setFetching]  = useState(true)
+  const [fetchErr,  setFetchErr]  = useState(null)
+  const [pos,       setPos]       = useState(null)
+  const [size,      setSize]      = useState({
+    w: Math.min(window.innerWidth  * 0.85, 980),
+    h: Math.min(window.innerHeight * 0.80, 760),
+  })
+
+  const plotRef     = useRef(null)
+  const modalRef    = useRef(null)
+  const dragRef     = useRef(null)
+  const resizeRef   = useRef(null)
+  const wasDragged  = useRef(false)
+  const didRender   = useRef(false)
+
+  // ── Fetch distribution data once ─────────────────────────────────────────────
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const r = await fetch('/api/prefilter-dist', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ sessionId: session.sessionId }),
+        })
+        const d = await r.json()
+        if (cancelled) return
+        if (d.error) throw new Error(d.error)
+        setDistData(d)
+      } catch (e) {
+        if (!cancelled) setFetchErr(e.message)
+      } finally {
+        if (!cancelled) setFetching(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [session.sessionId])
+
+  // ── Initial chart render once data arrives ────────────────────────────────────
+  useEffect(() => {
+    if (!distData || !plotRef.current || didRender.current) return
+    didRender.current = true
+    renderChart(distData, minCount, size.h)
+  }, [distData])
+
+  // ── Update threshold line live as minCount changes (cheap relayout) ───────────
+  useEffect(() => {
+    if (!distData || !plotRef.current?._fullLayout) return
+    const x = Math.log2(minCount + 1)
+    Plotly.relayout(plotRef.current, {
+      'shapes[0].x0': x,
+      'shapes[0].x1': x,
+      'annotations[0].x': x,
+      'annotations[0].text': `≥ ${minCount} counts`,
+    })
+  }, [minCount, distData])
+
+  // ── Re-render on resize ───────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!distData || !plotRef.current?._fullLayout) return
+    Plotly.relayout(plotRef.current, { height: chartHeight(size.h) })
+  }, [size.h, distData])
+
+  function chartHeight(h) { return Math.max(260, h - 110) }
+
+  function renderChart(data, mc, h) {
+    const { kdes } = data
+    const isLight   = document.body.classList.contains('light')
+    const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-3').trim() || '#94a3b8'
+    const gridColor = isLight ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.10)'
+    const showLegend = kdes.length <= 20
+
+    const allX  = kdes.flatMap(k => k.x)
+    const xMax  = Math.max(...allX) * 1.02
+
+    // Nice count labels on log2(count+1) axis
+    const niceC = [0,1,2,5,10,20,50,100,200,500,1000,2000,5000,10000,20000,50000]
+    const tvVals = niceC.filter(v => Math.log2(v + 1) <= xMax)
+    const tickvals = tvVals.map(v => Math.log2(v + 1))
+    const ticktext = tvVals.map(v => String(v))
+
+    const x = Math.log2(mc + 1)
+
+    const traces = kdes.map((kde, i) => ({
+      x: kde.x,
+      y: kde.y,
+      customdata: kde.x.map(v => Math.pow(2, v) - 1),
+      type: 'scatter', mode: 'lines', name: kde.sample,
+      line: { color: SAMPLE_COLORS[i % SAMPLE_COLORS.length], width: 1.5, shape: 'spline' },
+      opacity: 0.72,
+      showlegend: showLegend,
+      hovertemplate: `<b>${kde.sample}</b><br>count ≈ %{customdata:.0f}<extra></extra>`,
+    }))
+
+    const layout = {
+      height: chartHeight(h),
+      margin: { t: 28, r: showLegend ? 150 : 16, b: 54, l: 62 },
+      plot_bgcolor: 'transparent',
+      paper_bgcolor: 'transparent',
+      xaxis: {
+        title:    { text: 'raw count  (log₂(count + 1) scale)', font: { size: 9 } },
+        color:    textColor,
+        gridcolor: gridColor,
+        showgrid: true,
+        zeroline: false,
+        tickfont: { size: 8 },
+        range:    [0, xMax],
+        tickvals,
+        ticktext,
+      },
+      yaxis: {
+        title:    { text: 'Density', font: { size: 9 } },
+        color:    textColor,
+        gridcolor: gridColor,
+        showgrid: true,
+        zeroline: false,
+        tickfont: { size: 8 },
+      },
+      legend: {
+        font: { size: 8, color: textColor },
+        bgcolor: 'transparent',
+        x: 1.01, y: 1, xanchor: 'left',
+      },
+      hovermode: 'x unified',
+      shapes: [{
+        type: 'line', x0: x, x1: x, y0: 0, y1: 1, yref: 'paper',
+        line: { color: '#f43f5e', width: 2, dash: 'dash' },
+      }],
+      annotations: [{
+        x, y: 0.97, yref: 'paper', xanchor: 'left',
+        text: `≥ ${mc} counts`,
+        font: { size: 8, color: '#f87171' },
+        showarrow: false,
+        bgcolor: 'rgba(0,0,0,0)',
+      }],
+    }
+
+    Plotly.react(plotRef.current, traces, layout, {
+      responsive: true,
+      displaylogo: false,
+      modeBarButtonsToRemove: ['select2d', 'lasso2d'],
+    })
+  }
+
+  // ── Genes retained from lookup table (instant) ────────────────────────────────
+  const genesRetained = useMemo(() => {
+    if (!distData?.thresholdTable) return null
+    const mcIdx = Math.min(Math.max(minCount, 1), 50) - 1
+    const msIdx = Math.min(Math.max(minSamples, 1), distData.nSamples, 20) - 1
+    return distData.thresholdTable[mcIdx]?.[msIdx] ?? null
+  }, [distData, minCount, minSamples])
+
+  const pct = distData && genesRetained != null
+    ? Math.round(genesRetained / distData.nGenes * 100)
+    : null
+
+  // ── Drag ─────────────────────────────────────────────────────────────────────
+  const startDrag = (e) => {
+    if (e.target.closest('button')) return
+    if (!pos && modalRef.current) {
+      const r = modalRef.current.getBoundingClientRect()
+      setPos({ x: r.left, y: r.top })
+    }
+    const rect = modalRef.current.getBoundingClientRect()
+    dragRef.current = { sx: e.clientX, sy: e.clientY, ox: rect.left, oy: rect.top }
+    wasDragged.current = false
+    const onMove = ev => {
+      wasDragged.current = true
+      setPos({ x: dragRef.current.ox + ev.clientX - dragRef.current.sx,
+               y: dragRef.current.oy + ev.clientY - dragRef.current.sy })
+    }
+    const onUp = () => {
+      dragRef.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      setTimeout(() => { wasDragged.current = false }, 0)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    e.preventDefault()
+  }
+
+  // ── Resize ───────────────────────────────────────────────────────────────────
+  const startResize = (e) => {
+    const rect = modalRef.current.getBoundingClientRect()
+    resizeRef.current = { sx: e.clientX, sy: e.clientY, ow: rect.width, oh: rect.height }
+    wasDragged.current = true
+    const onMove = ev => {
+      setSize({
+        w: Math.max(600, resizeRef.current.ow + ev.clientX - resizeRef.current.sx),
+        h: Math.max(420, resizeRef.current.oh + ev.clientY - resizeRef.current.sy),
+      })
+    }
+    const onUp = () => {
+      resizeRef.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      setTimeout(() => { wasDragged.current = false }, 0)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    e.preventDefault(); e.stopPropagation()
+  }
+
+  const modalStyle = {
+    position: 'fixed',
+    zIndex: 101001,
+    background: 'var(--bg-panel)',
+    border: '1px solid var(--border)',
+    borderRadius: 16,
+    boxShadow: '0 8px 60px rgba(0,0,0,0.5)',
+    width:  size.w,
+    height: size.h,
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    ...(pos
+      ? { left: pos.x, top: pos.y }
+      : { top: '50%', left: '50%', transform: 'translate(-50%,-50%)' }),
+  }
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 101000, background: 'rgba(0,0,0,0.5)' }}
+      onClick={() => { if (!wasDragged.current) onClose() }}
+    >
+      <div ref={modalRef} style={modalStyle} onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div
+          onMouseDown={startDrag}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '12px 16px', borderBottom: '1px solid var(--border)',
+            cursor: 'grab', userSelect: 'none', flexShrink: 0,
+          }}
+        >
+          <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-1)' }}>
+            Raw Count Distribution
+          </span>
+          {distData && (
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-4)' }}>
+              {distData.nSamples} samples · {distData.nGenes.toLocaleString()} genes total
+            </span>
+          )}
+          {/* Genes retained badge */}
+          {genesRetained != null && (
+            <span style={{
+              marginLeft: 4,
+              fontSize: '0.72rem', fontWeight: 600,
+              padding: '2px 10px', borderRadius: 20,
+              background: 'rgba(52,211,153,0.12)',
+              border: '1px solid rgba(52,211,153,0.3)',
+              color: '#34d399',
+            }}>
+              ✓ {genesRetained.toLocaleString()} retained ({pct}%) · {(distData.nGenes - genesRetained).toLocaleString()} removed
+            </span>
+          )}
+          <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--text-4)', fontStyle: 'italic' }}>
+            minCount = {minCount} · minSamples = {minSamples}
+          </span>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              color: 'var(--text-3)', fontSize: '1.2rem', lineHeight: 1, padding: '0 4px',
+            }}
+          >×</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+          {fetching && (
+            <div style={{
+              position: 'absolute', inset: 0,
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12,
+            }}>
+              <span style={{
+                width: 36, height: 36, borderRadius: '50%',
+                border: '3px solid rgba(var(--accent-rgb),0.2)',
+                borderTopColor: 'var(--accent)',
+                display: 'inline-block', animation: 'pf-spin 0.7s linear infinite',
+              }} />
+              <span style={{ fontSize: '0.82rem', color: 'var(--text-3)' }}>Computing distributions…</span>
+            </div>
+          )}
+          {fetchErr && (
+            <div style={{
+              position: 'absolute', inset: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <span style={{ fontSize: '0.82rem', color: '#f87171' }}>⚠ {fetchErr}</span>
+            </div>
+          )}
+          <div ref={plotRef} style={{ width: '100%', height: '100%',
+                                      visibility: distData ? 'visible' : 'hidden' }} />
+        </div>
+
+        {/* Footer hint */}
+        <div style={{
+          padding: '6px 16px', borderTop: '1px solid var(--border)',
+          fontSize: '0.68rem', color: 'var(--text-4)', flexShrink: 0,
+          display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          <span>Red dashed line = current minCount threshold on log₂(count+1) scale.</span>
+          <span>Adjust sliders in the panel to update live.</span>
+        </div>
+
+        {/* Resize handle */}
+        <div
+          onMouseDown={startResize}
+          style={{
+            position: 'absolute', right: 4, bottom: 4, width: 16, height: 16,
+            cursor: 'se-resize', color: 'var(--text-4)', fontSize: '0.7rem',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            userSelect: 'none',
+          }}
+        >⊿</div>
+      </div>
+      <style>{`@keyframes pf-spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }
