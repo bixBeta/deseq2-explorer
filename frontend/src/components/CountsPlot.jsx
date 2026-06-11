@@ -40,7 +40,9 @@ export default function CountsPlot({ countDist, design, metadata, sampleLabels =
   const countsCaptureRef = useRef(null)
   countsCaptureRef.current = () => {
     if (!plotRef.current?._fullLayout) return null
-    return Plotly.toImage(plotRef.current, { format: 'png', width: 900, height: 540 })
+    // Use the actual rendered height so the legend and labels aren't clipped
+    const h = plotRef.current._fullLayout?.height ?? 538
+    return Plotly.toImage(plotRef.current, { format: 'png', width: 900, height: Math.max(h, 538) })
   }
   useRegisterPlot('counts-plot', 'Counts Distribution', 'Distributions', countsCaptureRef)
   const [showPoints,  setShowPoints] = useState(false)
@@ -121,6 +123,17 @@ export default function CountsPlot({ countDist, design, metadata, sampleLabels =
     const tickvals = data.map(d => sampleLabels[d.sample] ?? d.sample)
     const ticktext = data.map(d => sampleLabels[d.sample] ?? d.sample)
 
+    // Dynamic bottom margin + legend position based on actual label length
+    const rotated   = data.length > 10
+    const maxLblLen = Math.max(...ticktext.map(t => t.length), 4)
+    // Approx px height of a -45° rotated label (char width ~6px, cos45 ≈ 0.707)
+    const labelPx   = rotated ? Math.ceil(maxLblLen * 6 * 0.707) + 8 : 20
+    const bMargin   = labelPx + 52   // label height + legend height + padding
+    const PLOT_H    = 538
+    const plotAreaH = PLOT_H - 36 - bMargin
+    // legend y in paper coords: negative = below plot area
+    const legendY   = -((labelPx + 16) / Math.max(plotAreaH, 180))
+
     const layout = {
       paper_bgcolor: 'transparent',
       plot_bgcolor:  'transparent',
@@ -129,7 +142,7 @@ export default function CountsPlot({ countDist, design, metadata, sampleLabels =
       xaxis: {
         title: { text: 'Sample', standoff: 10 },
         color: c.axis, tickfont: { size: 9 },
-        tickangle: data.length > 10 ? -45 : 0,
+        tickangle: rotated ? -45 : 0,
         tickvals, ticktext,
         gridcolor: c.grid, showgrid: false,
       },
@@ -142,9 +155,9 @@ export default function CountsPlot({ countDist, design, metadata, sampleLabels =
         font: { size: 11 }, bgcolor: 'transparent',
         orientation: 'h',
         x: 0.5, xanchor: 'center',
-        y: -0.18, yanchor: 'top',
+        y: legendY, yanchor: 'top',
       },
-      margin: { t: 36, r: 20, b: data.length > 10 ? 140 : 90, l: 68 },
+      margin: { t: 36, r: 20, b: bMargin, l: 68 },
       modebar: { bgcolor: 'transparent', color: c.font, activecolor: 'var(--accent)' },
       hoverlabel: {
         bgcolor: 'rgba(13,20,36,0.9)',
