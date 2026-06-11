@@ -412,15 +412,17 @@ function(req, res) {
   })
   points <- Filter(Negate(is.null), points)
 
-  # Downsample NS points to at most 10 000 — keeps payload small; sig points kept whole
+  # Downsample NS points to at most 10 000 — keeps payload small; sig points kept whole.
+  # Strategy: retain the NS genes with the largest |log2FC| (closest to the significance
+  # boundary) so the most informative near-threshold genes are always shown.
   NS_MAX   <- 10000L
   is_sig   <- sapply(points, function(p) !is.null(p$padj) && !is.na(p$padj) && p$padj < 0.05)
   ns_idx   <- which(!is_sig)
   sig_idx  <- which(is_sig)
   ns_total <- length(ns_idx)
   if (ns_total > NS_MAX) {
-    set.seed(42L)
-    ns_idx <- sample(ns_idx, NS_MAX)
+    ns_lfc <- sapply(points[ns_idx], function(p) abs(if (!is.null(p$log2FC)) p$log2FC else 0))
+    ns_idx  <- ns_idx[order(ns_lfc, decreasing = TRUE)[seq_len(NS_MAX)]]
   }
   points <- points[sort(c(sig_idx, ns_idx))]
 
