@@ -521,9 +521,14 @@ export default function ConsoleModal({ onClose, session, design, results, parseI
   const scrollRef = useRef(null)
 
   // ── Plot selection state ───────────────────────────────────────────────────
-  const [plotSelected, setPlotSelected] = useState(() => new Set(KNOWN_PLOTS.map(p => p.id)))
-  const [exporting,    setExporting]    = useState(false)
-  const [exportProg,   setExportProg]   = useState({ done: 0, total: 0, current: '' })
+  const [plotSelected,    setPlotSelected]    = useState(() => new Set(KNOWN_PLOTS.map(p => p.id)))
+  const [exporting,       setExporting]       = useState(false)
+  const [exportProg,      setExportProg]      = useState({ done: 0, total: 0, current: '' })
+
+  // ── Data export state ──────────────────────────────────────────────────────
+  const [dataSelected,    setDataSelected]    = useState(new Set())
+  const [downloadingData, setDownloadingData] = useState(false)
+  const [dataProg,        setDataProg]        = useState({ done: 0, total: 0, current: '' })
 
   const plotAvailable = useMemo(
     () => getAvailablePlots(() => registry.getAll(), results),
@@ -537,6 +542,106 @@ export default function ConsoleModal({ onClose, session, design, results, parseI
     setPlotSelected(on ? new Set(KNOWN_PLOTS.map(p => p.id)) : new Set())
   }, [])
 
+  // ── Data items ─────────────────────────────────────────────────────────────
+  const params = design?.params ?? {}
+  const alpha  = params.alpha ?? 0.05
+
+  const dataItems = useMemo(() => {
+    const items        = []
+    const hasSession   = !!session?.sessionId
+    const hasRun       = hasSession && (results?.contrasts?.length ?? 0) > 0
+    const hasUpload    = hasSession && (parseInfo?.metadataRows?.length ?? 0) > 0
+    const sid          = session?.sessionId
+
+    items.push({
+      id: 'norm-counts', group: 'Expression matrices',
+      label: 'Normalized counts',
+      desc:  'DESeq2 size-factor normalized counts (genes × samples)',
+      filename: 'normalized_counts.csv',
+      endpoint: '/api/export-norm-counts',
+      body: { sessionId: sid },
+      available: hasRun,
+    })
+    items.push({
+      id: 'vst-matrix', group: 'Expression matrices',
+      label: 'VST matrix',
+      desc:  'Variance Stabilizing Transformation values (genes × samples)',
+      filename: 'vst_matrix.csv',
+      endpoint: '/api/export-vst',
+      body: { sessionId: sid },
+      available: hasRun,
+    })
+    if (!params.noFilter) {
+      items.push({
+        id: 'raw-filtered', group: 'Raw counts',
+        label: 'Raw filtered counts',
+        desc:  `Pre-filter: minCount=${params.minCount ?? 1}, minSamples=${params.minSamples ?? 2}`,
+        filename: `filtered_counts_minCount${params.minCount ?? 1}_minSamp${params.minSamples ?? 2}.csv`,
+        endpoint: '/api/export-counts',
+        body: { sessionId: sid, minCount: params.minCount ?? 1, minSamples: params.minSamples ?? 2 },
+        available: hasUpload,
+      })
+    }
+    if (results?.contrasts?.length) {
+      results.contrasts.forEach(ct => {
+        const sig = (ct.results ?? []).filter(g => g.padj != null && g.padj < alpha)
+        const safeLabel = (ct.label ?? '').replace(/[^A-Za-z0-9_-]/g, '_')
+        items.push({
+          id: `degs-${ct.label}`, group: 'DEG results',
+          label: `DEG: ${ct.label}`,
+          desc:  `${(ct.results?.length ?? 0).toLocaleString()} genes · ${sig.length.toLocaleString()} significant (padj < ${alpha})`,
+          filename: `DEGs_${safeLabel}.csv`,
+          endpoint: '/api/export-degs',
+          body: { sessionId: sid, contrastLabel: ct.label },
+          available: hasRun,
+        })
+      })
+    }
+    return items
+  }, [session, results, parseInfo, params, alpha])
+
+  // Pre-select all available data items whenever the list changes
+  useEffect(() => {
+    setDataSelected(new Set(dataItems.filter(d => d.available).map(d => d.id)))
+  }, [dataItems])
+
+  const toggleData = useCallback((id) => {
+    setDataSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }, [])
+  const toggleAllData = useCallback((on) => {
+    setDataSelected(on
+      ? new Set(dataItems.filter(d => d.available).map(d => d.id))
+      : new Set()
+    )
+  }, [dataItems])
+
+  async function downloadDataItem(item) {
+    const resp = await fetch(item.endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(item.body),
+    })
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`)
+    const csv  = await resp.text()
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url  = URL.createObjectURL(blob)
+    Object.assign(document.createElement('a'), { href: url, download: item.filename }).click()
+    URL.revokeObjectURL(url)
+  }
+
+  async function handleDownloadData() {
+    const toDownload = dataItems.filter(d => dataSelected.has(d.id) && d.available)
+    if (!toDownload.length) return
+    setDownloadingData(true)
+    for (let i = 0; i < toDownload.length; i++) {
+      setDataProg({ done: i, total: toDownload.length, current: toDownload[i].label })
+      try { await downloadDataItem(toDownload[i]) } catch (e) { console.error(e) }
+      if (i < toDownload.length - 1) await new Promise(r => setTimeout(r, 350))
+    }
+    setDownloadingData(false)
+    setDataProg({ done: 0, total: 0, current: '' })
+  }
+
   useEffect(() => {
     const h = e => { if (e.key === 'Escape') onClose() }
     document.addEventListener('keydown', h)
@@ -545,10 +650,8 @@ export default function ConsoleModal({ onClose, session, design, results, parseI
 
   // Derived values with correct data shapes
   const contrasts   = results?.contrasts ?? []
-  const params      = design?.params ?? {}
   const nSamples    = parseInfo?.metadataRows?.length
   const nGenes      = contrasts[0]?.results?.length
-  const alpha       = params.alpha ?? 0.05
 
   const sessionRows = [
     ['Session ID',        session?.sessionId],
@@ -597,6 +700,7 @@ export default function ConsoleModal({ onClose, session, design, results, parseI
     { id: 'methods', label: '📄 Methods & Code' },
     { id: 'params',  label: '⚙ Session Params'  },
     { id: 'plots',   label: '◭ Plots'            },
+    { id: 'data',    label: '📦 Data Export'     },
   ]
 
   const plotGroups = {}
@@ -606,6 +710,13 @@ export default function ConsoleModal({ onClose, session, design, results, parseI
   }
   const selectedAvailable = KNOWN_PLOTS.filter(p => plotSelected.has(p.id) && plotAvailable.has(p.id)).length
   const contrastCount = results?.contrasts?.length ?? 0
+
+  const dataGroups = {}
+  for (const d of dataItems) {
+    if (!dataGroups[d.group]) dataGroups[d.group] = []
+    dataGroups[d.group].push(d)
+  }
+  const dataSelectedCount = dataItems.filter(d => dataSelected.has(d.id) && d.available).length
 
   return (
     <div onClick={onClose}
@@ -833,6 +944,114 @@ export default function ConsoleModal({ onClose, session, design, results, parseI
                   })}
                 </div>
               ))}
+            </div>
+          )}
+
+          {tab === 'data' && (
+            <div style={{ paddingBottom: 8 }}>
+              <p style={{ fontSize:'0.8rem', color:'var(--text-2)', marginBottom:16, lineHeight:1.6 }}>
+                Select data tables to download as CSV files.
+                {dataItems.length === 0 && ' Run a DESeq2 analysis to unlock exports.'}
+              </p>
+
+              {/* Toolbar */}
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:20, flexWrap:'wrap' }}>
+                {[['Select all', true], ['Deselect all', false]].map(([lbl, on]) => (
+                  <button key={lbl} onClick={() => toggleAllData(on)}
+                    style={{ fontSize:'0.72rem', padding:'4px 12px', borderRadius:6,
+                      background:'rgba(var(--accent-rgb),0.08)', border:'1px solid var(--border)',
+                      color:'var(--accent)', cursor:'pointer', fontWeight:600 }}>
+                    {lbl}
+                  </button>
+                ))}
+                <div style={{ flex:1 }} />
+                {downloadingData ? (
+                  <div style={{ display:'flex', flexDirection:'column', gap:3, minWidth:180 }}>
+                    <div style={{ fontSize:'0.65rem', color:'var(--text-3)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                      {dataProg.current || 'Downloading…'}
+                    </div>
+                    <div style={{ height:3, borderRadius:2, background:'var(--border)', overflow:'hidden' }}>
+                      <div style={{ height:'100%', borderRadius:2,
+                        background:'linear-gradient(90deg,var(--accent),var(--accent2))',
+                        width: dataProg.total ? `${(dataProg.done/dataProg.total)*100}%` : '15%',
+                        transition:'width 0.3s ease' }} />
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleDownloadData}
+                    disabled={dataSelectedCount === 0}
+                    style={{ fontSize:'0.72rem', padding:'4px 14px', borderRadius:6,
+                      border:'1px solid var(--border)', cursor: dataSelectedCount > 0 ? 'pointer' : 'default',
+                      background: dataSelectedCount > 0 ? 'rgba(var(--accent-rgb),0.1)' : 'rgba(255,255,255,0.03)',
+                      color: dataSelectedCount > 0 ? 'var(--accent)' : 'var(--text-3)',
+                      fontWeight:600, opacity: dataSelectedCount > 0 ? 1 : 0.5, whiteSpace:'nowrap' }}>
+                    ↓ Download {dataSelectedCount > 0 ? `${dataSelectedCount} file${dataSelectedCount > 1 ? 's' : ''}` : 'selected'}
+                  </button>
+                )}
+              </div>
+
+              {dataItems.length === 0 ? (
+                <div style={{ padding:'40px 20px', textAlign:'center', color:'var(--text-3)', fontSize:'0.82rem' }}>
+                  No data available — load an RDS file and run DESeq2 to enable exports.
+                </div>
+              ) : (
+                Object.entries(dataGroups).map(([group, items]) => (
+                  <div key={group} style={{ marginBottom:22 }}>
+                    <div style={{ fontSize:'0.68rem', fontWeight:700, textTransform:'uppercase',
+                      letterSpacing:'0.07em', color:'var(--text-3)', marginBottom:8,
+                      paddingBottom:4, borderBottom:'1px solid var(--border)' }}>
+                      {group}
+                    </div>
+                    {items.map(d => {
+                      const isAvail   = d.available
+                      const isChecked = dataSelected.has(d.id) && isAvail
+                      return (
+                        <label key={d.id} style={{
+                          display:'flex', alignItems:'center', gap:10,
+                          padding:'9px 12px', borderRadius:8, marginBottom:4,
+                          background: isChecked ? 'rgba(var(--accent-rgb),0.1)' : 'var(--bg-card2)',
+                          border:`1px solid ${isChecked ? 'var(--accent-border)' : 'var(--border)'}`,
+                          cursor: isAvail ? 'pointer' : 'default',
+                          opacity: isAvail ? 1 : 0.4, transition:'all 0.12s',
+                        }}>
+                          <input type="checkbox"
+                            checked={isChecked} disabled={!isAvail}
+                            onChange={() => isAvail && toggleData(d.id)}
+                            style={{ accentColor:'var(--accent)', width:14, height:14, flexShrink:0 }}
+                          />
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ fontSize:'0.83rem', color:'var(--text-1)', fontWeight:500 }}>{d.label}</div>
+                            <div style={{ fontSize:'0.71rem', color:'var(--text-3)', marginTop:1 }}>{d.desc}</div>
+                          </div>
+                          <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
+                            <span style={{ fontSize:'0.67rem', color:'var(--text-3)',
+                              background:'rgba(255,255,255,0.05)', border:'1px solid var(--border)',
+                              borderRadius:4, padding:'1px 6px', fontFamily:'monospace' }}>
+                              {d.filename.split('.').pop().toUpperCase()}
+                            </span>
+                            {!isAvail && (
+                              <span style={{ fontSize:'0.68rem', color:'var(--text-3)', fontStyle:'italic' }}>
+                                unavailable
+                              </span>
+                            )}
+                            {isAvail && (
+                              <button
+                                onClick={e => { e.preventDefault(); downloadDataItem(d).catch(console.error) }}
+                                title={`Download ${d.filename}`}
+                                style={{ padding:'2px 8px', borderRadius:5, fontSize:'0.68rem',
+                                  border:'1px solid var(--border)', background:'rgba(255,255,255,0.05)',
+                                  color:'var(--text-2)', cursor:'pointer' }}>
+                                ↓
+                              </button>
+                            )}
+                          </div>
+                        </label>
+                      )
+                    })}
+                  </div>
+                ))
+              )}
             </div>
           )}
         </div>

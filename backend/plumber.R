@@ -572,6 +572,96 @@ function(req, res) {
   csv
 }
 
+# ── Export normalized counts (size-factor normalized) ─────────────────────────
+#* @post /api/export-norm-counts
+#* @serializer text
+function(req, res) {
+  body       <- fromJSON(rawToChar(req$bodyRaw))
+  session_id <- body$sessionId
+  if (is.null(session_id) || session_id == "") stop("sessionId is required")
+
+  results_path <- file.path(RESULTS_DIR, paste0(session_id, "_results.rds"))
+  if (!file.exists(results_path)) stop("Results not found — run DESeq2 first")
+
+  saved <- readRDS(results_path)
+  mat   <- saved$norm_matrix
+  if (is.null(mat)) stop("Normalized counts not available in this session")
+
+  df  <- data.frame(gene = rownames(mat), as.data.frame(mat), check.names = FALSE)
+  tmp <- tempfile(fileext = ".csv"); on.exit(unlink(tmp), add = TRUE)
+  write.csv(df, file = tmp, row.names = FALSE, quote = FALSE)
+  csv <- paste(readLines(tmp), collapse = "\n")
+
+  res$setHeader("Content-Type", "text/csv")
+  res$setHeader("Content-Disposition", 'attachment; filename="normalized_counts.csv"')
+  csv
+}
+
+# ── Export VST matrix ─────────────────────────────────────────────────────────
+#* @post /api/export-vst
+#* @serializer text
+function(req, res) {
+  body       <- fromJSON(rawToChar(req$bodyRaw))
+  session_id <- body$sessionId
+  if (is.null(session_id) || session_id == "") stop("sessionId is required")
+
+  results_path <- file.path(RESULTS_DIR, paste0(session_id, "_results.rds"))
+  if (!file.exists(results_path)) stop("Results not found — run DESeq2 first")
+
+  saved <- readRDS(results_path)
+  mat   <- saved$vst_matrix
+  if (is.null(mat)) stop("VST matrix not available in this session")
+
+  df  <- data.frame(gene = rownames(mat), as.data.frame(mat), check.names = FALSE)
+  tmp <- tempfile(fileext = ".csv"); on.exit(unlink(tmp), add = TRUE)
+  write.csv(df, file = tmp, row.names = FALSE, quote = FALSE)
+  csv <- paste(readLines(tmp), collapse = "\n")
+
+  res$setHeader("Content-Type", "text/csv")
+  res$setHeader("Content-Disposition", 'attachment; filename="vst_matrix.csv"')
+  csv
+}
+
+# ── Export DEG results (one contrast or all merged) ───────────────────────────
+#* @post /api/export-degs
+#* @serializer text
+function(req, res) {
+  body           <- fromJSON(rawToChar(req$bodyRaw))
+  session_id     <- body$sessionId
+  contrast_label <- body$contrastLabel   # NULL / "all" → merge all contrasts
+  if (is.null(session_id) || session_id == "") stop("sessionId is required")
+
+  results_path <- file.path(RESULTS_DIR, paste0(session_id, "_results.rds"))
+  if (!file.exists(results_path)) stop("Results not found — run DESeq2 first")
+
+  saved     <- readRDS(results_path)
+  contrasts <- saved$contrasts
+  if (is.null(contrasts) || length(contrasts) == 0) stop("No contrast results found")
+
+  if (!is.null(contrast_label) && contrast_label != "all") {
+    ct_list <- Filter(function(c) c$label == contrast_label, contrasts)
+    if (length(ct_list) == 0) stop("Contrast not found: ", contrast_label)
+    df    <- ct_list[[1]]$results
+    fname <- sprintf("DEGs_%s.csv", gsub("[^A-Za-z0-9_-]", "_", contrast_label))
+  } else {
+    dfs <- lapply(contrasts, function(ct) {
+      df <- ct$results
+      df <- cbind(data.frame(contrast = ct$label, stringsAsFactors = FALSE), df)
+      df
+    })
+    df    <- do.call(rbind, dfs)
+    fname <- "DEGs_all_contrasts.csv"
+  }
+
+  tmp <- tempfile(fileext = ".csv"); on.exit(unlink(tmp), add = TRUE)
+  write.csv(df, file = tmp, row.names = FALSE, quote = FALSE)
+  csv <- paste(readLines(tmp), collapse = "\n")
+
+  res$setHeader("Content-Type", "text/csv")
+  res$setHeader("Content-Disposition", sprintf('attachment; filename="%s"', fname))
+  csv
+}
+
 # ── Parse RDS ─────────────────────────────────────────────────────────────────
 #* @post /api/parse
 #* @serializer unboxedJSON
