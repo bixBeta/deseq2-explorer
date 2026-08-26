@@ -512,7 +512,7 @@ export default function App() {
           <Results results={results} design={design} onBack={handleResultsBack}
                    onEditSamples={metaState ? handleEditSamples : null}
                    session={session} annMap={annMap} annDetails={annDetails}
-                   sampleLabels={sampleLabels}
+                   sampleLabels={sampleLabels} metaState={metaState}
                    onAnnotate={(map, details) => { setAnnMap(map); setAnnDetails(details || null) }}
                    onGseaRunsChange={setGseaRuns}
                    initialGseaRuns={gseaRuns} />

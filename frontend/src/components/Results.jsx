@@ -32,7 +32,7 @@ function saveIcons(icons) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(icons)) } catch {}
 }
 
-export default function Results({ results, design, onBack, onEditSamples, session, annMap, annDetails, sampleLabels = {}, onAnnotate, onGseaRunsChange, initialGseaRuns }) {
+export default function Results({ results, design, onBack, onEditSamples, session, annMap, annDetails, sampleLabels = {}, metaState, onAnnotate, onGseaRunsChange, initialGseaRuns }) {
   const [activeIdx,   setActiveIdx]   = useState(0)
   const [vizTab,      setVizTab]      = useState('counts')
   const [customIcons, setCustomIcons] = useState(loadIcons)   // { key: icon }
@@ -74,6 +74,25 @@ export default function Results({ results, design, onBack, onEditSamples, sessio
   const pca        = results?.pca
   const countDist  = results?.countDist
   const active     = contrastList[activeIdx] ?? contrastList[0]
+
+  // Merge live metaState rows into pca.scores so new/edited metadata columns
+  // are visible in PCA color/shape controls and CountsPlot without re-running.
+  const augmentedPca = useMemo(() => {
+    if (!pca?.scores?.length) return pca
+    const metaRows = metaState?.rows
+    if (!metaRows?.length) return pca
+    const metaBysample = {}
+    metaRows.forEach(r => { metaBysample[r.sample] = r })
+    const merged = pca.scores.map(s => {
+      const extra = metaBysample[s.sample]
+      if (!extra) return s
+      // Keep PC values from scores; overlay all metadata from live metaState
+      const pcCols = {}
+      Object.keys(s).forEach(k => { if (/^PC\d+$/.test(k) || k === 'sample') pcCols[k] = s[k] })
+      return { ...extra, ...pcCols }
+    })
+    return { ...pca, scores: merged }
+  }, [pca, metaState])
 
   const maDesign = useMemo(() => ({
     ...design,
@@ -232,7 +251,7 @@ export default function Results({ results, design, onBack, onEditSamples, sessio
       {/* ── Content ── */}
       <div className="glass" style={{ padding: 20, minHeight: 480 }}>
         <div style={{ display: vizTab === 'counts' ? 'block' : 'none' }}>
-          <CountsPlot countDist={countDist} design={design} metadata={pca?.scores} sampleLabels={sampleLabels} />
+          <CountsPlot countDist={countDist} design={design} metadata={augmentedPca?.scores} sampleLabels={sampleLabels} />
         </div>
         <div style={{ display: vizTab === 'ma' ? 'block' : 'none' }}>
           <MAPlot
@@ -249,7 +268,7 @@ export default function Results({ results, design, onBack, onEditSamples, sessio
           />
         </div>
         <div style={{ display: vizTab === 'pca' ? 'block' : 'none' }}>
-          <PCAPlot pca={pca} design={design} sampleLabels={sampleLabels} annMap={annMap} />
+          <PCAPlot pca={augmentedPca} design={design} sampleLabels={sampleLabels} annMap={annMap} />
         </div>
         <div style={{ display: vizTab === 'table' ? 'block' : 'none' }}>
           <ResultsTable
@@ -266,7 +285,7 @@ export default function Results({ results, design, onBack, onEditSamples, sessio
           <AnnotationPanel geneIds={geneIds} annMap={annMap} onAnnotate={(map, details) => { onAnnotate(map, details); if (map) setVizTab('table') }} />
         </div>
         <div style={{ display: vizTab === 'compare' ? 'block' : 'none' }}>
-          <ComparePanel session={session} contrasts={contrastList} annMap={annMap} annDetails={annDetails} pca={pca} sampleLabels={sampleLabels} />
+          <ComparePanel session={session} contrasts={contrastList} annMap={annMap} annDetails={annDetails} pca={augmentedPca} sampleLabels={sampleLabels} />
         </div>
         <div style={{ display: vizTab === 'gsea' ? 'block' : 'none' }}>
           <GSEAExplorer
@@ -278,7 +297,7 @@ export default function Results({ results, design, onBack, onEditSamples, sessio
             annDetails={annDetails}
             onRunsChange={onGseaRunsChange}
             initialRuns={initialGseaRuns}
-            pca={pca}
+            pca={augmentedPca}
             sampleLabels={sampleLabels}
             contrastList={contrastList}
           />
@@ -287,7 +306,7 @@ export default function Results({ results, design, onBack, onEditSamples, sessio
           <GSEACompare
             session={session}
             gseaRuns={initialGseaRuns}
-            pca={pca}
+            pca={augmentedPca}
             annMap={annMap}
             sampleLabels={sampleLabels}
           />
@@ -299,7 +318,7 @@ export default function Results({ results, design, onBack, onEditSamples, sessio
             active={active}
             annMap={annMap}
             sampleLabels={sampleLabels}
-            pca={pca}
+            pca={augmentedPca}
             design={design}
           />
         </div>
