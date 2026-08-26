@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import JSZip from 'jszip'
 import { useDownloadDialog } from './DownloadDialog'
 import { usePlotRegistry } from '../context/PlotRegistryContext'
 import {
@@ -629,17 +630,37 @@ export default function ConsoleModal({ onClose, session, design, results, parseI
     URL.revokeObjectURL(url)
   }
 
-  async function handleDownloadData() {
+  async function buildAndDownloadZip(filename) {
     const toDownload = dataItems.filter(d => dataSelected.has(d.id) && d.available)
     if (!toDownload.length) return
     setDownloadingData(true)
+    const zip = new JSZip()
     for (let i = 0; i < toDownload.length; i++) {
-      setDataProg({ done: i, total: toDownload.length, current: toDownload[i].label })
-      try { await downloadDataItem(toDownload[i]) } catch (e) { console.error(e) }
-      if (i < toDownload.length - 1) await new Promise(r => setTimeout(r, 350))
+      const item = toDownload[i]
+      setDataProg({ done: i, total: toDownload.length, current: item.label })
+      try {
+        const resp = await fetch(item.endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(item.body),
+        })
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+        zip.file(item.filename, await resp.text())
+      } catch (e) { console.error('ZIP: error fetching', item.label, e) }
     }
+    setDataProg({ done: toDownload.length, total: toDownload.length, current: 'Compressing…' })
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } })
+    const url  = URL.createObjectURL(blob)
+    Object.assign(document.createElement('a'), { href: url, download: filename }).click()
+    URL.revokeObjectURL(url)
     setDownloadingData(false)
     setDataProg({ done: 0, total: 0, current: '' })
+  }
+
+  function handleDownloadData() {
+    const toDownload = dataItems.filter(d => dataSelected.has(d.id) && d.available)
+    if (!toDownload.length) return
+    promptDownload('deseq2-export.zip', buildAndDownloadZip)
   }
 
   useEffect(() => {
