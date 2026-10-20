@@ -1,7 +1,7 @@
 [
   {
     "id": "canfam4_ensembl",
-    "label": "Canis familiaris canFam4 (ENSEMBL)",
+    "label": "Canis familiaris (canFam4 ENSEMBL)",
     "taxon": null,
     "ncbi": "canFam4_ensembl",
     "file": "canfam4_ensembl.tsv",
@@ -12,7 +12,7 @@
   },
   {
     "id": "canfam4",
-    "label": "Canis familiaris canFam4 (NCBI)",
+    "label": "Canis familiaris (canFam4 NCBI)",
     "taxon": null,
     "ncbi": "CanFam4",
     "file": "canfam4.tsv",
@@ -22,8 +22,19 @@
     "created": "2026-04-05"
   },
   {
+    "id": "equ_cab3_102_ensembl",
+    "label": "Equus caballus (EquCab3 ENSEMBL 102)",
+    "taxon": null,
+    "ncbi": "equ_cab3_102_ensembl",
+    "file": "equ_cab3_102_ensembl.tsv",
+    "genes": 30371,
+    "hasCoords": false,
+    "hasSymbol": true,
+    "created": "2026-07-23"
+  },
+  {
     "id": "felis_catus9_0",
-    "label": "Felis catus  (v9.0 ENSEMBL)",
+    "label": "Felis catus (Felis_catus_9.0 ENSEMBL)",
     "taxon": null,
     "ncbi": "Felis_catus9.0",
     "file": "felis_catus9_0.tsv",
@@ -34,7 +45,7 @@
   },
   {
     "id": "grch38",
-    "label": "Homo sapiens (GRCh38))",
+    "label": "Homo sapiens (GRCh38 ENSEMBL)",
     "taxon": null,
     "ncbi": "GRCh38",
     "file": "grch38.tsv",
@@ -45,7 +56,7 @@
   },
   {
     "id": "grcm38",
-    "label": "Mus musculus GRCm38",
+    "label": "Mus musculus (GRCm38 ENSEMBL)",
     "taxon": null,
     "ncbi": "GRCm38",
     "file": "grcm38.tsv",
@@ -56,7 +67,7 @@
   },
   {
     "id": "grcm39",
-    "label": "Mus musculus GRCm39",
+    "label": "Mus musculus (GRCm39 ENSEMBL)",
     "taxon": null,
     "ncbi": "GRCm39",
     "file": "grcm39.tsv",
