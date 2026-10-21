@@ -23,7 +23,7 @@
   },
   {
     "id": "equ_cab3_102_ensembl",
-    "label": "Equus caballus (EquCab3 ENSEMBL 102)",
+    "label": "Equus caballus (EquCab3 ENSEMBL)",
     "taxon": null,
     "ncbi": "equ_cab3_102_ensembl",
     "file": "equ_cab3_102_ensembl.tsv",
